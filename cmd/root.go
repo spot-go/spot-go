@@ -17,7 +17,8 @@ var rootCmd = &cobra.Command{
 }
 
 func run(cmd *cobra.Command, args []string) {
-	client, err := spotify.Login()
+	c := context.Background()
+	client, err := spotify.Login(c)
 	if err != nil {
 		panic(err)
 	}

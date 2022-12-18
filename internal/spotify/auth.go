@@ -1,6 +1,7 @@
 package spotify
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/spot-go/spot-go/internal/browser"
+	"github.com/spot-go/spot-go/internal/config"
 	spotifyauth "github.com/zmb3/spotify/v2/auth"
 
 	"github.com/zmb3/spotify/v2"
@@ -59,10 +61,7 @@ func randomString(n int) string {
 	return sb.String()
 }
 
-func Login() (*spotify.Client, error) {
-	fmt.Printf("codeVerifier %+v\n", codeVerifier)
-	fmt.Printf("codeChallenge %+v\n", codeChallenge)
-	// first start an HTTP server
+func authorize() (*spotify.Client, error) {
 	http.HandleFunc("/callback", completeAuth)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Got request for:", r.URL.String())
@@ -82,8 +81,24 @@ func Login() (*spotify.Client, error) {
 	return <-ch, nil
 }
 
+func Login(ctx context.Context) (*spotify.Client, error) {
+	s := config.AppSettings
+	if s.Token == nil {
+		return authorize()
+	}
+
+	c := spotify.New(auth.Client(ctx, s.Token))
+	_, err := c.CurrentUser(ctx)
+	if err != nil &&
+		strings.Contains(err.Error(), `"error_description":"Refresh token revoked"`) {
+		return authorize()
+	}
+
+	return c, err
+}
+
 func completeAuth(w http.ResponseWriter, r *http.Request) {
-	tok, err := auth.Token(r.Context(), state, r,
+	t, err := auth.Token(r.Context(), state, r,
 		oauth2.SetAuthURLParam("code_verifier", codeVerifier))
 	if err != nil {
 		http.Error(w, "Couldn't get token", http.StatusForbidden)
@@ -93,8 +108,16 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		log.Fatalf("State mismatch: %s != %s\n", st, state)
 	}
+
+	s := config.AppSettings
+	s.Token = t
+	err = s.Save()
+	if err != nil {
+		log.Fatalf("fail to save config: %+v\n", err)
+	}
+
 	// use the token to get an authenticated client
-	client := spotify.New(auth.Client(r.Context(), tok))
+	client := spotify.New(auth.Client(r.Context(), t))
 	fmt.Fprintf(w, "Login Completed!")
 	ch <- client
 }
