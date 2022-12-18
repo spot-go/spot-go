@@ -1,16 +1,31 @@
 package cmd
 
 import (
+	"context"
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/spot-go/spot-go/internal/spotify"
 )
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "spot-go",
 	Short: "A complete spotify tui",
-	Run:   func(cmd *cobra.Command, args []string) {},
+	Run:   run,
+}
+
+func run(cmd *cobra.Command, args []string) {
+	client, err := spotify.Login()
+	if err != nil {
+		panic(err)
+	}
+	u, err := client.CurrentUser(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("client %+v\n", u)
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
