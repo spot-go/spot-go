@@ -88,13 +88,25 @@ func Login(ctx context.Context) (*spotify.Client, error) {
 	}
 
 	c := spotify.New(auth.Client(ctx, s.Token))
-	_, err := c.CurrentUser(ctx)
-	if err != nil &&
-		strings.Contains(err.Error(), `"error_description":"Refresh token revoked"`) {
-		return authorize()
-	}
 
-	return c, err
+	// PKCE allows only one refresh per access_token
+	// The code above saves the new token (this the new access token) after a refresh
+	if !s.Token.Valid() {
+		newToken, err := c.Token()
+		if err != nil {
+			if err != nil &&
+				strings.Contains(err.Error(), `"error_description":"Refresh token revoked"`) {
+				return authorize()
+			}
+			return nil, fmt.Errorf("fail to get new token: %+v", err)
+		}
+		s.Token = newToken
+		err = s.Save()
+		if err != nil {
+			return nil, fmt.Errorf("fail to save config: %+v", err)
+		}
+	}
+	return c, nil
 }
 
 func completeAuth(w http.ResponseWriter, r *http.Request) {
@@ -102,6 +114,8 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 		oauth2.SetAuthURLParam("code_verifier", codeVerifier))
 	if err != nil {
 		http.Error(w, "Couldn't get token", http.StatusForbidden)
+		// How to improve it? Ask for retry? Or inform to press ctrl+c
+		// and try again
 		log.Fatal(err)
 	}
 	if st := r.FormValue("state"); st != state {
