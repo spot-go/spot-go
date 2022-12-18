@@ -41,10 +41,8 @@ func init() {
 			panic(err)
 		}
 
-		err = json.Unmarshal(b, &AppSettings)
-		if err != nil {
-			panic(err)
-		}
+		// Ignore invalid json
+		json.Unmarshal(b, &AppSettings)
 	} else {
 		AppSettings = &Settings{}
 		err = AppSettings.Save()

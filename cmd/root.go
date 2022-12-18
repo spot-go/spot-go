@@ -18,11 +18,12 @@ var rootCmd = &cobra.Command{
 
 func run(cmd *cobra.Command, args []string) {
 	c := context.Background()
-	client, err := spotify.Login(c)
-	if err != nil {
-		panic(err)
+	res := spotify.Login(c)
+	if res.Err != nil {
+		fmt.Println(res.Err)
+		os.Exit(1)
 	}
-	u, err := client.CurrentUser(context.Background())
+	u, err := res.Client.CurrentUser(context.Background())
 	if err != nil {
 		panic(err)
 	}
