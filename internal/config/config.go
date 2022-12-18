@@ -42,13 +42,16 @@ func init() {
 		}
 
 		// Ignore invalid json
-		json.Unmarshal(b, &AppSettings)
-	} else {
-		AppSettings = &Settings{}
-		err = AppSettings.Save()
-		if err != nil {
-			panic(err)
+		err = json.Unmarshal(b, &AppSettings)
+		if err == nil {
+			return
 		}
+	}
+
+	AppSettings = &Settings{}
+	err = AppSettings.Save()
+	if err != nil {
+		panic(err)
 	}
 }
 
