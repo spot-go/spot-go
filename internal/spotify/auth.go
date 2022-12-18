@@ -81,7 +81,6 @@ func authorize() ClientResponse {
 		return ClientResponse{nil, fmt.Errorf("fail to open browser: %+v", err)}
 	}
 
-	// wait for auth to complete
 	return <-clientResp
 }
 
@@ -94,7 +93,7 @@ func Login(ctx context.Context) ClientResponse {
 	c := spotify.New(auth.Client(ctx, s.Token))
 
 	// PKCE allows only one refresh per access_token
-	// The code above saves the new token (this the new access token) after a refresh
+	// The code below saves the new token (this the new access token) after a refresh
 	if !s.Token.Valid() {
 		newToken, err := c.Token()
 		if err != nil {
@@ -134,7 +133,6 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("fail to save config: %+v\n", err)
 	}
 
-	// use the token to get an authenticated client
 	client := spotify.New(auth.Client(r.Context(), t))
 	fmt.Fprint(w, "Login Completed. You can can close this window and go back to the terminal")
 	clientResp <- ClientResponse{client, nil}
