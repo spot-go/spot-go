@@ -38,6 +38,7 @@ var (
 	state         = randomString(16)
 	codeVerifier  = randomString(128)
 	codeChallenge = computeHmac256(codeVerifier)
+	server        *http.Server
 )
 
 func computeHmac256(message string) string {
@@ -66,7 +67,8 @@ func authorize() (*spotify.Client, error) {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Got request for:", r.URL.String())
 	})
-	go http.ListenAndServe(localPort, nil)
+	server = &http.Server{Addr: localPort}
+	go server.ListenAndServe()
 
 	url := auth.AuthURL(state,
 		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
@@ -113,10 +115,9 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 	t, err := auth.Token(r.Context(), state, r,
 		oauth2.SetAuthURLParam("code_verifier", codeVerifier))
 	if err != nil {
-		http.Error(w, "Couldn't get token", http.StatusForbidden)
-		// How to improve it? Ask for retry? Or inform to press ctrl+c
-		// and try again
-		log.Fatal(err)
+		fmt.Fprintln(w, "Couldn't get token:", err)
+		go server.Shutdown(context.Background())
+		ch <- nil
 	}
 	if st := r.FormValue("state"); st != state {
 		http.NotFound(w, r)
@@ -132,6 +133,7 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 
 	// use the token to get an authenticated client
 	client := spotify.New(auth.Client(r.Context(), t))
-	fmt.Fprintf(w, "Login Completed!")
+	fmt.Fprintf(w, "Login Completed. You can can close this window and go back to the terminal")
+	go server.Shutdown(context.Background())
 	ch <- client
 }
