@@ -32,11 +32,8 @@ var (
 		spotifyauth.WithScopes(spotifyauth.ScopeUserReadPrivate),
 		spotifyauth.WithClientID(ClientID),
 	)
-	ch    = make(chan *spotify.Client)
-	state = "abc123"
-	// These should be randomly generated for each request
-	//  More information on generating these can be found here,
-	// https://www.oauth.com/playground/authorization-code-with-pkce.html
+	ch            = make(chan *spotify.Client)
+	state         = randomString(16)
 	codeVerifier  = randomString(128)
 	codeChallenge = computeHmac256(codeVerifier)
 )
