@@ -8,12 +8,19 @@ import (
 
 	"github.com/kirsle/configdir"
 	"github.com/spot-go/spot-go/internal/path"
+
+	"golang.org/x/exp/slices"
 	"golang.org/x/oauth2"
 )
 
 type (
+	Auth struct {
+		Token  *oauth2.Token `json:"oauth2Token"`
+		Scopes []string      `json:"scopes"`
+	}
+
 	Settings struct {
-		Token *oauth2.Token `json:"oauth2Token"`
+		Auth *Auth `json:"auth"`
 	}
 )
 
@@ -48,7 +55,7 @@ func init() {
 		}
 	}
 
-	AppSettings = &Settings{}
+	AppSettings = &Settings{Auth: &Auth{}}
 	err = AppSettings.Save()
 	if err != nil {
 		panic(err)
@@ -67,4 +74,10 @@ func (s *Settings) Save() error {
 	}
 
 	return nil
+}
+
+func (s *Settings) ShouldAuthenticateSpotify(currentScopes []string) bool {
+	return s.Auth == nil ||
+		s.Auth.Token == nil ||
+		!slices.Equal(s.Auth.Scopes, currentScopes)
 }

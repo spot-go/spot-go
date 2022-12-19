@@ -6,6 +6,7 @@ require (
 	github.com/kirsle/configdir v0.0.0-20170128060238-e45d2f54772f
 	github.com/spf13/cobra v1.6.1
 	github.com/zmb3/spotify/v2 v2.3.0
+	golang.org/x/exp v0.0.0-20221217163422-3c43f8badb15
 	golang.org/x/oauth2 v0.3.0
 )
 

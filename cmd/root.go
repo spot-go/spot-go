@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -17,17 +18,18 @@ var rootCmd = &cobra.Command{
 }
 
 func run(cmd *cobra.Command, args []string) {
-	c := context.Background()
-	res := spotify.Login(c)
+	ctx := context.Background()
+	res := spotify.Login(ctx)
 	if res.Err != nil {
 		fmt.Println(res.Err)
 		os.Exit(1)
 	}
-	u, err := res.Client.CurrentUser(context.Background())
+	u, err := res.Client.PlayerDevices(ctx)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("client %+v\n", u)
+	b, _ := json.MarshalIndent(u, "", "  ")
+	println(string(b))
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

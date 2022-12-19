@@ -30,10 +30,16 @@ const (
 )
 
 var (
+	scopes = []string{
+		spotifyauth.ScopeUserReadPrivate,
+		spotifyauth.ScopeUserReadPlaybackState,
+		spotifyauth.ScopeUserModifyPlaybackState,
+		spotifyauth.ScopeUserReadCurrentlyPlaying,
+	}
 	redirectURI = fmt.Sprintf("http://localhost%s/callback", localPort)
 	auth        = spotifyauth.New(
 		spotifyauth.WithRedirectURL(redirectURI),
-		spotifyauth.WithScopes(spotifyauth.ScopeUserReadPrivate),
+		spotifyauth.WithScopes(scopes...),
 		spotifyauth.WithClientID(ClientID),
 	)
 	clientResp    = make(chan ClientResponse)
@@ -66,9 +72,6 @@ func randomString(n int) string {
 
 func authorize() ClientResponse {
 	http.HandleFunc("/callback", completeAuth)
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("Got request for:", r.URL.String())
-	})
 	server = &http.Server{Addr: localPort}
 	go server.ListenAndServe()
 
@@ -86,15 +89,15 @@ func authorize() ClientResponse {
 
 func Login(ctx context.Context) ClientResponse {
 	s := config.AppSettings
-	if s == nil || s.Token == nil {
+	if s == nil || s.ShouldAuthenticateSpotify(scopes) {
 		return authorize()
 	}
-
-	c := spotify.New(auth.Client(ctx, s.Token))
+	authSettings := config.AppSettings.Auth
+	c := spotify.New(auth.Client(ctx, authSettings.Token))
 
 	// PKCE allows only one refresh per access_token
 	// The code below saves the new token (this the new access token) after a refresh
-	if !s.Token.Valid() {
+	if !authSettings.Token.Valid() {
 		newToken, err := c.Token()
 		if err != nil {
 			if err != nil &&
@@ -103,7 +106,7 @@ func Login(ctx context.Context) ClientResponse {
 			}
 			return ClientResponse{nil, fmt.Errorf("fail to get new token: %+v", err)}
 		}
-		s.Token = newToken
+		authSettings.Token = newToken
 		err = s.Save()
 		if err != nil {
 			return ClientResponse{nil, fmt.Errorf("fail to save config: %+v", err)}
@@ -126,9 +129,9 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s := config.AppSettings
-	s.Token = t
-	err = s.Save()
+	config.AppSettings.Auth.Token = t
+	config.AppSettings.Auth.Scopes = scopes
+	err = config.AppSettings.Save()
 	if err != nil {
 		log.Fatalf("fail to save config: %+v\n", err)
 	}
