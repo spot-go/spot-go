@@ -10,13 +10,24 @@ import (
 	"github.com/spot-go/spot-go/internal/spotify"
 )
 
-type Model struct {
-	ctx    context.Context
-	ready  bool
-	width  int
-	height int
-	msg    string
-}
+type (
+	Model struct {
+		ctx    context.Context
+		ready  bool
+		width  int
+		height int
+		msg    string
+		state  state
+	}
+
+	state int
+)
+
+const (
+	stateInit state = iota
+	stateLoggingIn
+	stateLogged
+)
 
 func NewModel() Model {
 	return Model{
@@ -38,6 +49,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
 		case "enter":
+			if m.state == stateLoggingIn {
+				return m, nil
+			}
+			if m.state == stateLogged {
+				return m, tea.Quit
+			}
+			m.state = stateLoggingIn
 			m.msg = "A browser should be opened. Continue the login to spotify there."
 			return m, m.login
 		}
@@ -46,6 +64,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.width = msg.Width
 		m.ready = true
+
 	case spotify.ClientResponse:
 		if msg.Err != nil {
 			fmt.Println(msg.Err)
@@ -55,6 +74,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if err != nil {
 			panic(err)
 		}
+		m.state = stateLogged
 		m.msg = fmt.Sprintf("User name: %+v. User E-mail: %+v.", u.DisplayName, u.Email)
 	}
 
