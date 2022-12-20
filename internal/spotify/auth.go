@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -54,6 +55,7 @@ var (
 	authSuccessPage string
 	//go:embed static/auth_error.html
 	authErrorPage string
+	ErrNeedsAuth  = errors.New("needs to authorize")
 )
 
 func computeHmac256(message string) string {
@@ -77,7 +79,7 @@ func randomString(n int) string {
 	return sb.String()
 }
 
-func authorize() ClientResponse {
+func Authorize() ClientResponse {
 	http.HandleFunc("/callback", completeAuth)
 	server = &http.Server{Addr: localPort}
 	go server.ListenAndServe()
@@ -97,19 +99,19 @@ func authorize() ClientResponse {
 func Login(ctx context.Context) ClientResponse {
 	s := config.AppSettings
 	if s == nil || s.ShouldAuthenticateSpotify(scopes) {
-		return authorize()
+		return ClientResponse{nil, ErrNeedsAuth}
 	}
 	authSettings := config.AppSettings.Auth
 	c := spotify.New(auth.Client(ctx, authSettings.Token))
 
 	// PKCE allows only one refresh per access_token
-	// The code below saves the new token (this the new access token) after a refresh
+	// The code below saves the new token (thus the new access token) after a refresh
 	if !authSettings.Token.Valid() {
 		newToken, err := c.Token()
 		if err != nil {
 			if err != nil &&
 				strings.Contains(err.Error(), `"error_description":"Refresh token revoked"`) {
-				return authorize()
+				return ClientResponse{nil, ErrNeedsAuth}
 			}
 			return ClientResponse{nil, fmt.Errorf("fail to get new token: %+v", err)}
 		}
