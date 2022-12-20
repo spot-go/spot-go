@@ -3,6 +3,7 @@ package spotify
 import (
 	"context"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/base64"
 	"fmt"
 	"log"
@@ -18,9 +19,9 @@ import (
 	"golang.org/x/oauth2"
 )
 
-type clientResponse struct {
-	client *spotify.Client
-	err    error
+type ClientResponse struct {
+	Client *spotify.Client
+	Err    error
 }
 
 const (
@@ -32,6 +33,7 @@ const (
 var (
 	scopes = []string{
 		spotifyauth.ScopeUserReadPrivate,
+		spotifyauth.ScopeUserReadEmail,
 		spotifyauth.ScopeUserReadPlaybackState,
 		spotifyauth.ScopeUserModifyPlaybackState,
 		spotifyauth.ScopeUserReadCurrentlyPlaying,
@@ -42,11 +44,16 @@ var (
 		spotifyauth.WithScopes(scopes...),
 		spotifyauth.WithClientID(ClientID),
 	)
-	clientResp    = make(chan clientResponse)
+	clientResp    = make(chan ClientResponse)
 	state         = randomString(16)
 	codeVerifier  = randomString(128)
 	codeChallenge = computeHmac256(codeVerifier)
 	server        *http.Server
+
+	//go:embed static/auth_success.html
+	authSuccessPage string
+	//go:embed static/auth_error.html
+	authErrorPage string
 )
 
 func computeHmac256(message string) string {
@@ -70,7 +77,7 @@ func randomString(n int) string {
 	return sb.String()
 }
 
-func authorize() (*spotify.Client, error) {
+func authorize() ClientResponse {
 	http.HandleFunc("/callback", completeAuth)
 	server = &http.Server{Addr: localPort}
 	go server.ListenAndServe()
@@ -81,14 +88,13 @@ func authorize() (*spotify.Client, error) {
 	)
 	err := browser.Open(url)
 	if err != nil {
-		return nil, fmt.Errorf("fail to open browser: %+v", err)
+		return ClientResponse{nil, fmt.Errorf("fail to open browser: %+v", err)}
 	}
 
-	res := <-clientResp
-	return res.client, res.err
+	return <-clientResp
 }
 
-func Login(ctx context.Context) (*spotify.Client, error) {
+func Login(ctx context.Context) ClientResponse {
 	s := config.AppSettings
 	if s == nil || s.ShouldAuthenticateSpotify(scopes) {
 		return authorize()
@@ -105,28 +111,35 @@ func Login(ctx context.Context) (*spotify.Client, error) {
 				strings.Contains(err.Error(), `"error_description":"Refresh token revoked"`) {
 				return authorize()
 			}
-			return nil, fmt.Errorf("fail to get new token: %+v", err)
+			return ClientResponse{nil, fmt.Errorf("fail to get new token: %+v", err)}
 		}
 		authSettings.Token = newToken
 		err = s.Save()
 		if err != nil {
-			return nil, fmt.Errorf("fail to save config: %+v", err)
+			return ClientResponse{nil, fmt.Errorf("fail to save config: %+v", err)}
 		}
 	}
-	return c, nil
+	return ClientResponse{c, nil}
 }
 
 func completeAuth(w http.ResponseWriter, r *http.Request) {
+	errorPage := func(err error) {
+		msg := fmt.Sprintf(authErrorPage, err.Error())
+		fmt.Fprint(w, msg)
+	}
+
 	t, err := auth.Token(r.Context(), state, r,
 		oauth2.SetAuthURLParam("code_verifier", codeVerifier))
 	if err != nil {
-		fmt.Fprint(w, "Fail to get token: ", err)
-		clientResp <- clientResponse{nil, fmt.Errorf("fail to get token: %s", err)}
+		errorPage(err)
+		clientResp <- ClientResponse{nil, fmt.Errorf("fail to get token: %s", err)}
 		return
 	}
 	if st := r.FormValue("state"); st != state {
+		err := fmt.Errorf("state mismatch: %s != %s", st, state)
+		errorPage(err)
 		fmt.Fprintf(w, "State mismatch: %s != %s", st, state)
-		clientResp <- clientResponse{nil, fmt.Errorf("state mismatch: %s", err)}
+		clientResp <- ClientResponse{nil, err}
 		return
 	}
 
@@ -138,6 +151,6 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := spotify.New(auth.Client(r.Context(), t))
-	fmt.Fprint(w, "Login Completed. You can can close this window and go back to the terminal")
-	clientResp <- clientResponse{client, nil}
+	fmt.Fprint(w, authSuccessPage)
+	clientResp <- ClientResponse{client, nil}
 }

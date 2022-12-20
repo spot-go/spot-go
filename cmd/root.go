@@ -1,12 +1,14 @@
 package cmd
 
 import (
-	"context"
-	"fmt"
+	"log"
 	"os"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
-	"github.com/spot-go/spot-go/internal/spotify"
+	"github.com/spot-go/spot-go/internal/ui"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -17,18 +19,24 @@ var rootCmd = &cobra.Command{
 }
 
 func run(cmd *cobra.Command, args []string) {
-	ctx := context.Background()
-	client, err := spotify.Login(ctx)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+	lipgloss.SetHasDarkBackground(termenv.HasDarkBackground())
+	p := tea.NewProgram(ui.NewModel(), tea.WithAltScreen())
+	if _, err := p.Run(); err != nil {
+		log.Fatal(err)
 	}
 
-	u, err := client.CurrentUser(ctx)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("u %+v\n", u)
+	// ctx := context.Background()
+	// client, err := spotify.Login(ctx)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	os.Exit(1)
+	// }
+
+	// u, err := client.CurrentUser(ctx)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// fmt.Printf("u %+v\n", u)
 
 	// p, err := client.PlayerCurrentlyPlaying(ctx)
 	// if err != nil {
