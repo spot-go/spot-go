@@ -10,6 +10,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spot-go/spot-go/internal/spotify"
+
+	"golang.design/x/clipboard"
 )
 
 type (
@@ -28,8 +30,14 @@ type (
 const (
 	stateInit state = iota
 	stateNeedsAuth
+	stateCopyAuthURL
 	stateLoggingIn
 	stateLogged
+
+	authMsg = `A browser should be opened. Continue the login to spotify there.
+
+If the browser did not open, press "c" to copy the URL to your clipboard
+and open it manually.`
 )
 
 func NewModel() Model {
@@ -60,11 +68,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			case stateNeedsAuth:
 				m.state = stateLoggingIn
-				m.msg = "A browser should be opened. Continue the login to spotify there."
+				m.msg = authMsg
 				return m, m.auth
 			default:
 				return m, nil
 			}
+		case "c":
+			switch m.state {
+			case stateLoggingIn:
+				clipboard.Write(clipboard.FmtText, []byte(spotify.AuthURL))
+				m.state = stateCopyAuthURL
+				m.msg = "URL copied to clipboard. Paste it on your browser and continue login."
+			}
+			return m, nil
 		}
 
 	case tea.WindowSizeMsg:

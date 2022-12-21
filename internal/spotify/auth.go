@@ -49,7 +49,12 @@ var (
 	state         = randomString(16)
 	codeVerifier  = randomString(128)
 	codeChallenge = computeHmac256(codeVerifier)
-	server        *http.Server
+	AuthURL       = auth.AuthURL(state,
+		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
+		oauth2.SetAuthURLParam("code_challenge", codeChallenge),
+	)
+
+	server *http.Server
 
 	//go:embed static/auth_success.html
 	authSuccessPage string
@@ -84,11 +89,7 @@ func Authorize() ClientResponse {
 	server = &http.Server{Addr: localPort}
 	go server.ListenAndServe()
 
-	url := auth.AuthURL(state,
-		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
-		oauth2.SetAuthURLParam("code_challenge", codeChallenge),
-	)
-	err := browser.Open(url)
+	err := browser.Open(AuthURL)
 	if err != nil {
 		return ClientResponse{nil, fmt.Errorf("fail to open browser: %+v", err)}
 	}
