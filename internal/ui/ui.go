@@ -55,15 +55,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
 		case "enter":
-			if m.state == stateInit || m.state == stateLoggingIn {
+			switch m.state {
+			case stateLogged:
+				return m, tea.Quit
+			case stateNeedsAuth:
+				m.state = stateLoggingIn
+				m.msg = "A browser should be opened. Continue the login to spotify there."
+				return m, m.auth
+			default:
 				return m, nil
 			}
-			if m.state == stateLogged {
-				return m, tea.Quit
-			}
-			m.state = stateLoggingIn
-			m.msg = "A browser should be opened. Continue the login to spotify there."
-			return m, m.auth
 		}
 
 	case tea.WindowSizeMsg:
