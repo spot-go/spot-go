@@ -1,0 +1,21 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            // Should have a way to configure timeout instead of the default 5000 below
+            // - https://github.com/microsoft/vscode/issues/114933#issuecomment-785909060
+            // - https://github.com/microsoft/vscode/blob/e1719c310d0c1417a29c6891d8f153a77ddc7074/src/vs/workbench/contrib/debug/browser/debugTaskRunner.ts#L218
+            "preLaunchTask": "${defaultBuildTask}",
+            "name": "Connect to server",
+            "type": "go",
+            "request": "attach",
+            "mode": "remote",
+            "remotePath": "${workspaceFolder}",
+            "port": 2345,
+            "host": "127.0.0.1"
+        }
+    ]
+}
