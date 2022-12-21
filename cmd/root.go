@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -19,6 +20,15 @@ var rootCmd = &cobra.Command{
 }
 
 func run(cmd *cobra.Command, args []string) {
+	if len(os.Getenv("DEBUG")) > 0 {
+		f, err := tea.LogToFile("debug.log", "debug")
+		if err != nil {
+			fmt.Println("fatal:", err)
+			os.Exit(1)
+		}
+		defer f.Close()
+	}
+
 	lipgloss.SetHasDarkBackground(termenv.HasDarkBackground())
 	p := tea.NewProgram(ui.NewModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

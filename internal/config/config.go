@@ -29,8 +29,8 @@ const (
 )
 
 var (
-	configPath = configdir.LocalConfig(appName)
-	configFile = filepath.Join(configPath, "settings.json")
+	ConfigPath = configdir.LocalConfig(appName)
+	configFile = filepath.Join(ConfigPath, "settings.json")
 
 	AppSettings *Settings
 )
@@ -76,7 +76,7 @@ func (s *Settings) Save() error {
 	return nil
 }
 
-func (s *Settings) ShouldAuthenticateSpotify(currentScopes []string) bool {
+func (s Settings) ShouldAuthenticateSpotify(currentScopes []string) bool {
 	return s.Auth == nil ||
 		s.Auth.Token == nil ||
 		!slices.Equal(s.Auth.Scopes, currentScopes)
