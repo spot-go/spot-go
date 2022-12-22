@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,6 +27,12 @@ type (
 	}
 	DownloadFinished bool
 )
+
+func finalPause() tea.Cmd {
+	return tea.Tick(1*time.Second, func(_ time.Time) tea.Msg {
+		return nil
+	})
+}
 
 func NewModel(url string) Model {
 	dst := path.Join(config.Path, filepath.Base(url))
@@ -56,7 +63,15 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 
-		return m, m.progress.SetPercent(float64(msg.value))
+		var cmds []tea.Cmd
+		if msg.value >= 1.0 {
+			cmds = append(cmds, tea.Sequence(finalPause(), func() tea.Msg {
+				return DownloadFinished(true)
+			}))
+		}
+
+		cmds = append(cmds, m.progress.SetPercent(float64(msg.value)))
+		return m, tea.Batch(cmds...)
 
 	// FrameMsg is sent when the progress bar wants to animate itself
 	case progress.FrameMsg:
@@ -67,9 +82,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		progressModel, cmd := m.progress.Update(msg)
 		m.progress = progressModel.(progress.Model)
-		if m.progress.Percent() >= 1.0 {
-			m.downloadFinished = true
-		}
+		// if m.progress.Percent() >= 1.0 {
+		// 	m.downloadFinished = true
+		// }
 
 		return m, cmd
 

@@ -48,7 +48,7 @@ and past it on your browser manually.`
 	webAPIURLCopiedToClipboardMsg = "URL copied to clipboard. Paste it on your browser and continue the login."
 	webAPIWelcomeMsg              = `Welcome %s.
 
-Now we are going to configure the spotify player.
+Now we are going to configure the spotify player (spotifyd).
 Press enter to continue`
 )
 
