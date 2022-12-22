@@ -16,12 +16,16 @@ const (
 	maxWidth = 80
 )
 
-type Model struct {
-	progress progress.Model
-	url      string
-	dstFile  string
-	err      error
-}
+type (
+	Model struct {
+		progress         progress.Model
+		downloadFinished bool
+		url              string
+		dstFile          string
+		err              error
+	}
+	DownloadFinished bool
+)
 
 func NewModel(url string) Model {
 	dst := path.Join(config.Path, filepath.Base(url))
@@ -51,16 +55,22 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.err = msg.err
 			return m, nil
 		}
-		if msg.value >= 1.0 {
-			return m, nil
-		}
 
 		return m, m.progress.SetPercent(float64(msg.value))
 
 	// FrameMsg is sent when the progress bar wants to animate itself
 	case progress.FrameMsg:
+		if m.downloadFinished {
+			return m, func() tea.Msg {
+				return DownloadFinished(true)
+			}
+		}
 		progressModel, cmd := m.progress.Update(msg)
 		m.progress = progressModel.(progress.Model)
+		if m.progress.Percent() >= 1.0 {
+			m.downloadFinished = true
+		}
+
 		return m, cmd
 
 	default:

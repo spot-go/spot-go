@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spot-go/spot-go/internal/config"
 	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/components/filedownloader"
 
@@ -35,7 +36,8 @@ const (
 	stateCopyAuthURL
 	stateLoggingIn
 	stateLogged
-	stateDownloadSpotifyd
+	stateSpotifydDownload
+	stateSpotifydDownloaded
 
 	webAPILoginMsg = `Let's login to spotify. First we need a token to use the Web API.
 Press enter to open a browser and login.`
@@ -77,7 +79,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case stateLogged:
 				m.filedownloader = filedownloader.NewModel("https://github.com/Spotifyd/spotifyd/releases/download/v0.3.4/spotifyd-linux-full.tar.gz")
 				m.msg = m.filedownloader.View()
-				m.state = stateDownloadSpotifyd
+				m.state = stateSpotifydDownload
 				return m, m.filedownloader.Init()
 			case stateNeedsAuth:
 				m.state = stateLoggingIn
@@ -99,7 +101,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
 		m.width = msg.Width
-		return m, m.webAPILogin
+		if m.state == stateInit {
+			return m, m.webAPILogin
+		}
+		return m, nil
 
 	case spotify.ClientResponse:
 		if errors.Is(msg.Err, spotify.ErrNeedsAuth) {
@@ -120,9 +125,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.msg = fmt.Sprintf(webAPIWelcomeMsg, u.DisplayName)
 		return m, nil
 
+	case filedownloader.DownloadFinished:
+		if !config.IsSpotifydFileValid() {
+			fmt.Println("spotifyd checksum is invalid")
+			os.Exit(1)
+		}
+		m.state = stateSpotifydDownloaded
+		m.msg = "Spotifyd downloaded"
+		return m, nil
+
 	default:
 		var cmd tea.Cmd
-		if m.state == stateDownloadSpotifyd {
+		if m.state == stateSpotifydDownload {
 			m.filedownloader, cmd = m.filedownloader.Update(msg)
 			m.msg = m.filedownloader.View()
 			return m, cmd

@@ -99,7 +99,7 @@ func Authorize() ClientResponse {
 
 func Login(ctx context.Context) ClientResponse {
 	s := config.AppSettings
-	if s == nil || s.ShouldAuthenticateSpotify(scopes) {
+	if s == nil || s.NeedsAuthenticateWebSpotify(scopes) {
 		return ClientResponse{nil, ErrNeedsAuth}
 	}
 	authSettings := config.AppSettings.Auth

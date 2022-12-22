@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 )
 
-// Extract file to dst
+// Extract all entries in the tar file to dst
 func Extract(file, dst string) error {
 	f, err := os.Open(file)
 	if err != nil {
