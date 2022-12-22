@@ -131,7 +131,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			os.Exit(1)
 		}
 		m.state = stateSpotifydDownloaded
-		m.msg = "Spotifyd downloaded"
+		m.msg = "spotifyd downloaded"
 		return m, nil
 
 	default:

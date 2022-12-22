@@ -19,11 +19,10 @@ const (
 
 type (
 	Model struct {
-		progress         progress.Model
-		downloadFinished bool
-		url              string
-		dstFile          string
-		err              error
+		progress progress.Model
+		url      string
+		dstFile  string
+		err      error
 	}
 	DownloadFinished bool
 )
@@ -75,17 +74,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	// FrameMsg is sent when the progress bar wants to animate itself
 	case progress.FrameMsg:
-		if m.downloadFinished {
-			return m, func() tea.Msg {
-				return DownloadFinished(true)
-			}
-		}
 		progressModel, cmd := m.progress.Update(msg)
 		m.progress = progressModel.(progress.Model)
-		// if m.progress.Percent() >= 1.0 {
-		// 	m.downloadFinished = true
-		// }
-
 		return m, cmd
 
 	default:
@@ -99,5 +89,5 @@ func (m Model) View() string {
 		os.Exit(1)
 	}
 
-	return fmt.Sprintf("Downloading file...\n%s", m.progress.View())
+	return fmt.Sprintf("Downloading spotifyd...\n%s", m.progress.View())
 }
