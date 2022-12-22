@@ -3,9 +3,12 @@ package filedownloader
 import (
 	"fmt"
 	"os"
+	"path"
+	"path/filepath"
 
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spot-go/spot-go/internal/config"
 )
 
 const (
@@ -16,18 +19,22 @@ const (
 type Model struct {
 	progress progress.Model
 	url      string
+	dstFile  string
 	err      error
 }
 
 func NewModel(url string) Model {
+	dst := path.Join(config.Path, filepath.Base(url))
+
 	return Model{
 		url:      url,
+		dstFile:  dst,
 		progress: progress.New(progress.WithDefaultGradient()),
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return startDownload(m.url)
+	return startDownload(m.url, m.dstFile)
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -44,7 +51,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.err = msg.err
 			return m, nil
 		}
-		if msg.value == 0 {
+		if msg.value >= 1.0 {
 			return m, nil
 		}
 
@@ -63,7 +70,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m Model) View() string {
 	if m.err != nil {
-		fmt.Println("Error downloading: " + m.err.Error())
+		fmt.Printf("Fail to download file from url %s: %s\n", m.url, m.err.Error())
 		os.Exit(1)
 	}
 

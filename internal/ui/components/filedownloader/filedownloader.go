@@ -1,17 +1,17 @@
 package filedownloader
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
-	"path"
-	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spot-go/spot-go/internal/config"
 	"github.com/spot-go/spot-go/internal/program"
+	"github.com/spot-go/spot-go/internal/tar"
 )
 
 type (
@@ -26,25 +26,23 @@ type (
 	}
 )
 
-func startDownload(url string) tea.Cmd {
+func startDownload(url, dst string) tea.Cmd {
 	return func() tea.Msg {
 		resp, err := getResponse(url)
 		if err != nil {
-			fmt.Println("Could not get response", err)
-			os.Exit(1)
+			return progressMsg{err: fmt.Errorf("fail to get response: %+v", err)}
 		}
 		defer resp.Body.Close()
 
 		if resp.ContentLength <= 0 {
-			fmt.Println("Cannot parse content length, aborting download")
-			os.Exit(1)
+			return progressMsg{
+				err: errors.New("cannot parse content length, aborting download"),
+			}
 		}
 
-		filename := path.Join(config.Path, filepath.Base(url))
-		file, err := os.Create(filename)
+		file, err := os.Create(dst)
 		if err != nil {
-			fmt.Println("Could not create file:", err)
-			os.Exit(1)
+			return progressMsg{err: fmt.Errorf("fail to create file: %+v", err)}
 		}
 		defer file.Close()
 
@@ -55,7 +53,21 @@ func startDownload(url string) tea.Cmd {
 			},
 		}
 		_, err = io.Copy(file, io.TeeReader(resp.Body, pw))
-		return progressMsg{0, err}
+		if err != nil {
+			return progressMsg{err: fmt.Errorf("fail to copy file: %+v", err)}
+		}
+
+		err = tar.Extract(dst, config.Path)
+		if err != nil {
+			return progressMsg{err: fmt.Errorf("fail to extract tar file: %+v", err)}
+		}
+
+		err = os.Remove(dst)
+		if err != nil {
+			return progressMsg{err: fmt.Errorf("fail to remove tar file: %+v", err)}
+		}
+
+		return progressMsg{value: 100}
 	}
 }
 
