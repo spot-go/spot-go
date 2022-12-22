@@ -6,9 +6,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spot-go/spot-go/internal/config"
 	"github.com/spot-go/spot-go/internal/program"
 )
 
@@ -38,7 +40,7 @@ func startDownload(url string) tea.Cmd {
 			os.Exit(1)
 		}
 
-		filename := filepath.Base(url)
+		filename := path.Join(config.Path, filepath.Base(url))
 		file, err := os.Create(filename)
 		if err != nil {
 			fmt.Println("Could not create file:", err)

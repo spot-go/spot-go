@@ -29,8 +29,8 @@ const (
 )
 
 var (
-	ConfigPath = configdir.LocalConfig(appName)
-	configFile = filepath.Join(ConfigPath, "settings.json")
+	Path       = configdir.LocalConfig(appName)
+	configFile = filepath.Join(Path, "settings.json")
 
 	AppSettings *Settings
 )
