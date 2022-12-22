@@ -6,29 +6,62 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spot-go/spot-go/internal/program"
 )
 
 type (
 	progressWriter struct {
 		total      int
 		downloaded int
-		file       *os.File
-		reader     io.Reader
-		onProgress func(float64)
+		onProgress func(f float64)
+	}
+	progressMsg struct {
+		value float64
+		err   error
 	}
 )
 
-func (pw *progressWriter) start(m Model) {
-	_, err := io.Copy(pw.file, io.TeeReader(pw.reader, pw))
-	if err != nil {
-		m.Update(progressErrMsg{err})
+func startDownload(url string) tea.Cmd {
+	return func() tea.Msg {
+		resp, err := getResponse(url)
+		if err != nil {
+			fmt.Println("Could not get response", err)
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+
+		if resp.ContentLength <= 0 {
+			fmt.Println("Cannot parse content length, aborting download")
+			os.Exit(1)
+		}
+
+		filename := filepath.Base(url)
+		file, err := os.Create(filename)
+		if err != nil {
+			fmt.Println("Could not create file:", err)
+			os.Exit(1)
+		}
+		defer file.Close()
+
+		pw := &progressWriter{
+			total: int(resp.ContentLength),
+			onProgress: func(f float64) {
+				program.Instance.Send(progressMsg{value: f})
+			},
+		}
+		_, err = io.Copy(file, io.TeeReader(resp.Body, pw))
+		return progressMsg{0, err}
 	}
 }
 
 func (pw *progressWriter) Write(p []byte) (int, error) {
 	pw.downloaded += len(p)
 	if pw.total > 0 && pw.onProgress != nil {
-		pw.onProgress(float64(pw.downloaded) / float64(pw.total))
+		progress := float64(pw.downloaded) / float64(pw.total)
+		pw.onProgress(progress)
 	}
 	return len(p), nil
 }

@@ -3,9 +3,6 @@ package filedownloader
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,63 +13,21 @@ const (
 	maxWidth = 80
 )
 
-type progressMsg float64
-
-type progressErrMsg struct{ err error }
-
-func finalPause() tea.Cmd {
-	return tea.Tick(time.Millisecond*750, func(_ time.Time) tea.Msg {
-		return nil
-	})
-}
-
 type Model struct {
-	pw       *progressWriter
 	progress progress.Model
+	url      string
 	err      error
 }
 
 func NewModel(url string) Model {
-	resp, err := getResponse(url)
-	if err != nil {
-		fmt.Println("could not get response", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	if resp.ContentLength <= 0 {
-		fmt.Println("can't parse content length, aborting download")
-		os.Exit(1)
-	}
-
-	filename := filepath.Base(url)
-	file, err := os.Create(filename)
-	if err != nil {
-		fmt.Println("could not create file:", err)
-		os.Exit(1)
-	}
-	defer file.Close()
-
-	pw := &progressWriter{
-		total:  int(resp.ContentLength),
-		file:   file,
-		reader: resp.Body,
-	}
-	m := Model{
-		pw:       pw,
+	return Model{
+		url:      url,
 		progress: progress.New(progress.WithDefaultGradient()),
 	}
-	pw.onProgress = func(ratio float64) {
-		m.Update(progressMsg(ratio))
-	}
-
-	go pw.start(m)
-
-	return m
 }
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return startDownload(m.url)
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -84,19 +39,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case progressErrMsg:
-		m.err = msg.err
-		return m, nil
-
 	case progressMsg:
-		var cmds []tea.Cmd
-
-		if msg >= 1.0 {
-			cmds = append(cmds, tea.Sequence(finalPause(), tea.Quit))
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		if msg.value == 0 {
+			return m, nil
 		}
 
-		cmds = append(cmds, m.progress.SetPercent(float64(msg)))
-		return m, tea.Batch(cmds...)
+		return m, m.progress.SetPercent(float64(msg.value))
 
 	// FrameMsg is sent when the progress bar wants to animate itself
 	case progress.FrameMsg:
@@ -111,9 +63,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m Model) View() string {
 	if m.err != nil {
-		return "Error downloading: " + m.err.Error() + "\n"
+		fmt.Println("Error downloading: " + m.err.Error())
+		os.Exit(1)
 	}
 
-	pad := strings.Repeat("", padding)
-	return pad + m.progress.View()
+	return fmt.Sprintf("Downloading file...\n%s", m.progress.View())
 }

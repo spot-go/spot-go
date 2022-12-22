@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
+	"github.com/spot-go/spot-go/internal/program"
 	"github.com/spot-go/spot-go/internal/ui"
 )
 
@@ -31,6 +32,7 @@ func run(cmd *cobra.Command, args []string) {
 
 	lipgloss.SetHasDarkBackground(termenv.HasDarkBackground())
 	p := tea.NewProgram(ui.NewModel(), tea.WithAltScreen())
+	program.Instance = p
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
 	}

@@ -76,9 +76,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.state {
 			case stateLogged:
 				m.filedownloader = filedownloader.NewModel("https://github.com/Spotifyd/spotifyd/releases/download/v0.3.4/spotifyd-linux-full.tar.gz")
-				m.state = stateDownloadSpotifyd
 				m.msg = m.filedownloader.View()
-				return m, nil
+				m.state = stateDownloadSpotifyd
+				return m, m.filedownloader.Init()
 			case stateNeedsAuth:
 				m.state = stateLoggingIn
 				m.msg = webAPIAuthMsg
@@ -124,7 +124,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		if m.state == stateDownloadSpotifyd {
 			m.filedownloader, cmd = m.filedownloader.Update(msg)
-			m.msg = m.spinner.View()
+			m.msg = m.filedownloader.View()
 			return m, cmd
 		}
 
