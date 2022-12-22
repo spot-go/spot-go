@@ -5,19 +5,26 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
-type Model struct {
-	title   string
-	choices []string
-	cursor  int
-	choice  string
-}
+type (
+	Model struct {
+		title        string
+		choices      []string
+		screenWidth  int
+		screenHeigth int
+		cursor       int
+	}
+	Selected string
+)
 
-func NewModel(title string, choices []string) Model {
+func NewModel(screenWidth, screenHeigth int, title string, choices []string) Model {
 	return Model{
-		title:   title,
-		choices: choices,
+		screenWidth:  screenWidth,
+		screenHeigth: screenHeigth,
+		title:        title,
+		choices:      choices,
 	}
 }
 
@@ -27,12 +34,17 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.screenHeigth = msg.Height
+		m.screenWidth = msg.Width
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
-			// Send the choice on the channel and exit.
-			m.choice = m.choices[m.cursor]
-			return m, tea.Quit
+			return m, func() tea.Msg {
+				return Selected(m.choices[m.cursor])
+			}
 
 		case "down":
 			m.cursor++
@@ -53,8 +65,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m Model) View() string {
 	s := strings.Builder{}
-	title := fmt.Sprintf("%s\n\n", m.title)
-	s.WriteString(title)
 
 	for i := 0; i < len(m.choices); i++ {
 		if m.cursor == i {
@@ -65,6 +75,15 @@ func (m Model) View() string {
 		s.WriteString(m.choices[i])
 		s.WriteString("\n")
 	}
+	body := lipgloss.NewStyle().
+		Align(lipgloss.Left, lipgloss.Center).
+		Render(s.String())
 
-	return s.String()
+	return lipgloss.Place(
+		m.screenWidth,
+		m.screenHeigth,
+		lipgloss.Center,
+		lipgloss.Center,
+		fmt.Sprintf("%s\n%s", m.title, body),
+	)
 }

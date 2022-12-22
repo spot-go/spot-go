@@ -40,6 +40,7 @@ const (
 	stateLogged
 	stateSpotifydDownload
 	stateSpotifydConfig
+	stateSpotifydConfigSelected
 
 	webAPILoginMsg = `Let's login to spotify. First we need a token to use the Web API.
 Press enter to open a browser and login.`
@@ -103,6 +104,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = stateLoggingIn
 				m.msg = webAPIAuthMsg
 				return m, m.webAPIAuth
+
+			case stateSpotifydConfig:
+				var cmd tea.Cmd
+				m.installSpotifydChoice, cmd = m.installSpotifydChoice.Update(msg)
+				return m, cmd
+
 			default:
 				return m, nil
 			}
@@ -119,7 +126,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case stateSpotifydConfig:
 				var cmd tea.Cmd
 				m.installSpotifydChoice, cmd = m.installSpotifydChoice.Update(msg)
-				m.msg = m.installSpotifydChoice.View()
 				return m, cmd
 			}
 		}
@@ -130,6 +136,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.state == stateInit {
 			return m, m.webAPILogin
 		}
+		if m.state == stateSpotifydConfig {
+			var cmd tea.Cmd
+			m.installSpotifydChoice, cmd = m.installSpotifydChoice.Update(msg)
+			return m, cmd
+		}
+
 		return m, nil
 
 	case spotify.ClientResponse:
@@ -158,10 +170,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.state = stateSpotifydConfig
 		m.installSpotifydChoice = choice.NewModel(
+			m.width,
+			m.height,
 			spotifydDownloadMsg,
 			spotifydConfigChoices,
 		)
-		m.msg = m.installSpotifydChoice.View()
+		return m, nil
+
+	case choice.Selected:
+		m.state = stateSpotifydConfigSelected
+		m.msg = fmt.Sprintf("Selected: %s", msg)
 		return m, nil
 
 	default:
@@ -184,6 +202,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
+	if m.state == stateSpotifydConfig {
+		return m.installSpotifydChoice.View()
+	}
+
 	return lipgloss.Place(
 		m.width,
 		m.height,
