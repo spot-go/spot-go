@@ -67,8 +67,6 @@ func startDownload(url, dst string) tea.Cmd {
 			return progressMsg{err: fmt.Errorf("fail to remove tar file: %+v", err)}
 		}
 
-		// program.Instance.Send(Fi)
-
 		return progressMsg{value: 100}
 	}
 }

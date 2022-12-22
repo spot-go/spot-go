@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spot-go/spot-go/internal/config"
 	"github.com/spot-go/spot-go/internal/spotify"
+	"github.com/spot-go/spot-go/internal/ui/components/choice"
 	"github.com/spot-go/spot-go/internal/ui/components/filedownloader"
 
 	"golang.design/x/clipboard"
@@ -18,13 +19,14 @@ import (
 
 type (
 	Model struct {
-		ctx            context.Context
-		width          int
-		height         int
-		msg            string
-		state          state
-		spinner        spinner.Model
-		filedownloader filedownloader.Model
+		ctx                   context.Context
+		width                 int
+		height                int
+		msg                   string
+		state                 state
+		spinner               spinner.Model
+		filedownloader        filedownloader.Model
+		installSpotifydChoice choice.Model
 	}
 
 	state int
@@ -37,7 +39,7 @@ const (
 	stateLoggingIn
 	stateLogged
 	stateSpotifydDownload
-	stateSpotifydDownloaded
+	stateSpotifydConfig
 
 	webAPILoginMsg = `Let's login to spotify. First we need a token to use the Web API.
 Press enter to open a browser and login.`
@@ -50,6 +52,16 @@ and past it on your browser manually.`
 
 Now we are going to configure the spotify player (spotifyd).
 Press enter to continue`
+
+	spotifydDownloadMsg = `spotifyd downloaded.
+Now we need to connect it to your account. Choose one of the options below:`
+)
+
+var (
+	spotifydConfigChoices = []string{
+		"Type username and password",
+		"Use an app (desktop or mobile) connected on your local network",
+	}
 )
 
 func NewModel() Model {
@@ -77,10 +89,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			switch m.state {
 			case stateLogged:
-				m.filedownloader = filedownloader.NewModel("https://github.com/Spotifyd/spotifyd/releases/download/v0.3.4/spotifyd-linux-full.tar.gz")
-				m.msg = m.filedownloader.View()
-				m.state = stateSpotifydDownload
-				return m, m.filedownloader.Init()
+				if config.NeedsDownloadSpotifyd() {
+					m.filedownloader = filedownloader.NewModel("https://github.com/Spotifyd/spotifyd/releases/download/v0.3.4/spotifyd-linux-full.tar.gz")
+					m.msg = m.filedownloader.View()
+					m.state = stateSpotifydDownload
+					return m, m.filedownloader.Init()
+				}
+
+				return m, func() tea.Msg {
+					return filedownloader.DownloadFinished(true)
+				}
 			case stateNeedsAuth:
 				m.state = stateLoggingIn
 				m.msg = webAPIAuthMsg
@@ -96,6 +114,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.msg = webAPIURLCopiedToClipboardMsg
 			}
 			return m, nil
+		default:
+			switch m.state {
+			case stateSpotifydConfig:
+				var cmd tea.Cmd
+				m.installSpotifydChoice, cmd = m.installSpotifydChoice.Update(msg)
+				m.msg = m.installSpotifydChoice.View()
+				return m, cmd
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -130,24 +156,28 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			fmt.Println("spotifyd checksum is invalid")
 			os.Exit(1)
 		}
-		m.state = stateSpotifydDownloaded
-		m.msg = "spotifyd downloaded"
+		m.state = stateSpotifydConfig
+		m.installSpotifydChoice = choice.NewModel(
+			spotifydDownloadMsg,
+			spotifydConfigChoices,
+		)
+		m.msg = m.installSpotifydChoice.View()
 		return m, nil
 
 	default:
 		var cmd tea.Cmd
-		if m.state == stateSpotifydDownload {
+		switch m.state {
+		case stateSpotifydDownload:
 			m.filedownloader, cmd = m.filedownloader.Update(msg)
 			m.msg = m.filedownloader.View()
 			return m, cmd
-		}
-
-		if m.state != stateInit {
+		case stateInit:
+			m.spinner, cmd = m.spinner.Update(msg)
+			m.msg = m.spinner.View()
+			return m, cmd
+		default:
 			return m, nil
 		}
-		m.spinner, cmd = m.spinner.Update(msg)
-		m.msg = m.spinner.View()
-		return m, cmd
 	}
 
 	return m, nil
