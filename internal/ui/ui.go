@@ -15,6 +15,7 @@ import (
 	"github.com/spot-go/spot-go/internal/ui/components/filedownloader"
 	"github.com/spot-go/spot-go/internal/ui/views/spotifyd"
 	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slices"
 
 	"golang.design/x/clipboard"
 )
@@ -22,8 +23,8 @@ import (
 type (
 	Model struct {
 		ctx            context.Context
-		width          int
-		height         int
+		screenWidth    int
+		screenHeigth   int
 		msg            string
 		state          state
 		spinner        spinner.Model
@@ -70,15 +71,20 @@ var (
 	spotifydConfigChoices = maps.Keys(spotifydConfigChoicesStates)
 )
 
+func init() {
+	// Ensure order
+	slices.Sort(spotifydConfigChoices)
+}
+
 func NewModel() Model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	return Model{
-		ctx:     context.Background(),
-		width:   0,
-		height:  0,
-		msg:     s.View(),
-		spinner: s,
+		ctx:          context.Background(),
+		screenWidth:  0,
+		screenHeigth: 0,
+		msg:          s.View(),
+		spinner:      s,
 	}
 }
 
@@ -124,11 +130,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.msg = webAPIAuthMsg
 				return m, m.webAPIAuth
 
-			// case stateSpotifydConfig:
-			// 	var cmd tea.Cmd
-			// 	m.installSpotifydChoice, cmd = m.installSpotifydChoice.Update(msg)
-			// 	return m, cmd
-
 			default:
 				return m, nil
 			}
@@ -140,26 +141,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.msg = webAPIURLCopiedToClipboardMsg
 			}
 			return m, nil
-			// default:
-			// 	switch m.state {
-			// 	case stateSpotifydConfig:
-			// 		var cmd tea.Cmd
-			// 		m.installSpotifydChoice, cmd = m.installSpotifydChoice.Update(msg)
-			// 		return m, cmd
-			// 	}
 		}
 
 	case tea.WindowSizeMsg:
-		m.height = msg.Height
-		m.width = msg.Width
+		m.screenHeigth = msg.Height
+		m.screenWidth = msg.Width
 		if m.state == stateInit {
 			return m, m.webAPILogin
 		}
-		// if m.state == stateSpotifydConfig {
-		// 	var cmd tea.Cmd
-		// 	m.installSpotifydChoice, cmd = m.installSpotifydChoice.Update(msg)
-		// 	return m, cmd
-		// }
 
 		return m, nil
 
@@ -189,8 +178,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.state = stateSpotifydConfig
 		m.activeModel = choice.NewModel(
-			m.width,
-			m.height,
+			m.screenWidth,
+			m.screenHeigth,
 			spotifydDownloadMsg,
 			spotifydConfigChoices,
 		)
@@ -200,7 +189,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = spotifydConfigChoicesStates[string(msg)]
 		switch m.state {
 		case stateSpotifydUserPasswordSelected:
-			m.activeModel = spotifyd.NewLoginModel()
+			m.activeModel = spotifyd.NewLoginModel(m.screenWidth, m.screenHeigth)
 		default:
 			m.activeModel = nil
 			m.msg = fmt.Sprintf("Selected: %s", msg)
@@ -232,8 +221,8 @@ func (m Model) View() string {
 	}
 
 	return lipgloss.Place(
-		m.width,
-		m.height,
+		m.screenWidth,
+		m.screenHeigth,
 		lipgloss.Center,
 		lipgloss.Center,
 		m.msg,

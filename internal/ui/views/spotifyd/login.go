@@ -9,6 +9,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const (
+	title = "Fill the form below (your username and password is not saved in the local disk)"
+)
+
 var (
 	focusedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 	cursorStyle  = focusedStyle.Copy()
@@ -20,13 +24,17 @@ var (
 )
 
 type LoginModel struct {
-	focusIndex int
-	inputs     []textinput.Model
+	focusIndex   int
+	inputs       []textinput.Model
+	screenWidth  int
+	screenHeigth int
 }
 
-func NewLoginModel() LoginModel {
+func NewLoginModel(screenWidth, screenHeigth int) LoginModel {
 	m := LoginModel{
-		inputs: make([]textinput.Model, 2),
+		screenWidth:  screenWidth,
+		screenHeigth: screenHeigth,
+		inputs:       make([]textinput.Model, 2),
 	}
 
 	var t textinput.Model
@@ -58,6 +66,11 @@ func (m LoginModel) Init() tea.Cmd {
 
 func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.screenHeigth = msg.Height
+		m.screenWidth = msg.Width
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "tab", "shift+tab", "enter", "up", "down":
@@ -135,5 +148,15 @@ func (m LoginModel) View() string {
 	}
 	fmt.Fprintf(&b, "\n\n%s\n\n", *button)
 
-	return b.String()
+	content := lipgloss.NewStyle().
+		Align(lipgloss.Left, lipgloss.Center).
+		Render(fmt.Sprintf("%s\n%s", title, b.String()))
+
+	return lipgloss.Place(
+		m.screenWidth,
+		m.screenHeigth,
+		lipgloss.Center,
+		lipgloss.Center,
+		content,
+	)
 }
