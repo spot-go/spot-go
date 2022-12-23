@@ -20,10 +20,15 @@ import (
 	"golang.org/x/oauth2"
 )
 
-type ClientResponse struct {
-	Client *spotify.Client
-	Err    error
-}
+type (
+	Client struct {
+		*spotify.Client
+	}
+	ClientResponse struct {
+		Client *Client
+		Err    error
+	}
+)
 
 const (
 	localPort      = ":10888"
@@ -122,7 +127,7 @@ func Login(ctx context.Context) ClientResponse {
 			return ClientResponse{nil, fmt.Errorf("fail to save config: %+v", err)}
 		}
 	}
-	return ClientResponse{c, nil}
+	return ClientResponse{&Client{c}, nil}
 }
 
 func completeAuth(w http.ResponseWriter, r *http.Request) {
@@ -155,5 +160,5 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 
 	client := spotify.New(auth.Client(r.Context(), t))
 	fmt.Fprint(w, authSuccessPage)
-	clientResp <- ClientResponse{client, nil}
+	clientResp <- ClientResponse{&Client{client}, nil}
 }

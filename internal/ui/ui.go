@@ -14,6 +14,7 @@ import (
 	"github.com/spot-go/spot-go/internal/ui/components/choice"
 	"github.com/spot-go/spot-go/internal/ui/components/filedownloader"
 	spotifydview "github.com/spot-go/spot-go/internal/ui/views/spotifyd"
+	libspotify "github.com/zmb3/spotify/v2"
 
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
@@ -24,6 +25,7 @@ import (
 type (
 	Model struct {
 		ctx            context.Context
+		spotifyClient  *spotify.Client
 		screenWidth    int
 		screenHeigth   int
 		msg            string
@@ -38,10 +40,10 @@ type (
 
 const (
 	stateInit state = iota
-	stateNeedsAuth
-	stateCopyAuthURL
-	stateLoggingIn
-	stateLogged
+	stateWebAPINeedsAuth
+	stateCopyWebAPIAuthURL
+	stateWebAPILoggingIn
+	stateWebAPILogged
 	stateSpotifydDownload
 	stateSpotifydConfig
 	stateSpotifydUserPasswordSelected
@@ -115,7 +117,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "enter":
 			switch m.state {
-			case stateLogged:
+			case stateWebAPILogged:
 				if spotifyd.ShouldDownloadBinary() {
 					m.filedownloader = filedownloader.NewModel(
 						"https://github.com/Spotifyd/spotifyd/releases/download/v0.3.4/spotifyd-linux-full.tar.gz",
@@ -129,8 +131,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg {
 					return filedownloader.DownloadFinished(true)
 				}
-			case stateNeedsAuth:
-				m.state = stateLoggingIn
+			case stateWebAPINeedsAuth:
+				m.state = stateWebAPILoggingIn
 				m.msg = webAPIAuthMsg
 				return m, m.webAPIAuth
 
@@ -139,9 +141,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "c":
 			switch m.state {
-			case stateLoggingIn:
+			case stateWebAPILoggingIn:
 				clipboard.Write(clipboard.FmtText, []byte(spotify.AuthURL))
-				m.state = stateCopyAuthURL
+				m.state = stateCopyWebAPIAuthURL
 				m.msg = webAPIURLCopiedToClipboardMsg
 			}
 			return m, nil
@@ -159,7 +161,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case spotify.ClientResponse:
 		if errors.Is(msg.Err, spotify.ErrNeedsAuth) {
 			m.msg = webAPILoginMsg
-			m.state = stateNeedsAuth
+			m.state = stateWebAPINeedsAuth
 			return m, nil
 		}
 
@@ -167,12 +169,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			fmt.Println(msg.Err)
 			os.Exit(1)
 		}
-		u, err := msg.Client.CurrentUser(m.ctx)
-		if err != nil {
-			panic(err)
-		}
-		m.state = stateLogged
-		m.msg = fmt.Sprintf(webAPIWelcomeMsg, u.DisplayName)
+		m.spotifyClient = msg.Client
+		return m, m.getCurrentUser
+
+	case libspotify.PrivateUser:
+		m.state = stateWebAPILogged
+		m.msg = fmt.Sprintf(webAPIWelcomeMsg, msg.DisplayName)
 		return m, nil
 
 	case filedownloader.DownloadFinished:
@@ -207,6 +209,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.filedownloader, cmd = m.filedownloader.Update(msg)
 			m.msg = m.filedownloader.View()
 			return m, cmd
+
 		case stateInit:
 			m.spinner, cmd = m.spinner.Update(msg)
 			m.msg = m.spinner.View()
@@ -239,4 +242,13 @@ func (m Model) webAPILogin() tea.Msg {
 
 func (m Model) webAPIAuth() tea.Msg {
 	return spotify.Authorize()
+}
+
+func (m Model) getCurrentUser() tea.Msg {
+	u, err := m.spotifyClient.CurrentUser(m.ctx)
+	if err != nil {
+		panic(err)
+	}
+
+	return *u
 }
