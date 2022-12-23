@@ -26,21 +26,20 @@ type LoginModel struct {
 
 func NewLoginModel() LoginModel {
 	m := LoginModel{
-		inputs: make([]textinput.Model, 3),
+		inputs: make([]textinput.Model, 2),
 	}
 
 	var t textinput.Model
 	for i := range m.inputs {
 		t = textinput.New()
 		t.CursorStyle = cursorStyle
-		t.CharLimit = 32
+		t.CharLimit = 128
 
 		switch i {
 		case 0:
 			t.Placeholder = "E-mail"
 			t.Focus()
 			t.PromptStyle = focusedStyle
-			t.CharLimit = 128
 		case 1:
 			t.Placeholder = "Password"
 			t.EchoMode = textinput.EchoPassword
