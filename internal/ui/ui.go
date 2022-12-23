@@ -13,20 +13,22 @@ import (
 	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/components/choice"
 	"github.com/spot-go/spot-go/internal/ui/components/filedownloader"
+	"github.com/spot-go/spot-go/internal/ui/views/spotifyd"
+	"golang.org/x/exp/maps"
 
 	"golang.design/x/clipboard"
 )
 
 type (
 	Model struct {
-		ctx                   context.Context
-		width                 int
-		height                int
-		msg                   string
-		state                 state
-		spinner               spinner.Model
-		filedownloader        filedownloader.Model
-		installSpotifydChoice choice.Model
+		ctx            context.Context
+		width          int
+		height         int
+		msg            string
+		state          state
+		spinner        spinner.Model
+		activeModel    tea.Model
+		filedownloader filedownloader.Model
 	}
 
 	state int
@@ -40,7 +42,8 @@ const (
 	stateLogged
 	stateSpotifydDownload
 	stateSpotifydConfig
-	stateSpotifydConfigSelected
+	stateSpotifydUserPasswordSelected
+	stateSpotifydAppOnLocalNetworkSelected
 
 	webAPILoginMsg = `Let's login to spotify. First we need a token to use the Web API.
 Press enter to open a browser and login.`
@@ -59,10 +62,12 @@ Now we need to connect it to your account. Choose one of the options below:`
 )
 
 var (
-	spotifydConfigChoices = []string{
-		"Type username and password",
-		"Use an app (desktop or mobile) connected on your local network",
+	spotifydConfigChoicesStates = map[string]state{
+		"Type username and password": stateSpotifydUserPasswordSelected,
+
+		"Use an app (desktop or mobile) connected on your local network": stateSpotifydAppOnLocalNetworkSelected,
 	}
+	spotifydConfigChoices = maps.Keys(spotifydConfigChoicesStates)
 )
 
 func NewModel() Model {
@@ -87,6 +92,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
+		}
+	}
+
+	if m.activeModel != nil {
+		var cmd tea.Cmd
+		m.activeModel, cmd = m.activeModel.Update(message)
+		if cmd != nil {
+			return m, cmd
+		}
+	}
+
+	switch msg := message.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
 		case "enter":
 			switch m.state {
 			case stateLogged:
@@ -105,10 +124,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.msg = webAPIAuthMsg
 				return m, m.webAPIAuth
 
-			case stateSpotifydConfig:
-				var cmd tea.Cmd
-				m.installSpotifydChoice, cmd = m.installSpotifydChoice.Update(msg)
-				return m, cmd
+			// case stateSpotifydConfig:
+			// 	var cmd tea.Cmd
+			// 	m.installSpotifydChoice, cmd = m.installSpotifydChoice.Update(msg)
+			// 	return m, cmd
 
 			default:
 				return m, nil
@@ -121,13 +140,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.msg = webAPIURLCopiedToClipboardMsg
 			}
 			return m, nil
-		default:
-			switch m.state {
-			case stateSpotifydConfig:
-				var cmd tea.Cmd
-				m.installSpotifydChoice, cmd = m.installSpotifydChoice.Update(msg)
-				return m, cmd
-			}
+			// default:
+			// 	switch m.state {
+			// 	case stateSpotifydConfig:
+			// 		var cmd tea.Cmd
+			// 		m.installSpotifydChoice, cmd = m.installSpotifydChoice.Update(msg)
+			// 		return m, cmd
+			// 	}
 		}
 
 	case tea.WindowSizeMsg:
@@ -136,11 +155,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.state == stateInit {
 			return m, m.webAPILogin
 		}
-		if m.state == stateSpotifydConfig {
-			var cmd tea.Cmd
-			m.installSpotifydChoice, cmd = m.installSpotifydChoice.Update(msg)
-			return m, cmd
-		}
+		// if m.state == stateSpotifydConfig {
+		// 	var cmd tea.Cmd
+		// 	m.installSpotifydChoice, cmd = m.installSpotifydChoice.Update(msg)
+		// 	return m, cmd
+		// }
 
 		return m, nil
 
@@ -169,7 +188,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			os.Exit(1)
 		}
 		m.state = stateSpotifydConfig
-		m.installSpotifydChoice = choice.NewModel(
+		m.activeModel = choice.NewModel(
 			m.width,
 			m.height,
 			spotifydDownloadMsg,
@@ -178,8 +197,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case choice.Selected:
-		m.state = stateSpotifydConfigSelected
-		m.msg = fmt.Sprintf("Selected: %s", msg)
+		m.state = spotifydConfigChoicesStates[string(msg)]
+		switch m.state {
+		case stateSpotifydUserPasswordSelected:
+			m.activeModel = spotifyd.NewLoginModel()
+		default:
+			m.activeModel = nil
+			m.msg = fmt.Sprintf("Selected: %s", msg)
+		}
 		return m, nil
 
 	default:
@@ -202,8 +227,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	if m.state == stateSpotifydConfig {
-		return m.installSpotifydChoice.View()
+	if m.activeModel != nil {
+		return m.activeModel.View()
 	}
 
 	return lipgloss.Place(
