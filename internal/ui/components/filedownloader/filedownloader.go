@@ -9,8 +9,8 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/spot-go/spot-go/internal/config"
 	"github.com/spot-go/spot-go/internal/program"
+	"github.com/spot-go/spot-go/internal/spotifyd"
 	"github.com/spot-go/spot-go/internal/tar"
 )
 
@@ -57,7 +57,7 @@ func startDownload(url, dst string) tea.Cmd {
 			return progressMsg{err: fmt.Errorf("fail to copy file: %+v", err)}
 		}
 
-		err = tar.Extract(dst, config.Path)
+		err = tar.Extract(dst, spotifyd.ConfigFolder)
 		if err != nil {
 			return progressMsg{err: fmt.Errorf("fail to extract tar file: %+v", err)}
 		}

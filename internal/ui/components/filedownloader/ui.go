@@ -9,7 +9,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/spot-go/spot-go/internal/config"
 )
 
 const (
@@ -33,12 +32,10 @@ func finalPause() tea.Cmd {
 	})
 }
 
-func NewModel(url string) Model {
-	dst := path.Join(config.Path, filepath.Base(url))
-
+func NewModel(url, dst string) Model {
 	return Model{
 		url:      url,
-		dstFile:  dst,
+		dstFile:  path.Join(dst, filepath.Base(url)),
 		progress: progress.New(progress.WithDefaultGradient()),
 	}
 }

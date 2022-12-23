@@ -117,7 +117,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.state {
 			case stateLogged:
 				if spotifyd.ShouldDownloadBinary() {
-					m.filedownloader = filedownloader.NewModel("https://github.com/Spotifyd/spotifyd/releases/download/v0.3.4/spotifyd-linux-full.tar.gz")
+					m.filedownloader = filedownloader.NewModel(
+						"https://github.com/Spotifyd/spotifyd/releases/download/v0.3.4/spotifyd-linux-full.tar.gz",
+						spotifyd.ConfigFolder,
+					)
 					m.msg = m.filedownloader.View()
 					m.state = stateSpotifydDownload
 					return m, m.filedownloader.Init()
