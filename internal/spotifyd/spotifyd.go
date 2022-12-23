@@ -27,12 +27,15 @@ var (
 
 	deviceName = fmt.Sprintf("spot-go@%s", config.Hostname)
 
-	ErrConfigFileDoesNotExist = errors.New("config file does not exist")
+	errConfigFileDoesNotExist = errors.New("config file does not exist")
 )
 
 type (
 	credentials struct {
 		Username string `json:"username"`
+	}
+	LoginResponse struct {
+		Err error
 	}
 )
 
@@ -43,7 +46,7 @@ func init() {
 	}
 }
 
-func LoginWithUserAndPassword(user, pass string) (err error) {
+func LoginWithUserAndPassword(user, pass string) LoginResponse {
 	errC := make(chan error)
 	t := time.NewTimer(10 * time.Second)
 	go func() {
@@ -67,26 +70,30 @@ func LoginWithUserAndPassword(user, pass string) (err error) {
 			errC <- nil
 		}
 	})
-	err = <-errC
+	err := <-errC
 	t.Stop()
 
-	return err
+	return LoginResponse{err}
 }
 
-func LoginWithCredentials() (err error) {
+func LoginWithCredentials() LoginResponse {
 	if !path.Exists(credentialsFile) {
-		return ErrConfigFileDoesNotExist
+		return LoginResponse{errConfigFileDoesNotExist}
 	}
 
 	b, err := os.ReadFile(credentialsFile)
 	if err != nil {
-		return fmt.Errorf("fail to read file %s: %+v", credentialsFile, err)
+		return LoginResponse{
+			fmt.Errorf("fail to read file %s: %+v", credentialsFile, err),
+		}
 	}
 
 	var credentials credentials
 	err = json.Unmarshal(b, &credentials)
 	if err != nil {
-		return fmt.Errorf("fail to unmarshal json: %+v", err)
+		return LoginResponse{
+			fmt.Errorf("fail to unmarshal json: %+v", err),
+		}
 	}
 
 	errC := make(chan error)
@@ -114,7 +121,7 @@ func LoginWithCredentials() (err error) {
 	err = <-errC
 	t.Stop()
 
-	return err
+	return LoginResponse{err}
 }
 
 func IsBinaryValid() bool {

@@ -26,6 +26,7 @@ type (
 	Model struct {
 		ctx            context.Context
 		spotifyClient  *spotify.Client
+		spotifyUser    *libspotify.PrivateUser
 		screenWidth    int
 		screenHeigth   int
 		msg            string
@@ -44,8 +45,10 @@ const (
 	stateCopyWebAPIAuthURL
 	stateWebAPILoggingIn
 	stateWebAPILogged
+	stateSpotifydLoggingIn
 	stateSpotifydDownload
 	stateSpotifydConfig
+	stateSpotifydLogged
 	stateSpotifydUserPasswordSelected
 	stateSpotifydAppOnLocalNetworkSelected
 
@@ -172,9 +175,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.spotifyClient = msg.Client
 		return m, m.getCurrentUser
 
-	case libspotify.PrivateUser:
-		m.state = stateWebAPILogged
-		m.msg = fmt.Sprintf(webAPIWelcomeMsg, msg.DisplayName)
+	case *libspotify.PrivateUser:
+		m.spotifyUser = msg
+		return m, m.spotifydLogin
+
+	case spotifyd.LoginResponse:
+		if msg.Err != nil {
+			m.state = stateWebAPILogged
+			m.msg = fmt.Sprintf(webAPIWelcomeMsg, m.spotifyUser.DisplayName)
+		} else {
+			m.state = stateSpotifydLogged
+			m.msg = "spotifyd logged"
+		}
 		return m, nil
 
 	case filedownloader.DownloadFinished:
@@ -205,6 +217,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	default:
 		var cmd tea.Cmd
 		switch m.state {
+
 		case stateSpotifydDownload:
 			m.filedownloader, cmd = m.filedownloader.Update(msg)
 			m.msg = m.filedownloader.View()
@@ -250,5 +263,9 @@ func (m Model) getCurrentUser() tea.Msg {
 		panic(err)
 	}
 
-	return *u
+	return u
+}
+
+func (m Model) spotifydLogin() tea.Msg {
+	return spotifyd.LoginWithCredentials()
 }

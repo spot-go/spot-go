@@ -36,10 +36,6 @@ type (
 		screenHeigth int
 		errorMsg     string
 	}
-
-	loginResult struct {
-		err error
-	}
 )
 
 func NewLoginModel(screenWidth, screenHeigth int) LoginModel {
@@ -83,9 +79,9 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screenWidth = msg.Width
 		return m, nil
 
-	case loginResult:
-		if msg.err != nil {
-			m.errorMsg = msg.err.Error()
+	case spotifyd.LoginResponse:
+		if msg.Err != nil {
+			m.errorMsg = msg.Err.Error()
 			return m, nil
 		}
 		m.errorMsg = "Ok"
@@ -200,7 +196,6 @@ func (m LoginModel) View() string {
 
 func (m LoginModel) Login(email, pass string) tea.Cmd {
 	return func() tea.Msg {
-		err := spotifyd.LoginWithUserAndPassword(email, pass)
-		return loginResult{err}
+		return spotifyd.LoginWithUserAndPassword(email, pass)
 	}
 }
