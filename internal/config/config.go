@@ -33,11 +33,18 @@ var (
 	configFile = filepath.Join(Path, "settings.json")
 
 	AppSettings *Settings
+	Hostname    string
 )
 
 func init() {
+	var err error
+	Hostname, err = os.Hostname()
+	if err != nil {
+		panic(err)
+	}
+
 	configPath := configdir.LocalConfig(appName)
-	err := configdir.MakePath(configPath)
+	err = configdir.MakePath(configPath)
 	if err != nil {
 		panic(err)
 	}

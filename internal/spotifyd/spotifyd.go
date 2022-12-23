@@ -20,6 +20,8 @@ var (
 		"linux":  "1cc4897e2394f37273e030b8633a7f6fba6fe232d560f10be03b3a74eba2c001704d40864501b68917b4c24691abf01f7e529c0673167e509467eabe3bab524d",
 		"darwin": "eb189206192894f5e11615a0154efaec5226297181f5e2f2fec58b8f2fb47eacd84ba00acb752ca153ada4e81f67bb7ab2adf893e756f3ffda067667e528a77b",
 	}
+
+	deviceName = fmt.Sprintf("spot-go@%s", config.Hostname)
 )
 
 func LoginWithUserAndPassword(user, pass string) (err error) {
@@ -31,11 +33,12 @@ func LoginWithUserAndPassword(user, pass string) (err error) {
 	}()
 
 	c := fmt.Sprintf(
-		"%s -u %s -p %s --no-daemon -c %s",
+		"%s -u %s -p %s --no-daemon --cache-path %s --device-name %s --device-type computer",
 		spotifydFile,
 		user,
 		pass,
 		config.Path,
+		deviceName,
 	)
 	go command.RunWithBufferedOutput(c, func(output string) {
 		if strings.Contains(output, "failed to connect to spotify") {
