@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spot-go/spot-go/internal/spotifyd"
 )
 
 const (
@@ -27,13 +28,19 @@ var (
 	emailRegex = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 )
 
-type LoginModel struct {
-	focusIndex   int
-	inputs       []textinput.Model
-	screenWidth  int
-	screenHeigth int
-	errorMsg     string
-}
+type (
+	LoginModel struct {
+		focusIndex   int
+		inputs       []textinput.Model
+		screenWidth  int
+		screenHeigth int
+		errorMsg     string
+	}
+
+	loginResult struct {
+		err error
+	}
+)
 
 func NewLoginModel(screenWidth, screenHeigth int) LoginModel {
 	m := LoginModel{
@@ -76,6 +83,14 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screenWidth = msg.Width
 		return m, nil
 
+	case loginResult:
+		if msg.err != nil {
+			m.errorMsg = msg.err.Error()
+			return m, nil
+		}
+		m.errorMsg = "Ok"
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "tab", "shift+tab", "enter", "up", "down":
@@ -101,7 +116,7 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				m.errorMsg = ""
-				return m, tea.Quit
+				return m, m.Login(email, pass)
 			}
 
 			// Cycle indexes
@@ -181,4 +196,11 @@ func (m LoginModel) View() string {
 		lipgloss.Center,
 		content,
 	)
+}
+
+func (m LoginModel) Login(email, pass string) tea.Cmd {
+	return func() tea.Msg {
+		err := spotifyd.LoginWithUserAndPassword(email, pass)
+		return loginResult{err}
+	}
 }

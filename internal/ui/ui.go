@@ -9,11 +9,12 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/spot-go/spot-go/internal/config"
 	"github.com/spot-go/spot-go/internal/spotify"
+	"github.com/spot-go/spot-go/internal/spotifyd"
 	"github.com/spot-go/spot-go/internal/ui/components/choice"
 	"github.com/spot-go/spot-go/internal/ui/components/filedownloader"
-	"github.com/spot-go/spot-go/internal/ui/views/spotifyd"
+	spotifydview "github.com/spot-go/spot-go/internal/ui/views/spotifyd"
+
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 
@@ -115,7 +116,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			switch m.state {
 			case stateLogged:
-				if config.NeedsDownloadSpotifyd() {
+				if spotifyd.ShouldDownloadBinary() {
 					m.filedownloader = filedownloader.NewModel("https://github.com/Spotifyd/spotifyd/releases/download/v0.3.4/spotifyd-linux-full.tar.gz")
 					m.msg = m.filedownloader.View()
 					m.state = stateSpotifydDownload
@@ -172,7 +173,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case filedownloader.DownloadFinished:
-		if !config.IsSpotifydFileValid() {
+		if !spotifyd.IsBinaryValid() {
 			fmt.Println("spotifyd checksum is invalid")
 			os.Exit(1)
 		}
@@ -189,7 +190,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = spotifydConfigChoicesStates[string(msg)]
 		switch m.state {
 		case stateSpotifydUserPasswordSelected:
-			m.activeModel = spotifyd.NewLoginModel(m.screenWidth, m.screenHeigth)
+			m.activeModel = spotifydview.NewLoginModel(m.screenWidth, m.screenHeigth)
 		default:
 			m.activeModel = nil
 			m.msg = fmt.Sprintf("Selected: %s", msg)
