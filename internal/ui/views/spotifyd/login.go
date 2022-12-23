@@ -2,6 +2,7 @@ package spotifyd
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -10,17 +11,20 @@ import (
 )
 
 const (
-	title = "Fill the form below (your username and password is not saved in the local disk)"
+	title = "Fill the form below (your username and password are not saved in the local disk)"
 )
 
 var (
-	focusedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	focusedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#1DB954"))
+	errorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000"))
 	cursorStyle  = focusedStyle.Copy()
 	noStyle      = lipgloss.NewStyle()
 
 	focusedButton = focusedStyle.Copy().Render("[ Submit ]")
 	blurredStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	blurredButton = fmt.Sprintf("[ %s ]", blurredStyle.Render("Submit"))
+
+	emailRegex = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 )
 
 type LoginModel struct {
@@ -28,6 +32,7 @@ type LoginModel struct {
 	inputs       []textinput.Model
 	screenWidth  int
 	screenHeigth int
+	errorMsg     string
 }
 
 func NewLoginModel(screenWidth, screenHeigth int) LoginModel {
@@ -79,6 +84,23 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Did the user press enter while the submit button was focused?
 			// If so, exit.
 			if s == "enter" && m.focusIndex == len(m.inputs) {
+				email := m.inputs[0].Value()
+				if strings.Trim(email, " ") == "" {
+					m.errorMsg = "E-mail cannot be empty"
+					return m, nil
+				}
+				if !emailRegex.MatchString(email) {
+					m.errorMsg = "Invalid e-mail"
+					return m, nil
+				}
+
+				pass := m.inputs[1].Value()
+				if strings.Trim(pass, " ") == "" {
+					m.errorMsg = "Password cannot be empty"
+					return m, nil
+				}
+
+				m.errorMsg = ""
 				return m, tea.Quit
 			}
 
@@ -146,7 +168,7 @@ func (m LoginModel) View() string {
 	if m.focusIndex == len(m.inputs) {
 		button = &focusedButton
 	}
-	fmt.Fprintf(&b, "\n\n%s\n\n", *button)
+	fmt.Fprintf(&b, "\n%s\n%s\n\n", errorStyle.Render(m.errorMsg), *button)
 
 	content := lipgloss.NewStyle().
 		Align(lipgloss.Left, lipgloss.Center).
