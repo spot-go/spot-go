@@ -44,6 +44,11 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+
+	// Ensure the process is always started by the spot-go.
+	// This can change in the future, but for now it's a simple
+	// solution to avoid issues.
+	command.Run("pkill -9 spotifyd")
 }
 
 func LoginWithUserAndPassword(user, pass string) LoginResponse {
