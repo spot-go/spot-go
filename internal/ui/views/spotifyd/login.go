@@ -2,7 +2,6 @@ package spotifyd
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -12,7 +11,7 @@ import (
 )
 
 const (
-	title = "Fill the form below (your username and password are not saved in the local disk)"
+	title = "Fill your password below (your credentials are not saved in the local disk)"
 )
 
 var (
@@ -24,47 +23,35 @@ var (
 	focusedButton = focusedStyle.Copy().Render("[ Submit ]")
 	blurredStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	blurredButton = fmt.Sprintf("[ %s ]", blurredStyle.Render("Submit"))
-
-	emailRegex = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 )
 
 type (
 	LoginModel struct {
 		focusIndex   int
-		inputs       []textinput.Model
+		password     textinput.Model
+		email        string
 		screenWidth  int
 		screenHeigth int
 		errorMsg     string
 	}
 )
 
-func NewLoginModel(screenWidth, screenHeigth int) LoginModel {
+func NewLoginModel(email string, screenWidth, screenHeigth int) LoginModel {
 	m := LoginModel{
 		screenWidth:  screenWidth,
 		screenHeigth: screenHeigth,
-		inputs:       make([]textinput.Model, 2),
+		email:        email,
 	}
 
-	var t textinput.Model
-	for i := range m.inputs {
-		t = textinput.New()
-		t.CursorStyle = cursorStyle
-		t.CharLimit = 128
+	t := textinput.New()
+	t.CursorStyle = cursorStyle
+	t.CharLimit = 128
+	t.Placeholder = "Password"
+	t.EchoMode = textinput.EchoPassword
+	t.EchoCharacter = '•'
+	t.Focus()
 
-		switch i {
-		case 0:
-			t.Placeholder = "E-mail"
-			t.Focus()
-			t.PromptStyle = focusedStyle
-		case 1:
-			t.Placeholder = "Password"
-			t.EchoMode = textinput.EchoPassword
-			t.EchoCharacter = '•'
-		}
-
-		m.inputs[i] = t
-	}
-
+	m.password = t
 	return m
 }
 
@@ -92,27 +79,15 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab", "shift+tab", "enter", "up", "down":
 			s := msg.String()
 
-			// Did the user press enter while the submit button was focused?
-			// If so, exit.
-			if s == "enter" && m.focusIndex == len(m.inputs) {
-				email := m.inputs[0].Value()
-				if strings.Trim(email, " ") == "" {
-					m.errorMsg = "E-mail cannot be empty"
-					return m, nil
-				}
-				if !emailRegex.MatchString(email) {
-					m.errorMsg = "Invalid e-mail"
-					return m, nil
-				}
-
-				pass := m.inputs[1].Value()
+			if s == "enter" && m.focusIndex == 1 {
+				pass := m.password.Value()
 				if strings.Trim(pass, " ") == "" {
 					m.errorMsg = "Password cannot be empty"
 					return m, nil
 				}
 
 				m.errorMsg = ""
-				return m, m.Login(email, pass)
+				return m, m.Login(m.email, pass)
 			}
 
 			// Cycle indexes
@@ -122,68 +97,52 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focusIndex++
 			}
 
-			if m.focusIndex > len(m.inputs) {
+			if m.focusIndex > 1 {
 				m.focusIndex = 0
 			} else if m.focusIndex < 0 {
-				m.focusIndex = len(m.inputs)
+				m.focusIndex = 1
 			}
 
-			cmds := make([]tea.Cmd, len(m.inputs))
-			for i := 0; i <= len(m.inputs)-1; i++ {
-				if i == m.focusIndex {
-					// Set focused state
-					cmds[i] = m.inputs[i].Focus()
-					m.inputs[i].PromptStyle = focusedStyle
-					m.inputs[i].TextStyle = focusedStyle
-					continue
-				}
+			if m.focusIndex == 0 {
+				// Set focused state
+				cmd := m.password.Focus()
+				m.password.PromptStyle = focusedStyle
+				m.password.TextStyle = focusedStyle
+				return m, cmd
+			} else {
 				// Remove focused state
-				m.inputs[i].Blur()
-				m.inputs[i].PromptStyle = noStyle
-				m.inputs[i].TextStyle = noStyle
+				m.password.Blur()
+				m.password.PromptStyle = noStyle
+				m.password.TextStyle = noStyle
 			}
 
-			return m, tea.Batch(cmds...)
+			return m, nil
 		}
 	}
 
 	// Handle character input and blinking
-	cmd := m.updateInputs(msg)
+	var cmd tea.Cmd
+	m.password, cmd = m.password.Update(msg)
 
 	return m, cmd
 }
 
-func (m *LoginModel) updateInputs(msg tea.Msg) tea.Cmd {
-	cmds := make([]tea.Cmd, len(m.inputs))
-
-	// Only text inputs with Focus() set will respond, so it's safe to simply
-	// update all of them here without any further logic.
-	for i := range m.inputs {
-		m.inputs[i], cmds[i] = m.inputs[i].Update(msg)
-	}
-
-	return tea.Batch(cmds...)
-}
-
 func (m LoginModel) View() string {
-	var b strings.Builder
-
-	for i := range m.inputs {
-		b.WriteString(m.inputs[i].View())
-		if i < len(m.inputs)-1 {
-			b.WriteRune('\n')
-		}
-	}
-
 	button := &blurredButton
-	if m.focusIndex == len(m.inputs) {
+	if m.focusIndex == 1 {
 		button = &focusedButton
 	}
-	fmt.Fprintf(&b, "\n%s\n%s\n\n", errorStyle.Render(m.errorMsg), *button)
+	form := fmt.Sprintf(
+		"> %s\n%s\n%s\n%s\n\n",
+		m.email,
+		m.password.View(),
+		errorStyle.Render(m.errorMsg),
+		*button,
+	)
 
 	content := lipgloss.NewStyle().
 		Align(lipgloss.Left, lipgloss.Center).
-		Render(fmt.Sprintf("%s\n%s", title, b.String()))
+		Render(fmt.Sprintf("%s\n\n%s", title, form))
 
 	return lipgloss.Place(
 		m.screenWidth,

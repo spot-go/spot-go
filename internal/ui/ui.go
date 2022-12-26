@@ -207,7 +207,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = spotifydConfigChoicesStates[string(msg)]
 		switch m.state {
 		case stateSpotifydUserPasswordSelected:
-			m.activeModel = spotifydview.NewLoginModel(m.screenWidth, m.screenHeigth)
+			m.activeModel = spotifydview.NewLoginModel(
+				m.spotifyUser.Email,
+				m.screenWidth,
+				m.screenHeigth,
+			)
 		default:
 			m.activeModel = nil
 			m.msg = fmt.Sprintf("Selected: %s", msg)
