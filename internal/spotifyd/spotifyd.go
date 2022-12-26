@@ -124,10 +124,33 @@ func LoginWithCredentials() LoginResponse {
 	return LoginResponse{err}
 }
 
+func LoginDiscovery() LoginResponse {
+	logged := make(chan bool)
+
+	c := fmt.Sprintf(
+		"%s --no-daemon --cache-path %s --device-name %s --device-type computer",
+		binaryFile,
+		ConfigFolder,
+		deviceName,
+	)
+	go command.RunWithBufferedOutput(c, func(output string) {
+		if strings.Contains(output, "Authenticated as") {
+			logged <- true
+		}
+	})
+	<-logged
+
+	return LoginResponse{nil}
+}
+
 func IsBinaryValid() bool {
 	return hash.SHA512Sum(binaryFile) == expectedBinaryFileSha512[runtime.GOOS]
 }
 
 func ShouldDownloadBinary() bool {
 	return !path.Exists(binaryFile) || !IsBinaryValid()
+}
+
+func DeviceName() string {
+	return deviceName
 }

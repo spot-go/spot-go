@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -28,6 +28,7 @@ type (
 		ctx            context.Context
 		spotifyClient  *spotify.Client
 		spotifyUser    *libspotify.PrivateUser
+		spotifydPlayer *libspotify.PlayerDevice
 		screenWidth    int
 		screenHeigth   int
 		msg            string
@@ -67,13 +68,16 @@ Press enter to continue`
 
 	spotifydDownloadMsg = `spotifyd downloaded.
 Now we need to connect it to your account. Choose one of the options below:`
+
+	spotifydUseApp = `Now use a desktop or mobile app connected on your local network
+and connect to the device named "%s"`
 )
 
 var (
 	spotifydConfigChoicesStates = map[string]state{
 		"Type username and password": stateSpotifydUserPasswordSelected,
 
-		"Use an app (desktop or mobile) connected on your local network": stateSpotifydAppOnLocalNetworkSelected,
+		"Use a desktop or mobile app connected on your local network": stateSpotifydAppOnLocalNetworkSelected,
 	}
 	spotifydConfigChoices = maps.Keys(spotifydConfigChoicesStates)
 )
@@ -185,18 +189,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			m.state = stateWebAPILogged
 			m.msg = fmt.Sprintf(webAPIWelcomeMsg, m.spotifyUser.DisplayName)
+			return m, nil
 		} else {
-			m.state = stateSpotifydLogged
-			devices, err := m.spotifyClient.PlayerDevices(m.ctx)
-			if err != nil {
-				panic(err)
-			}
-			var sb strings.Builder
-			for _, d := range devices {
-				sb.WriteString(d.Name + ",")
-			}
-			m.msg = sb.String()
+			return m, m.waitForSpotifydPlayerDevice
 		}
+
+	case libspotify.PlayerDevice:
+		m.state = stateSpotifydLogged
+		m.msg = msg.Name
 		return m, nil
 
 	case filedownloader.DownloadFinished:
@@ -222,11 +222,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.screenWidth,
 				m.screenHeigth,
 			)
+			return m, nil
 		default:
 			m.activeModel = nil
-			m.msg = fmt.Sprintf("Selected: %s", msg)
+			m.msg = fmt.Sprintf(spotifydUseApp, spotifyd.DeviceName())
+			return m, m.spotifydLoginDiscovery
 		}
-		return m, nil
 
 	default:
 		var cmd tea.Cmd
@@ -282,4 +283,25 @@ func (m Model) getCurrentUser() tea.Msg {
 
 func (m Model) spotifydLogin() tea.Msg {
 	return spotifyd.LoginWithCredentials()
+}
+
+func (m Model) spotifydLoginDiscovery() tea.Msg {
+	return spotifyd.LoginDiscovery()
+}
+
+func (m Model) waitForSpotifydPlayerDevice() tea.Msg {
+	for attempt := 0; attempt < 10; attempt++ {
+		devices, err := m.spotifyClient.PlayerDevices(m.ctx)
+		if err != nil {
+			panic(err)
+		}
+		idx := slices.IndexFunc(devices, func(e libspotify.PlayerDevice) bool {
+			return e.Name == spotifyd.DeviceName()
+		})
+		if idx > -1 {
+			return devices[idx]
+		}
+		time.Sleep(1 * time.Second)
+	}
+	panic("Wating for spotifyd connection has timeout")
 }
