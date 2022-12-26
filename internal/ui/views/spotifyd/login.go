@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -27,32 +28,36 @@ var (
 
 type (
 	LoginModel struct {
-		focusIndex   int
-		password     textinput.Model
-		email        string
-		screenWidth  int
-		screenHeigth int
-		errorMsg     string
+		focusIndex    int
+		passwordInput textinput.Model
+		spinner       spinner.Model
+		isLoggingIn   bool
+		email         string
+		screenWidth   int
+		screenHeigth  int
+		errorMsg      string
 	}
 )
 
 func NewLoginModel(email string, screenWidth, screenHeigth int) LoginModel {
-	m := LoginModel{
-		screenWidth:  screenWidth,
-		screenHeigth: screenHeigth,
-		email:        email,
+	passwordInput := textinput.New()
+	passwordInput.CursorStyle = cursorStyle
+	passwordInput.CharLimit = 128
+	passwordInput.Placeholder = "Password"
+	passwordInput.EchoMode = textinput.EchoPassword
+	passwordInput.EchoCharacter = '•'
+	passwordInput.Focus()
+
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+
+	return LoginModel{
+		screenWidth:   screenWidth,
+		screenHeigth:  screenHeigth,
+		email:         email,
+		passwordInput: passwordInput,
+		spinner:       s,
 	}
-
-	t := textinput.New()
-	t.CursorStyle = cursorStyle
-	t.CharLimit = 128
-	t.Placeholder = "Password"
-	t.EchoMode = textinput.EchoPassword
-	t.EchoCharacter = '•'
-	t.Focus()
-
-	m.password = t
-	return m
 }
 
 func (m LoginModel) Init() tea.Cmd {
@@ -67,6 +72,7 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spotifyd.LoginResponse:
+		m.isLoggingIn = false
 		if msg.Err != nil {
 			m.errorMsg = msg.Err.Error()
 			return m, nil
@@ -80,14 +86,15 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			s := msg.String()
 
 			if s == "enter" && m.focusIndex == 1 {
-				pass := m.password.Value()
+				pass := m.passwordInput.Value()
 				if strings.Trim(pass, " ") == "" {
 					m.errorMsg = "Password cannot be empty"
 					return m, nil
 				}
 
+				m.isLoggingIn = true
 				m.errorMsg = ""
-				return m, m.Login(m.email, pass)
+				return m, tea.Batch(m.Login(m.email, pass), m.spinner.Tick)
 			}
 
 			// Cycle indexes
@@ -105,15 +112,15 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			if m.focusIndex == 0 {
 				// Set focused state
-				cmd := m.password.Focus()
-				m.password.PromptStyle = focusedStyle
-				m.password.TextStyle = focusedStyle
+				cmd := m.passwordInput.Focus()
+				m.passwordInput.PromptStyle = focusedStyle
+				m.passwordInput.TextStyle = focusedStyle
 				return m, cmd
 			} else {
 				// Remove focused state
-				m.password.Blur()
-				m.password.PromptStyle = noStyle
-				m.password.TextStyle = noStyle
+				m.passwordInput.Blur()
+				m.passwordInput.PromptStyle = noStyle
+				m.passwordInput.TextStyle = noStyle
 			}
 
 			return m, nil
@@ -121,10 +128,18 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Handle character input and blinking
-	var cmd tea.Cmd
-	m.password, cmd = m.password.Update(msg)
+	cmds := make([]tea.Cmd, 0)
+	input, cmd := m.passwordInput.Update(msg)
+	m.passwordInput = input
+	cmds = append(cmds, cmd)
 
-	return m, cmd
+	if m.isLoggingIn {
+		input, cmd := m.spinner.Update(msg)
+		m.spinner = input
+		cmds = append(cmds, cmd)
+	}
+
+	return m, tea.Batch(cmds...)
 }
 
 func (m LoginModel) View() string {
@@ -132,11 +147,19 @@ func (m LoginModel) View() string {
 	if m.focusIndex == 1 {
 		button = &focusedButton
 	}
+
+	var status string
+	if m.isLoggingIn {
+		status = m.spinner.View()
+	} else {
+		status = errorStyle.Render(m.errorMsg)
+	}
+
 	form := fmt.Sprintf(
 		"> %s\n%s\n%s\n%s\n\n",
 		m.email,
-		m.password.View(),
-		errorStyle.Render(m.errorMsg),
+		m.passwordInput.View(),
+		status,
 		*button,
 	)
 
