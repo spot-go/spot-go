@@ -77,7 +77,6 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.errorMsg = msg.Err.Error()
 			return m, nil
 		}
-		m.errorMsg = "Ok"
 		return m, nil
 
 	case tea.KeyMsg:
@@ -89,7 +88,7 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				pass := m.passwordInput.Value()
 				if strings.Trim(pass, " ") == "" {
 					m.errorMsg = "Password cannot be empty"
-					return m, nil
+					return m, m.spinner.Tick
 				}
 
 				m.isLoggingIn = true
@@ -123,7 +122,7 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.passwordInput.TextStyle = noStyle
 			}
 
-			return m, nil
+			return m, m.spinner.Tick
 		}
 	}
 

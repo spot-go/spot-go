@@ -180,6 +180,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.spotifydLogin
 
 	case spotifyd.LoginResponse:
+		m.activeModel = nil
 		if msg.Err != nil {
 			m.state = stateWebAPILogged
 			m.msg = fmt.Sprintf(webAPIWelcomeMsg, m.spotifyUser.DisplayName)
