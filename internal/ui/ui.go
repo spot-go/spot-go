@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -186,7 +187,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.msg = fmt.Sprintf(webAPIWelcomeMsg, m.spotifyUser.DisplayName)
 		} else {
 			m.state = stateSpotifydLogged
-			m.msg = "spotifyd logged"
+			devices, err := m.spotifyClient.PlayerDevices(m.ctx)
+			if err != nil {
+				panic(err)
+			}
+			var sb strings.Builder
+			for _, d := range devices {
+				sb.WriteString(d.Name + ",")
+			}
+			m.msg = sb.String()
 		}
 		return m, nil
 
