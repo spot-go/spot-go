@@ -68,7 +68,9 @@ func (m Model) View() string {
 		var style lipgloss.Style
 		isFirst, isLast, isActive := i == 0, i == len(m.Tabs)-1, i == m.activeTab
 		if isActive {
-			style = activeTabStyle.Copy()
+			style = activeTabStyle.Copy().
+				Background(lipgloss.Color("#CEFAD0")).
+				Foreground(lipgloss.Color("#000000"))
 		} else {
 			style = inactiveTabStyle.Copy()
 		}
