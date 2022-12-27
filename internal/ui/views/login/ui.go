@@ -1,4 +1,4 @@
-package ui
+package login
 
 import (
 	"context"
@@ -196,6 +196,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	case libspotify.PlayerDevice:
 		m.state = stateSpotifydLogged
+		m.spotifydPlayer = &msg
 		m.msg = msg.Name
 		return m, nil
 
