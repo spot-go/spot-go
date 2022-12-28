@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spot-go/spot-go/internal/ui/styles"
 )
 
 type Model struct {
@@ -53,10 +54,13 @@ var (
 	inactiveTabBorder = tabBorderWithBottom("┴", "─", "┴")
 	activeTabBorder   = tabBorderWithBottom("┘", " ", "└")
 	docStyle          = lipgloss.NewStyle().Padding(1, 2, 1, 2)
-	highlightColor    = lipgloss.AdaptiveColor{Light: "#1DB954", Dark: "#1DB954"}
-	inactiveTabStyle  = lipgloss.NewStyle().Border(inactiveTabBorder, true).BorderForeground(highlightColor).Padding(0, 1)
-	activeTabStyle    = inactiveTabStyle.Copy().Border(activeTabBorder, true)
-	windowStyle       = lipgloss.NewStyle().BorderForeground(highlightColor).Padding(2, 0).Align(lipgloss.Center).Border(lipgloss.NormalBorder()).UnsetBorderTop()
+	highlightColor    = lipgloss.AdaptiveColor{
+		Light: styles.ColorGreenSpotify,
+		Dark:  styles.ColorGreenSpotify,
+	}
+	inactiveTabStyle = lipgloss.NewStyle().Border(inactiveTabBorder, true).BorderForeground(highlightColor).Padding(0, 1)
+	activeTabStyle   = inactiveTabStyle.Copy().Border(activeTabBorder, true)
+	windowStyle      = lipgloss.NewStyle().BorderForeground(highlightColor).Padding(2, 0).Align(lipgloss.Center).Border(lipgloss.NormalBorder()).UnsetBorderTop()
 )
 
 func (m Model) View() string {
@@ -69,8 +73,8 @@ func (m Model) View() string {
 		isFirst, isLast, isActive := i == 0, i == len(m.Tabs)-1, i == m.activeTab
 		if isActive {
 			style = activeTabStyle.Copy().
-				Background(lipgloss.Color("#CEFAD0")).
-				Foreground(lipgloss.Color("#000000"))
+				Background(styles.LipglossColorBackgroundGreenSpotify).
+				Foreground(styles.LipglossColorBlack)
 		} else {
 			style = inactiveTabStyle.Copy()
 		}

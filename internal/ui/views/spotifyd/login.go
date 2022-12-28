@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spot-go/spot-go/internal/spotifyd"
+	"github.com/spot-go/spot-go/internal/ui/styles"
 )
 
 const (
@@ -16,13 +17,13 @@ const (
 )
 
 var (
-	focusedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#1DB954"))
-	errorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000"))
+	focusedStyle = lipgloss.NewStyle().Foreground(styles.LipglossColorForegroundGreenSpotify)
+	errorStyle   = lipgloss.NewStyle().Foreground(styles.LipglossColorRed)
 	cursorStyle  = focusedStyle.Copy()
 	noStyle      = lipgloss.NewStyle()
 
 	focusedButton = focusedStyle.Copy().Render("[ Submit ]")
-	blurredStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	blurredStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#585858"))
 	blurredButton = fmt.Sprintf("[ %s ]", blurredStyle.Render("Submit"))
 )
 
