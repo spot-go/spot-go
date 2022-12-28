@@ -192,13 +192,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.spotifydLogin
 
 	case spotifyd.LoginResponse:
-		m.activeModel = nil
 		if msg.Err != nil {
-			m.state = stateWebAPILogged
-			m.msg = fmt.Sprintf(webAPIWelcomeMsg, m.spotifyUser.DisplayName)
-			return m, nil
+			if m.state == stateInit {
+				m.state = stateWebAPILogged
+				m.msg = fmt.Sprintf(webAPIWelcomeMsg, m.spotifyUser.DisplayName)
+				return m, nil
+			}
 		} else {
-			return m, m.waitForSpotifydPlayerDevice
+			// var cmd tea.Cmd
+			// m.spinner, cmd = m.spinner.Update(msg)
+			m.msg = m.spinner.View()
+			m.activeModel = nil
+			m.state = stateSpotifydLoggingIn
+			return m, tea.Batch(m.waitForSpotifydPlayerDevice, m.spinner.Tick)
 		}
 
 	case libspotify.PlayerDevice:
@@ -247,7 +253,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.msg = m.filedownloader.View()
 			return m, cmd
 
-		case stateInit:
+		case stateInit, stateSpotifydLoggingIn:
 			m.spinner, cmd = m.spinner.Update(msg)
 			m.msg = m.spinner.View()
 			return m, cmd
