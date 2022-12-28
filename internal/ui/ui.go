@@ -9,15 +9,17 @@ import (
 )
 
 type Model struct {
-	Tabs       []string
-	TabContent []string
-	activeTab  int
+	tabs         []string
+	tabContent   []string
+	activeTab    int
+	screenWidth  int
+	screenHeight int
 }
 
-func NewModel() Model {
+func NewModel(screenWidth int) Model {
 	tabs := []string{"Search", "Playlists", "Podcasts", "Artists", "Albums"}
 	tabContent := []string{"Lip Gloss Tab", "Blush Tab", "Eye Shadow Tab", "Mascara Tab", "Foundation Tab"}
-	return Model{Tabs: tabs, TabContent: tabContent}
+	return Model{tabs: tabs, tabContent: tabContent, screenWidth: screenWidth}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -28,10 +30,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch keypress := msg.String(); keypress {
-		case "q":
+		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "right", "tab":
-			m.activeTab = min(m.activeTab+1, len(m.Tabs)-1)
+			m.activeTab = min(m.activeTab+1, len(m.tabs)-1)
 			return m, nil
 		case "left", "shift+tab":
 			m.activeTab = max(m.activeTab-1, 0)
@@ -60,7 +62,12 @@ var (
 	}
 	inactiveTabStyle = lipgloss.NewStyle().Border(inactiveTabBorder, true).BorderForeground(highlightColor).Padding(0, 1)
 	activeTabStyle   = inactiveTabStyle.Copy().Border(activeTabBorder, true)
-	windowStyle      = lipgloss.NewStyle().BorderForeground(highlightColor).Padding(2, 0).Align(lipgloss.Center).Border(lipgloss.NormalBorder()).UnsetBorderTop()
+	windowStyle      = lipgloss.NewStyle().
+				BorderForeground(highlightColor).
+				Padding(2, 0).
+				Align(lipgloss.Center).
+				Border(lipgloss.NormalBorder()).
+				UnsetBorderTop()
 )
 
 func (m Model) View() string {
@@ -68,9 +75,9 @@ func (m Model) View() string {
 
 	var renderedTabs []string
 
-	for i, t := range m.Tabs {
+	for i, t := range m.tabs {
 		var style lipgloss.Style
-		isFirst, isLast, isActive := i == 0, i == len(m.Tabs)-1, i == m.activeTab
+		isFirst, isLast, isActive := i == 0, i == len(m.tabs)-1, i == m.activeTab
 		if isActive {
 			style = activeTabStyle.Copy().
 				Background(styles.LipglossColorBackgroundGreenSpotify).
@@ -92,10 +99,16 @@ func (m Model) View() string {
 		renderedTabs = append(renderedTabs, style.Render(t))
 	}
 
+	tabGap := inactiveTabStyle.Copy().
+		BorderTop(false).
+		BorderLeft(false).
+		BorderRight(false)
 	row := lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...)
+	gap := tabGap.Render(strings.Repeat(" ", max(0, m.screenWidth-lipgloss.Width(row)-2)))
+	row = lipgloss.JoinHorizontal(lipgloss.Bottom, row, gap)
 	doc.WriteString(row)
 	doc.WriteString("\n")
-	doc.WriteString(windowStyle.Width((lipgloss.Width(row) - windowStyle.GetHorizontalFrameSize())).Render(m.TabContent[m.activeTab]))
+	doc.WriteString(windowStyle.Width((lipgloss.Width(row) - windowStyle.GetHorizontalFrameSize())).Render(m.tabContent[m.activeTab]))
 	return docStyle.Render(doc.String())
 }
 

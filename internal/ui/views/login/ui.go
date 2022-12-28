@@ -208,7 +208,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case libspotify.PlayerDevice:
 		m.state = stateSpotifydLogged
 		m.spotifydPlayer = &msg
-		mainModel := ui.NewModel()
+		mainModel := ui.NewModel(m.screenWidth)
 		m.main = &mainModel
 		return m, m.main.Init()
 
