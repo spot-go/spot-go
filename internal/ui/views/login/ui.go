@@ -199,8 +199,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		} else {
-			// var cmd tea.Cmd
-			// m.spinner, cmd = m.spinner.Update(msg)
 			m.msg = m.spinner.View()
 			m.activeModel = nil
 			m.state = stateSpotifydLoggingIn
