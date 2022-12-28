@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spot-go/spot-go/internal/spotifyd"
 	"github.com/spot-go/spot-go/internal/ui/styles"
+	"github.com/spot-go/spot-go/internal/ui/views"
 )
 
 const (
@@ -29,18 +30,17 @@ var (
 
 type (
 	LoginModel struct {
+		views.WindowSize
 		focusIndex    int
 		passwordInput textinput.Model
 		spinner       spinner.Model
 		isLoggingIn   bool
 		email         string
-		screenWidth   int
-		screenHeight  int
 		errorMsg      string
 	}
 )
 
-func NewLoginModel(email string, screenWidth, screenHeight int) LoginModel {
+func NewLoginModel(email string, windowsSize views.WindowSize) LoginModel {
 	passwordInput := textinput.New()
 	passwordInput.CursorStyle = cursorStyle
 	passwordInput.CharLimit = 128
@@ -53,8 +53,7 @@ func NewLoginModel(email string, screenWidth, screenHeight int) LoginModel {
 	s.Spinner = spinner.Dot
 
 	return LoginModel{
-		screenWidth:   screenWidth,
-		screenHeight:  screenHeight,
+		WindowSize:    windowsSize,
 		email:         email,
 		passwordInput: passwordInput,
 		spinner:       s,
@@ -68,8 +67,7 @@ func (m LoginModel) Init() tea.Cmd {
 func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.screenHeight = msg.Height
-		m.screenWidth = msg.Width
+		m.WindowSizeMsg = msg
 		return m, nil
 
 	case spotifyd.LoginResponse:
@@ -168,8 +166,8 @@ func (m LoginModel) View() string {
 		Render(fmt.Sprintf("%s\n\n%s", title, form))
 
 	return lipgloss.Place(
-		m.screenWidth,
-		m.screenHeight,
+		m.Width,
+		m.Height,
 		lipgloss.Center,
 		lipgloss.Center,
 		content,

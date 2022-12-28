@@ -6,14 +6,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spot-go/spot-go/internal/ui/styles"
+	"github.com/spot-go/spot-go/internal/ui/views"
 )
 
 type Model struct {
-	tabs         []string
-	tabContent   []string
-	activeTab    int
-	screenWidth  int
-	screenHeight int
+	views.WindowSize
+	tabs       []string
+	tabContent []string
+	activeTab  int
 }
 
 var (
@@ -34,10 +34,14 @@ var (
 				UnsetBorderTop()
 )
 
-func NewModel(screenWidth int, screenHeight int) Model {
+func NewModel(windowSize views.WindowSize) Model {
 	tabs := []string{"Search", "Playlists", "Podcasts", "Artists", "Albums"}
 	tabContent := []string{"Lip Gloss Tab", "Blush Tab", "Eye Shadow Tab", "Mascara Tab", "Foundation Tab"}
-	return Model{tabs: tabs, tabContent: tabContent, screenWidth: screenWidth, screenHeight: screenHeight}
+	return Model{
+		tabs:       tabs,
+		tabContent: tabContent,
+		WindowSize: windowSize,
+	}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -58,8 +62,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case tea.WindowSizeMsg:
-		m.screenHeight = msg.Height
-		m.screenWidth = msg.Width
+		m.WindowSizeMsg = msg
 
 		return m, nil
 	}
@@ -105,7 +108,7 @@ func (m Model) View() string {
 		BorderLeft(false).
 		BorderRight(false)
 	row := lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...)
-	gap := tabGap.Render(strings.Repeat(" ", m.screenWidth-lipgloss.Width(row)-5))
+	gap := tabGap.Render(strings.Repeat(" ", m.Width-lipgloss.Width(row)-5))
 	closeBox := lipgloss.NewStyle().
 		Foreground(styles.LipglossColorForegroundGreenSpotify).
 		Render("┐")
@@ -114,14 +117,14 @@ func (m Model) View() string {
 	doc.WriteString("\n")
 
 	contentWidth := lipgloss.Width(row) - windowStyle.GetHorizontalFrameSize()
-	contentHeight := m.screenHeight - lipgloss.Height(row) - 2
+	contentHeight := m.Height - lipgloss.Height(row) - 2
 	content := windowStyle.
 		Width(contentWidth).
 		Height(contentHeight).
 		Render(m.tabContent[m.activeTab])
 	doc.WriteString(content)
 
-	return docStyle.Height(m.screenHeight).Render(doc.String())
+	return docStyle.Height(m.Height).Render(doc.String())
 }
 
 func max(a, b int) int {

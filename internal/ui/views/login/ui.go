@@ -14,6 +14,7 @@ import (
 	"github.com/spot-go/spot-go/internal/spotifyd"
 	"github.com/spot-go/spot-go/internal/ui/components/choice"
 	"github.com/spot-go/spot-go/internal/ui/components/filedownloader"
+	"github.com/spot-go/spot-go/internal/ui/views"
 	"github.com/spot-go/spot-go/internal/ui/views/player"
 	spotifydview "github.com/spot-go/spot-go/internal/ui/views/spotifyd"
 	libspotify "github.com/zmb3/spotify/v2"
@@ -26,12 +27,11 @@ import (
 
 type (
 	Model struct {
+		views.WindowSize
 		ctx            context.Context
 		spotifyClient  *spotify.Client
 		spotifyUser    *libspotify.PrivateUser
 		spotifydPlayer *libspotify.PlayerDevice
-		screenWidth    int
-		screenHeight   int
 		msg            string
 		state          state
 		spinner        spinner.Model
@@ -94,11 +94,9 @@ func NewModel() Model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	return Model{
-		ctx:          context.Background(),
-		screenWidth:  0,
-		screenHeight: 0,
-		msg:          s.View(),
-		spinner:      s,
+		ctx:     context.Background(),
+		msg:     s.View(),
+		spinner: s,
 	}
 }
 
@@ -165,8 +163,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
-		m.screenHeight = msg.Height
-		m.screenWidth = msg.Width
+		m.WindowSizeMsg = msg
 		if m.state == stateInit {
 			return m, m.webAPILogin
 		}
@@ -208,7 +205,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case libspotify.PlayerDevice:
 		m.state = stateSpotifydLogged
 		m.spotifydPlayer = &msg
-		mainModel := player.NewModel(m.screenWidth, m.screenHeight)
+		mainModel := player.NewModel(m.WindowSize)
 		m.player = &mainModel
 		return m, m.player.Init()
 
@@ -219,8 +216,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.state = stateSpotifydConfig
 		m.activeModel = choice.NewModel(
-			m.screenWidth,
-			m.screenHeight,
+			m.WindowSize,
 			spotifydDownloadMsg,
 			spotifydConfigChoices,
 		)
@@ -232,8 +228,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case stateSpotifydUserPasswordSelected:
 			m.activeModel = spotifydview.NewLoginModel(
 				m.spotifyUser.Email,
-				m.screenWidth,
-				m.screenHeight,
+				m.WindowSize,
 			)
 			return m, nil
 		default:
@@ -273,8 +268,8 @@ func (m Model) View() string {
 	}
 
 	return lipgloss.Place(
-		m.screenWidth,
-		m.screenHeight,
+		m.Width,
+		m.Height,
 		lipgloss.Center,
 		lipgloss.Center,
 		m.msg,

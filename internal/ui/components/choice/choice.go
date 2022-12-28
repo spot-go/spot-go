@@ -6,25 +6,24 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spot-go/spot-go/internal/ui/views"
 )
 
 type (
 	Model struct {
-		title        string
-		choices      []string
-		screenWidth  int
-		screenHeight int
-		cursor       int
+		views.WindowSize
+		title   string
+		choices []string
+		cursor  int
 	}
 	Selected string
 )
 
-func NewModel(screenWidth, screenHeight int, title string, choices []string) Model {
+func NewModel(windowSize views.WindowSize, title string, choices []string) Model {
 	return Model{
-		screenWidth:  screenWidth,
-		screenHeight: screenHeight,
-		title:        title,
-		choices:      choices,
+		WindowSize: windowSize,
+		title:      title,
+		choices:    choices,
 	}
 }
 
@@ -35,8 +34,7 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.screenHeight = msg.Height
-		m.screenWidth = msg.Width
+		m.WindowSizeMsg = msg
 		return m, nil
 
 	case tea.KeyMsg:
@@ -80,8 +78,8 @@ func (m Model) View() string {
 		Render(s.String())
 
 	return lipgloss.Place(
-		m.screenWidth,
-		m.screenHeight,
+		m.Width,
+		m.Height,
 		lipgloss.Center,
 		lipgloss.Center,
 		fmt.Sprintf("%s\n%s", m.title, body),
