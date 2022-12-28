@@ -12,9 +12,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/spotifyd"
-	"github.com/spot-go/spot-go/internal/ui"
 	"github.com/spot-go/spot-go/internal/ui/components/choice"
 	"github.com/spot-go/spot-go/internal/ui/components/filedownloader"
+	"github.com/spot-go/spot-go/internal/ui/views/player"
 	spotifydview "github.com/spot-go/spot-go/internal/ui/views/spotifyd"
 	libspotify "github.com/zmb3/spotify/v2"
 
@@ -38,7 +38,7 @@ type (
 		activeModel    tea.Model
 		filedownloader filedownloader.Model
 
-		main *ui.Model
+		player *player.Model
 	}
 
 	state int
@@ -107,8 +107,8 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
-	if m.main != nil {
-		return m.main.Update(message)
+	if m.player != nil {
+		return m.player.Update(message)
 	}
 
 	switch msg := message.(type) {
@@ -208,9 +208,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case libspotify.PlayerDevice:
 		m.state = stateSpotifydLogged
 		m.spotifydPlayer = &msg
-		mainModel := ui.NewModel(m.screenWidth, m.screenHeight)
-		m.main = &mainModel
-		return m, m.main.Init()
+		mainModel := player.NewModel(m.screenWidth, m.screenHeight)
+		m.player = &mainModel
+		return m, m.player.Init()
 
 	case filedownloader.DownloadFinished:
 		if !spotifyd.IsBinaryValid() {
@@ -264,8 +264,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	if m.main != nil {
-		return m.main.View()
+	if m.player != nil {
+		return m.player.View()
 	}
 
 	if m.activeModel != nil {
