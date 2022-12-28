@@ -16,10 +16,28 @@ type Model struct {
 	screenHeight int
 }
 
-func NewModel(screenWidth int) Model {
+var (
+	inactiveTabBorder = tabBorderWithBottom("┴", "─", "┴")
+	activeTabBorder   = tabBorderWithBottom("┘", " ", "└")
+	docStyle          = lipgloss.NewStyle().Padding(1, 2, 1, 2)
+	highlightColor    = lipgloss.AdaptiveColor{
+		Light: styles.ColorGreenSpotify,
+		Dark:  styles.ColorGreenSpotify,
+	}
+	inactiveTabStyle = lipgloss.NewStyle().Border(inactiveTabBorder, true).BorderForeground(highlightColor).Padding(0, 1)
+	activeTabStyle   = inactiveTabStyle.Copy().Border(activeTabBorder, true)
+	windowStyle      = lipgloss.NewStyle().
+				BorderForeground(highlightColor).
+				Padding(2, 0).
+				Align(lipgloss.Center).
+				Border(lipgloss.NormalBorder()).
+				UnsetBorderTop()
+)
+
+func NewModel(screenWidth int, screenHeight int) Model {
 	tabs := []string{"Search", "Playlists", "Podcasts", "Artists", "Albums"}
 	tabContent := []string{"Lip Gloss Tab", "Blush Tab", "Eye Shadow Tab", "Mascara Tab", "Foundation Tab"}
-	return Model{tabs: tabs, tabContent: tabContent, screenWidth: screenWidth}
+	return Model{tabs: tabs, tabContent: tabContent, screenWidth: screenWidth, screenHeight: screenHeight}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -39,6 +57,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeTab = max(m.activeTab-1, 0)
 			return m, nil
 		}
+	case tea.WindowSizeMsg:
+		m.screenHeight = msg.Height
+		m.screenWidth = msg.Width
+
+		return m, nil
 	}
 
 	return m, nil
@@ -52,24 +75,6 @@ func tabBorderWithBottom(left, middle, right string) lipgloss.Border {
 	return border
 }
 
-var (
-	inactiveTabBorder = tabBorderWithBottom("┴", "─", "┴")
-	activeTabBorder   = tabBorderWithBottom("┘", " ", "└")
-	docStyle          = lipgloss.NewStyle().Padding(1, 2, 1, 2)
-	highlightColor    = lipgloss.AdaptiveColor{
-		Light: styles.ColorGreenSpotify,
-		Dark:  styles.ColorGreenSpotify,
-	}
-	inactiveTabStyle = lipgloss.NewStyle().Border(inactiveTabBorder, true).BorderForeground(highlightColor).Padding(0, 1)
-	activeTabStyle   = inactiveTabStyle.Copy().Border(activeTabBorder, true)
-	windowStyle      = lipgloss.NewStyle().
-				BorderForeground(highlightColor).
-				Padding(2, 0).
-				Align(lipgloss.Center).
-				Border(lipgloss.NormalBorder()).
-				UnsetBorderTop()
-)
-
 func (m Model) View() string {
 	doc := strings.Builder{}
 
@@ -77,7 +82,7 @@ func (m Model) View() string {
 
 	for i, t := range m.tabs {
 		var style lipgloss.Style
-		isFirst, isLast, isActive := i == 0, i == len(m.tabs)-1, i == m.activeTab
+		isFirst, isActive := i == 0, i == m.activeTab
 		if isActive {
 			style = activeTabStyle.Copy().
 				Background(styles.LipglossColorBackgroundGreenSpotify).
@@ -90,10 +95,6 @@ func (m Model) View() string {
 			border.BottomLeft = "│"
 		} else if isFirst && !isActive {
 			border.BottomLeft = "├"
-		} else if isLast && isActive {
-			border.BottomRight = "│"
-		} else if isLast && !isActive {
-			border.BottomRight = "┤"
 		}
 		style = style.Border(border)
 		renderedTabs = append(renderedTabs, style.Render(t))
@@ -104,12 +105,23 @@ func (m Model) View() string {
 		BorderLeft(false).
 		BorderRight(false)
 	row := lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...)
-	gap := tabGap.Render(strings.Repeat(" ", max(0, m.screenWidth-lipgloss.Width(row)-2)))
-	row = lipgloss.JoinHorizontal(lipgloss.Bottom, row, gap)
+	gap := tabGap.Render(strings.Repeat(" ", m.screenWidth-lipgloss.Width(row)-5))
+	closeBox := lipgloss.NewStyle().
+		Foreground(styles.LipglossColorForegroundGreenSpotify).
+		Render("┐")
+	row = lipgloss.JoinHorizontal(lipgloss.Bottom, row, gap, closeBox)
 	doc.WriteString(row)
 	doc.WriteString("\n")
-	doc.WriteString(windowStyle.Width((lipgloss.Width(row) - windowStyle.GetHorizontalFrameSize())).Render(m.tabContent[m.activeTab]))
-	return docStyle.Render(doc.String())
+
+	contentWidth := lipgloss.Width(row) - windowStyle.GetHorizontalFrameSize()
+	contentHeight := m.screenHeight - lipgloss.Height(row) - 2
+	content := windowStyle.
+		Width(contentWidth).
+		Height(contentHeight).
+		Render(m.tabContent[m.activeTab])
+	doc.WriteString(content)
+
+	return docStyle.Height(m.screenHeight).Render(doc.String())
 }
 
 func max(a, b int) int {

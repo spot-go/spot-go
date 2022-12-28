@@ -13,16 +13,16 @@ type (
 		title        string
 		choices      []string
 		screenWidth  int
-		screenHeigth int
+		screenHeight int
 		cursor       int
 	}
 	Selected string
 )
 
-func NewModel(screenWidth, screenHeigth int, title string, choices []string) Model {
+func NewModel(screenWidth, screenHeight int, title string, choices []string) Model {
 	return Model{
 		screenWidth:  screenWidth,
-		screenHeigth: screenHeigth,
+		screenHeight: screenHeight,
 		title:        title,
 		choices:      choices,
 	}
@@ -35,7 +35,7 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.screenHeigth = msg.Height
+		m.screenHeight = msg.Height
 		m.screenWidth = msg.Width
 		return m, nil
 
@@ -81,7 +81,7 @@ func (m Model) View() string {
 
 	return lipgloss.Place(
 		m.screenWidth,
-		m.screenHeigth,
+		m.screenHeight,
 		lipgloss.Center,
 		lipgloss.Center,
 		fmt.Sprintf("%s\n%s", m.title, body),

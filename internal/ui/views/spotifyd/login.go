@@ -35,12 +35,12 @@ type (
 		isLoggingIn   bool
 		email         string
 		screenWidth   int
-		screenHeigth  int
+		screenHeight  int
 		errorMsg      string
 	}
 )
 
-func NewLoginModel(email string, screenWidth, screenHeigth int) LoginModel {
+func NewLoginModel(email string, screenWidth, screenHeight int) LoginModel {
 	passwordInput := textinput.New()
 	passwordInput.CursorStyle = cursorStyle
 	passwordInput.CharLimit = 128
@@ -54,7 +54,7 @@ func NewLoginModel(email string, screenWidth, screenHeigth int) LoginModel {
 
 	return LoginModel{
 		screenWidth:   screenWidth,
-		screenHeigth:  screenHeigth,
+		screenHeight:  screenHeight,
 		email:         email,
 		passwordInput: passwordInput,
 		spinner:       s,
@@ -68,7 +68,7 @@ func (m LoginModel) Init() tea.Cmd {
 func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.screenHeigth = msg.Height
+		m.screenHeight = msg.Height
 		m.screenWidth = msg.Width
 		return m, nil
 
@@ -169,7 +169,7 @@ func (m LoginModel) View() string {
 
 	return lipgloss.Place(
 		m.screenWidth,
-		m.screenHeigth,
+		m.screenHeight,
 		lipgloss.Center,
 		lipgloss.Center,
 		content,
