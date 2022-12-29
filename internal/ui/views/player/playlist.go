@@ -1,8 +1,6 @@
 package player
 
 import (
-	"math"
-
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spot-go/spot-go/internal/ui/styles"
@@ -35,7 +33,7 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (p playlistModel) View() string {
 	return borderStyle.
 		Height(p.height).
-		Width(int(math.Round(float64(p.width) * 0.1))).
+		Width(int(float64(p.width) * 0.2)).
 		AlignHorizontal(lipgloss.Center).
 		Render("border")
 }

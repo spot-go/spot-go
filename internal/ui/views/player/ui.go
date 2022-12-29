@@ -123,7 +123,7 @@ func (m Model) View() string {
 		BorderLeft(false).
 		BorderRight(false)
 	row := lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...)
-	gap := tabGap.Render(strings.Repeat(" ", m.Width-lipgloss.Width(row)-5))
+	gap := tabGap.Render(strings.Repeat(" ", max(0, m.Width-lipgloss.Width(row)-5)))
 	closeBox := lipgloss.NewStyle().
 		Foreground(styles.LipglossColorForegroundGreenSpotify).
 		Render("┐")
