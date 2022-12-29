@@ -9,37 +9,52 @@ import (
 	"github.com/spot-go/spot-go/internal/ui/views"
 )
 
-type Model struct {
-	views.WindowSize
-	tabs       []string
-	tabContent []string
-	activeTab  int
-}
+type (
+	Model struct {
+		views.WindowSize
+		tabs       []string
+		tabContent []content
+		activeTab  int
+	}
+
+	content interface {
+		tea.Model
+		SetDimension(width, height int)
+	}
+)
 
 var (
 	inactiveTabBorder = tabBorderWithBottom("┴", "─", "┴")
-	activeTabBorder   = tabBorderWithBottom("┘", " ", "└")
-	docStyle          = lipgloss.NewStyle().Padding(1, 2, 1, 2)
+	activeTabBorder   = tabBorderWithBottom("┴", "─", "┴")
+	docStyle          = lipgloss.NewStyle()
 	highlightColor    = lipgloss.AdaptiveColor{
 		Light: styles.ColorGreenSpotify,
 		Dark:  styles.ColorGreenSpotify,
 	}
-	inactiveTabStyle = lipgloss.NewStyle().Border(inactiveTabBorder, true).BorderForeground(highlightColor).Padding(0, 1)
-	activeTabStyle   = inactiveTabStyle.Copy().Border(activeTabBorder, true)
-	windowStyle      = lipgloss.NewStyle().
+	inactiveTabStyle = lipgloss.NewStyle().
+				Border(inactiveTabBorder, true).
 				BorderForeground(highlightColor).
-				Padding(2, 0).
-				Align(lipgloss.Center).
-				Border(lipgloss.NormalBorder()).
-				UnsetBorderTop()
+				Padding(0, 1)
+	activeTabStyle = inactiveTabStyle.Copy().Border(activeTabBorder, true)
+	windowStyle    = lipgloss.NewStyle().
+			BorderForeground(highlightColor).
+			Border(lipgloss.NormalBorder()).
+			UnsetBorderTop()
 )
 
 func NewModel(windowSize views.WindowSize) Model {
 	tabs := []string{"Search", "Playlists", "Podcasts", "Artists", "Albums"}
-	tabContent := []string{"Lip Gloss Tab", "Blush Tab", "Eye Shadow Tab", "Mascara Tab", "Foundation Tab"}
+	tabContent := []content{
+		&playlistModel{},
+		&playlistModel{},
+		&playlistModel{},
+		&playlistModel{},
+		&playlistModel{},
+	}
 	return Model{
 		tabs:       tabs,
 		tabContent: tabContent,
+		activeTab:  1,
 		WindowSize: windowSize,
 	}
 }
@@ -118,10 +133,13 @@ func (m Model) View() string {
 
 	contentWidth := lipgloss.Width(row) - windowStyle.GetHorizontalFrameSize()
 	contentHeight := m.Height - lipgloss.Height(row) - 2
+	activeContent := m.tabContent[m.activeTab]
+	activeContent.SetDimension(contentWidth, contentHeight)
+
 	content := windowStyle.
 		Width(contentWidth).
 		Height(contentHeight).
-		Render(m.tabContent[m.activeTab])
+		Render(activeContent.View())
 	doc.WriteString(content)
 
 	return docStyle.Height(m.Height).Render(doc.String())
