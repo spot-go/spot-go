@@ -31,6 +31,7 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/reflow v0.3.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
+	github.com/sahilm/fuzzy v0.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	golang.org/x/exp/shiny v0.0.0-20221217163422-3c43f8badb15 // indirect
 	golang.org/x/image v0.0.0-20211028202545-6944b10bf410 // indirect

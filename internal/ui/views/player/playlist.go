@@ -3,6 +3,7 @@ package player
 import (
 	"fmt"
 
+	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -29,6 +30,11 @@ type (
 		height  int
 		msg     string
 		state   playlistState
+		list    list.Model
+	}
+
+	item struct {
+		title, desc string
 	}
 
 	playlistState int
@@ -39,6 +45,10 @@ const (
 	statePlaylistError
 	statePlaylistLoaded
 )
+
+func (i item) Title() string       { return i.title }
+func (i item) Description() string { return i.desc }
+func (i item) FilterValue() string { return i.title }
 
 func newPlaylistModel(ctx playerContext) playlistModel {
 	s := spinner.New()
@@ -55,31 +65,52 @@ func (p playlistModel) Init() tea.Cmd {
 }
 
 func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if p.state != statePlaylistInit {
-		return p, nil
-	}
-
 	switch msg := msg.(type) {
 	case error:
-		p.msg = fmt.Sprintf("Fail to load playlists:\n%s", msg.Error())
 		p.state = statePlaylistError
+		p.msg = fmt.Sprintf("Fail to load playlists:\n%s", msg.Error())
 		return p, nil
+
 	case *spotify.SimplePlaylistPage:
 		p.state = statePlaylistLoaded
+
+		var items []list.Item
+		for _, p := range msg.Playlists {
+			items = append(items, item{title: p.Name, desc: p.Description})
+		}
+
+		l := list.New(items, list.NewDefaultDelegate(), 0, 0)
+		l.SetStatusBarItemName("playlist", "playlists")
+		l.SetShowTitle(false)
+		l.SetWidth(p.width)
+		l.SetHeight(p.height)
+
+		p.list = l
+
 		return p, nil
 	}
 
 	var cmd tea.Cmd
-	p.spinner, cmd = p.spinner.Update(msg)
-	p.msg = p.spinner.View()
-	return p, cmd
+	switch p.state {
+	case statePlaylistInit:
+		p.spinner, cmd = p.spinner.Update(msg)
+		p.msg = p.spinner.View()
+		return p, cmd
+
+	case statePlaylistLoaded:
+		p.list, cmd = p.list.Update(msg)
+		p.msg = p.list.View()
+		return p, cmd
+	}
+
+	return p, nil
 }
 
 func (p playlistModel) View() string {
 	return borderStyle.
 		Height(p.height).
-		Width(int(float64(p.width)*0.2)).
-		Align(lipgloss.Center, lipgloss.Center).
+		Width(int(float64(p.width) * 0.2)).
+		AlignHorizontal(lipgloss.Center).
 		Render(p.msg)
 }
 
