@@ -29,7 +29,7 @@ type (
 	Model struct {
 		views.WindowSize
 		ctx            context.Context
-		spotifyClient  *spotify.Client
+		spotifyClient  *libspotify.Client
 		spotifyUser    *libspotify.PrivateUser
 		spotifydPlayer *libspotify.PlayerDevice
 		msg            string
@@ -205,7 +205,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case libspotify.PlayerDevice:
 		m.state = stateSpotifydLogged
 		m.spotifydPlayer = &msg
-		mainModel := player.NewModel(m.WindowSize)
+		mainModel := player.NewModel(
+			m.WindowSize,
+			m.spotifyClient,
+			m.spotifyUser,
+			m.spotifydPlayer,
+		)
 		m.player = &mainModel
 		return m, m.player.Init()
 

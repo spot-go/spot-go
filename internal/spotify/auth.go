@@ -21,11 +21,8 @@ import (
 )
 
 type (
-	Client struct {
-		*spotify.Client
-	}
 	ClientResponse struct {
-		Client *Client
+		Client *spotify.Client
 		Err    error
 	}
 )
@@ -127,7 +124,7 @@ func Login(ctx context.Context) ClientResponse {
 			return ClientResponse{nil, fmt.Errorf("fail to save config: %+v", err)}
 		}
 	}
-	return ClientResponse{&Client{c}, nil}
+	return ClientResponse{c, nil}
 }
 
 func completeAuth(w http.ResponseWriter, r *http.Request) {
@@ -160,5 +157,5 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 
 	client := spotify.New(auth.Client(r.Context(), t))
 	fmt.Fprint(w, authSuccessPage)
-	clientResp <- ClientResponse{&Client{client}, nil}
+	clientResp <- ClientResponse{client, nil}
 }
