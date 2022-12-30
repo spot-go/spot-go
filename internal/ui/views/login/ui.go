@@ -207,6 +207,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.spotifydPlayer = &msg
 		mainModel := player.NewModel(
 			m.WindowSize,
+			m.ctx,
 			m.spotifyClient,
 			m.spotifyUser,
 			m.spotifydPlayer,

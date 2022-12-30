@@ -1,6 +1,7 @@
 package player
 
 import (
+	"context"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -11,15 +12,17 @@ import (
 )
 
 type (
-	context struct {
+	playerContext struct {
+		ctx            context.Context
 		spotifyClient  *libspotify.Client
 		spotifyUser    *libspotify.PrivateUser
 		spotifydPlayer *libspotify.PlayerDevice
 	}
 
 	Model struct {
-		context
+		playerContext
 		views.WindowSize
+
 		tabs          []string
 		tabContent    []content
 		activeContent tea.Model
@@ -54,11 +57,13 @@ var (
 
 func NewModel(
 	windowSize views.WindowSize,
+	ctx context.Context,
 	spotifyClient *libspotify.Client,
 	spotifyUser *libspotify.PrivateUser,
 	spotifydPlayer *libspotify.PlayerDevice,
 ) Model {
-	ctx := context{
+	playerContext := playerContext{
+		ctx:            ctx,
 		spotifyClient:  spotifyClient,
 		spotifyUser:    spotifyUser,
 		spotifydPlayer: spotifydPlayer,
@@ -66,17 +71,17 @@ func NewModel(
 	tabs := []string{"Search", "Playlists", "Podcasts", "Artists", "Albums"}
 	tabContent := []content{
 		playlistModel{},
-		newPlaylistModel(ctx),
+		newPlaylistModel(playerContext),
 		playlistModel{},
 		playlistModel{},
 		playlistModel{},
 	}
 	return Model{
-		context:    ctx,
-		tabs:       tabs,
-		tabContent: tabContent,
-		activeTab:  1,
-		WindowSize: windowSize,
+		playerContext: playerContext,
+		tabs:          tabs,
+		tabContent:    tabContent,
+		activeTab:     1,
+		WindowSize:    windowSize,
 	}
 }
 

@@ -40,6 +40,7 @@ var (
 		spotifyauth.ScopeUserReadPlaybackState,
 		spotifyauth.ScopeUserModifyPlaybackState,
 		spotifyauth.ScopeUserReadCurrentlyPlaying,
+		spotifyauth.ScopePlaylistReadPrivate,
 	}
 	redirectURI = fmt.Sprintf("http://localhost%s/callback", localPort)
 	auth        = spotifyauth.New(
