@@ -96,12 +96,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch keypress := msg.String(); keypress {
 		case "q", "ctrl+c":
 			return m, tea.Quit
-		case "right", "tab":
+		case "right":
 			m.activeTab = min(m.activeTab+1, len(m.tabs)-1)
-		case "left", "shift+tab":
+			return m, activeContent.Init()
+		case "left":
 			m.activeTab = max(m.activeTab-1, 0)
+			return m, activeContent.Init()
 		}
-		return m, activeContent.Init()
+		var cmd tea.Cmd
+		m.activeContent, cmd = m.activeContent.Update(msg)
+		return m, cmd
 
 	case tea.WindowSizeMsg:
 		m.WindowSizeMsg = msg

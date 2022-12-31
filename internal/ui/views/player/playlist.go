@@ -25,12 +25,13 @@ var (
 type (
 	playlistModel struct {
 		playerContext
-		spinner spinner.Model
-		width   int
-		height  int
-		msg     string
-		state   playlistState
-		list    list.Model
+		spinner         spinner.Model
+		width           int
+		height          int
+		alignHorizontal lipgloss.Position
+		msg             string
+		state           playlistState
+		list            *list.Model
 	}
 
 	item struct {
@@ -55,8 +56,9 @@ func newPlaylistModel(ctx playerContext) playlistModel {
 	s.Spinner = spinner.Dot
 
 	return playlistModel{
-		playerContext: ctx,
-		spinner:       s,
+		playerContext:   ctx,
+		spinner:         s,
+		alignHorizontal: lipgloss.Center,
 	}
 }
 
@@ -79,13 +81,15 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			items = append(items, item{title: p.Name, desc: p.Description})
 		}
 
-		l := list.New(items, list.NewDefaultDelegate(), 0, 0)
+		d := list.NewDefaultDelegate()
+		d.ShowDescription = false
+		l := list.New(items, d, 0, 0)
 		l.SetStatusBarItemName("playlist", "playlists")
 		l.SetShowTitle(false)
-		l.SetWidth(p.width)
-		l.SetHeight(p.height)
+		l.SetShowHelp(false)
+		l.DisableQuitKeybindings()
 
-		p.list = l
+		p.list = &l
 
 		return p, nil
 	}
@@ -98,8 +102,17 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return p, cmd
 
 	case statePlaylistLoaded:
-		p.list, cmd = p.list.Update(msg)
-		p.msg = p.list.View()
+		list, cmd := p.list.Update(msg)
+		p.list = &list
+
+		helpMsg := list.Help.Styles.ShortKey.Inline(true).Render("/") + " " +
+			list.Help.Styles.ShortDesc.Inline(true).Render("filter")
+		p.msg = p.list.View() + "\n\n" +
+			lipgloss.NewStyle().
+				PaddingLeft(6).
+				Render(helpMsg)
+
+		p.alignHorizontal = lipgloss.Left
 		return p, cmd
 	}
 
@@ -107,10 +120,15 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (p playlistModel) View() string {
+	width := int(float64(p.width) * 0.2)
+	if p.list != nil {
+		p.list.SetWidth(width)
+		p.list.SetHeight(p.height - 2)
+	}
 	return borderStyle.
 		Height(p.height).
-		Width(int(float64(p.width) * 0.2)).
-		AlignHorizontal(lipgloss.Center).
+		Width(width).
+		AlignHorizontal(p.alignHorizontal).
 		Render(p.msg)
 }
 
