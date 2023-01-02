@@ -105,13 +105,6 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		list, cmd := p.list.Update(msg)
 		p.list = &list
 
-		helpMsg := list.Help.Styles.ShortKey.Inline(true).Render("/") + " " +
-			list.Help.Styles.ShortDesc.Inline(true).Render("filter")
-		p.msg = p.list.View() + "\n\n" +
-			lipgloss.NewStyle().
-				PaddingLeft(6).
-				Render(helpMsg)
-
 		p.alignHorizontal = lipgloss.Left
 		return p, cmd
 	}
@@ -122,8 +115,13 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (p playlistModel) View() string {
 	width := int(float64(p.width) * 0.2)
 	if p.list != nil {
-		p.list.SetWidth(width)
-		p.list.SetHeight(p.height - 2)
+		p.list.SetSize(width, p.height-2)
+		helpMsg := p.list.Help.Styles.ShortKey.Inline(true).Render("/") + " " +
+			p.list.Help.Styles.ShortDesc.Inline(true).Render("filter")
+		p.msg = p.list.View() + "\n\n" +
+			lipgloss.NewStyle().
+				PaddingLeft(6).
+				Render(helpMsg)
 	}
 	return borderStyle.
 		Height(p.height).
