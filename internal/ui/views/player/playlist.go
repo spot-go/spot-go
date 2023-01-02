@@ -82,8 +82,11 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		d := list.NewDefaultDelegate()
+		d.Styles.SelectedTitle.Foreground(highlightColor).BorderForeground(highlightColor)
 		d.ShowDescription = false
 		l := list.New(items, d, 0, 0)
+		l.FilterInput.CursorStyle = lipgloss.NewStyle().
+			Foreground(highlightColor)
 		l.SetStatusBarItemName("playlist", "playlists")
 		l.SetShowTitle(false)
 		l.SetShowHelp(false)
