@@ -29,7 +29,7 @@ type (
 	Model struct {
 		views.WindowSize
 		ctx            context.Context
-		spotifyClient  *libspotify.Client
+		spotifyClient  *spotify.Client
 		spotifyUser    *libspotify.PrivateUser
 		spotifydPlayer *libspotify.PlayerDevice
 		msg            string

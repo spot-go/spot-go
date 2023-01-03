@@ -73,11 +73,11 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		p.msg = fmt.Sprintf("Fail to load playlists:\n%s", msg.Error())
 		return p, nil
 
-	case *spotify.SimplePlaylistPage:
+	case []spotify.SimplePlaylist:
 		p.state = statePlaylistLoaded
 
 		var items []list.Item
-		for _, p := range msg.Playlists {
+		for _, p := range msg {
 			items = append(items, item{title: p.Name, desc: p.Description})
 		}
 
@@ -142,7 +142,7 @@ func (p playlistModel) SetDimension(width, height int) content {
 }
 
 func (p playlistModel) playlists() tea.Msg {
-	playlists, err := p.spotifyClient.CurrentUsersPlaylists(
+	playlists, err := p.spotifyClient.AllCurrentUsersPlaylists(
 		p.ctx,
 	)
 	if err != nil {

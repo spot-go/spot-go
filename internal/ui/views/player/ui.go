@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/styles"
 	"github.com/spot-go/spot-go/internal/ui/views"
 	libspotify "github.com/zmb3/spotify/v2"
@@ -14,7 +15,7 @@ import (
 type (
 	playerContext struct {
 		ctx            context.Context
-		spotifyClient  *libspotify.Client
+		spotifyClient  *spotify.Client
 		spotifyUser    *libspotify.PrivateUser
 		spotifydPlayer *libspotify.PlayerDevice
 	}
@@ -54,7 +55,7 @@ var (
 func NewModel(
 	windowSize views.WindowSize,
 	ctx context.Context,
-	spotifyClient *libspotify.Client,
+	spotifyClient *spotify.Client,
 	spotifyUser *libspotify.PrivateUser,
 	spotifydPlayer *libspotify.PlayerDevice,
 ) Model {

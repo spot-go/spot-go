@@ -16,13 +16,12 @@ import (
 	"github.com/spot-go/spot-go/internal/config"
 	spotifyauth "github.com/zmb3/spotify/v2/auth"
 
-	"github.com/zmb3/spotify/v2"
 	"golang.org/x/oauth2"
 )
 
 type (
 	ClientResponse struct {
-		Client *spotify.Client
+		Client *Client
 		Err    error
 	}
 )
@@ -106,7 +105,7 @@ func Login(ctx context.Context) ClientResponse {
 		return ClientResponse{nil, ErrNeedsAuth}
 	}
 	authSettings := config.AppSettings.Auth
-	c := spotify.New(auth.Client(ctx, authSettings.Token))
+	c := NewClient(auth.Client(ctx, authSettings.Token))
 
 	// PKCE allows only one refresh per access_token
 	// The code below saves the new token (thus the new access token) after a refresh
@@ -156,7 +155,7 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("fail to save config: %+v\n", err)
 	}
 
-	client := spotify.New(auth.Client(r.Context(), t))
+	client := NewClient(auth.Client(r.Context(), t))
 	fmt.Fprint(w, authSuccessPage)
 	clientResp <- ClientResponse{client, nil}
 }
