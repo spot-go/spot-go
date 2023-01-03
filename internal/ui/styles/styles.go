@@ -7,6 +7,14 @@ const (
 
 	LipglossColorForegroundGreenSpotify = lipgloss.Color(ColorGreenSpotify)
 	LipglossColorBackgroundGreenSpotify = lipgloss.Color(lipgloss.Color("#CEFAD0"))
-	LipglossColorRed                    = lipgloss.Color("#FF0000")
-	LipglossColorBlack                  = lipgloss.Color("#000000")
+
+	LipglossColorRed   = lipgloss.Color("#FF0000")
+	LipglossColorBlack = lipgloss.Color("#000000")
+)
+
+var (
+	LipglossAdaptiveColorGreenSpotify = lipgloss.AdaptiveColor{
+		Light: ColorGreenSpotify,
+		Dark:  ColorGreenSpotify,
+	}
 )

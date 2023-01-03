@@ -40,17 +40,13 @@ var (
 	inactiveTabBorder = tabBorderWithBottom("┴", "─", "┴")
 	activeTabBorder   = tabBorderWithBottom("┴", "─", "┴")
 	docStyle          = lipgloss.NewStyle()
-	highlightColor    = lipgloss.AdaptiveColor{
-		Light: styles.ColorGreenSpotify,
-		Dark:  styles.ColorGreenSpotify,
-	}
-	inactiveTabStyle = lipgloss.NewStyle().
+	inactiveTabStyle  = lipgloss.NewStyle().
 				Border(inactiveTabBorder, true).
-				BorderForeground(highlightColor).
+				BorderForeground(styles.LipglossAdaptiveColorGreenSpotify).
 				Padding(0, 1)
 	activeTabStyle = inactiveTabStyle.Copy().Border(activeTabBorder, true)
 	windowStyle    = lipgloss.NewStyle().
-			BorderForeground(highlightColor).
+			BorderForeground(styles.LipglossAdaptiveColorGreenSpotify).
 			Border(lipgloss.NormalBorder()).
 			UnsetBorderTop()
 )
