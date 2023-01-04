@@ -78,7 +78,11 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		var items []list.Item
 		for _, p := range msg {
-			items = append(items, item{title: p.Name, desc: p.Description})
+			title := p.Name
+			if title == "" {
+				title = string(p.ID)
+			}
+			items = append(items, item{title: title, desc: p.Description})
 		}
 
 		d := list.NewDefaultDelegate()
