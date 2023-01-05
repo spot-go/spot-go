@@ -139,8 +139,9 @@ func (p playlistModel) leftView() string {
 	width := int(float64(p.width) * 0.2)
 	if p.list != nil {
 		p.list.SetSize(width, p.height-3)
-		helpMsg := p.list.Help.Styles.ShortKey.Inline(true).Render("/") + " " +
-			p.list.Help.Styles.ShortDesc.Inline(true).Render("filter")
+		helpStyles := p.list.Help.Styles
+		helpMsg := helpStyles.ShortKey.Inline(true).Render("/") + " " +
+			helpStyles.ShortDesc.Inline(true).Render("filter")
 		p.msg = p.list.View() + "\n\n" +
 			lipgloss.NewStyle().
 				PaddingLeft(6).
