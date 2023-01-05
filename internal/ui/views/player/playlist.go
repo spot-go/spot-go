@@ -28,6 +28,7 @@ type (
 		spinner         spinner.Model
 		width           int
 		height          int
+		leftFocus       bool
 		alignHorizontal lipgloss.Position
 		msg             string
 		state           playlistState
@@ -42,7 +43,7 @@ type (
 )
 
 const (
-	statePlaylistInit = iota
+	statePlaylistInit = playlistState(iota)
 	statePlaylistError
 	statePlaylistLoaded
 )
@@ -59,6 +60,7 @@ func newPlaylistModel(ctx playerContext) playlistModel {
 		playerContext:   ctx,
 		spinner:         s,
 		alignHorizontal: lipgloss.Center,
+		leftFocus:       true,
 	}
 }
 
@@ -68,6 +70,12 @@ func (p playlistModel) Init() tea.Cmd {
 
 func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch keypress := msg.String(); keypress {
+		case "tab":
+			p.leftFocus = !p.leftFocus
+		}
+
 	case error:
 		p.state = statePlaylistError
 		p.msg = fmt.Sprintf("Fail to load playlists:\n%s", msg.Error())
@@ -111,17 +119,23 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return p, cmd
 
 	case statePlaylistLoaded:
-		list, cmd := p.list.Update(msg)
-		p.list = &list
+		if p.leftFocus {
+			list, cmd := p.list.Update(msg)
+			p.list = &list
 
-		p.alignHorizontal = lipgloss.Left
-		return p, cmd
+			p.alignHorizontal = lipgloss.Left
+			return p, cmd
+		}
 	}
 
 	return p, nil
 }
 
 func (p playlistModel) View() string {
+	return p.leftView()
+}
+
+func (p playlistModel) leftView() string {
 	width := int(float64(p.width) * 0.2)
 	if p.list != nil {
 		p.list.SetSize(width, p.height-3)
