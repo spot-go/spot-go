@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spot-go/spot-go/internal/program"
 	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/styles"
 	"github.com/spot-go/spot-go/internal/ui/views"
@@ -25,15 +26,15 @@ type (
 		views.WindowSize
 
 		tabs          []string
-		tabContent    []content
+		tabContent    []tea.Model
 		activeContent tea.Model
 		activeTab     int
 		initialized   bool
 	}
 
-	content interface {
-		tea.Model
-		SetDimension(width, height int) content
+	contentDimension struct {
+		width  int
+		height int
 	}
 )
 
@@ -66,7 +67,7 @@ func NewModel(
 		spotifydPlayer: spotifydPlayer,
 	}
 	tabs := []string{"Search", "Playlists", "Podcasts", "Artists", "Albums"}
-	tabContent := []content{
+	tabContent := []tea.Model{
 		playlistModel{},
 		newPlaylistModel(playerContext),
 		playlistModel{},
@@ -91,7 +92,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch keypress := msg.String(); keypress {
-		case "q", "ctrl+c":
+		case "ctrl+q":
 			return m, tea.Quit
 		case "right":
 			m.activeTab = min(m.activeTab+1, len(m.tabs)-1)
@@ -170,11 +171,15 @@ func (m Model) View() string {
 	contentWidth := lipgloss.Width(row) - windowStyle.GetHorizontalFrameSize()
 	contentHeight := m.Height - lipgloss.Height(row) - 2
 
+	go program.Instance.Send(contentDimension{
+		width:  contentWidth,
+		height: contentHeight,
+	})
+
 	activeContent := m.tabContent[m.activeTab]
 	if m.activeContent != nil {
-		activeContent = m.activeContent.(content)
+		activeContent = m.activeContent
 	}
-	activeContent = activeContent.SetDimension(contentWidth, contentHeight)
 
 	content := windowStyle.
 		Width(contentWidth).

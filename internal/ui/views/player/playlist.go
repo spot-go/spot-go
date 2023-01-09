@@ -76,6 +76,10 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.leftFocus = !p.leftFocus
 		}
 
+	case contentDimension:
+		p.width = msg.width
+		p.height = msg.height
+
 	case error:
 		p.state = statePlaylistError
 		p.msg = fmt.Sprintf("Fail to load playlists:\n%s", msg.Error())
@@ -132,7 +136,7 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (p playlistModel) View() string {
-	return p.leftView()
+	return lipgloss.JoinHorizontal(lipgloss.Top, p.leftView(), "Teste")
 }
 
 func (p playlistModel) leftView() string {
@@ -152,12 +156,6 @@ func (p playlistModel) leftView() string {
 		Width(width).
 		AlignHorizontal(p.alignHorizontal).
 		Render(p.msg)
-}
-
-func (p playlistModel) SetDimension(width, height int) content {
-	p.width = width
-	p.height = height
-	return p
 }
 
 func (p playlistModel) playlists() tea.Msg {
