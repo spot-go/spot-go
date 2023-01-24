@@ -24,12 +24,12 @@ type (
 	Model struct {
 		playerContext
 		views.WindowSize
+		contentDimension contentDimension
 
 		tabs          []string
 		tabContent    []tea.Model
 		activeContent tea.Model
 		activeTab     int
-		initialized   bool
 	}
 
 	contentDimension struct {
@@ -52,6 +52,10 @@ var (
 			Border(lipgloss.NormalBorder()).
 			UnsetBorderTop()
 )
+
+func (c contentDimension) isReady() bool {
+	return c.height > 0 && c.width > 0
+}
 
 func NewModel(
 	windowSize views.WindowSize,
@@ -109,12 +113,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.WindowSizeMsg = msg
 
 		return m, nil
-	}
 
-	if !m.initialized {
-		m.initialized = true
-		m.activeContent = activeContent
-		return m, m.activeContent.Init()
+	case contentDimension:
+		m.contentDimension = msg
+		m.activeContent, _ = activeContent.Update(msg)
+		return m, activeContent.Init()
 	}
 
 	var cmd tea.Cmd
@@ -171,10 +174,13 @@ func (m Model) View() string {
 	contentWidth := lipgloss.Width(row) - windowStyle.GetHorizontalFrameSize()
 	contentHeight := m.Height - lipgloss.Height(row) - 2
 
-	go program.Instance.Send(contentDimension{
+	cd := contentDimension{
 		width:  contentWidth,
 		height: contentHeight,
-	})
+	}
+	if m.contentDimension != cd || !cd.isReady() {
+		go program.Instance.Send(cd)
+	}
 
 	activeContent := m.tabContent[m.activeTab]
 	if m.activeContent != nil {
