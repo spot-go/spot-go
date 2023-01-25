@@ -136,7 +136,17 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (p playlistModel) View() string {
-	return lipgloss.JoinHorizontal(lipgloss.Top, p.leftView(), "Teste")
+	return lipgloss.JoinHorizontal(lipgloss.Top, p.leftView(), p.rightView())
+}
+
+func (p playlistModel) rightView() string {
+	if p.list != nil {
+		i := p.list.SelectedItem().(item)
+		return lipgloss.NewStyle().
+			AlignVertical(lipgloss.Right).
+			Render(i.title)
+	}
+	return ""
 }
 
 func (p playlistModel) leftView() string {
