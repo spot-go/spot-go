@@ -140,7 +140,7 @@ func (p playlistModel) View() string {
 }
 
 func (p playlistModel) rightView() string {
-	width := int(float64(p.width) * 0.8)
+	width := int(float64(p.width) * 0.75)
 	if p.list != nil {
 		i := p.list.SelectedItem().(item)
 		return lipgloss.NewStyle().
