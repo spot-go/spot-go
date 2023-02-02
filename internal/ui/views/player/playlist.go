@@ -109,6 +109,7 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		l.SetShowTitle(false)
 		l.SetShowHelp(false)
 		l.DisableQuitKeybindings()
+		p.alignHorizontal = lipgloss.Left
 
 		p.list = &l
 
@@ -127,7 +128,6 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			list, cmd := p.list.Update(msg)
 			p.list = &list
 
-			p.alignHorizontal = lipgloss.Left
 			return p, cmd
 		}
 	}
