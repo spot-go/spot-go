@@ -3,6 +3,8 @@ package player
 import (
 	"fmt"
 
+	"github.com/spot-go/spot-go/internal/utf8"
+
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -143,10 +145,12 @@ func (p playlistModel) rightView() string {
 	width := int(float64(p.width) * 0.75)
 	if p.list != nil {
 		i := p.list.SelectedItem().(item)
-		return lipgloss.NewStyle().
+		title := utf8.Normalize(i.title)
+		s := lipgloss.NewStyle().
 			Width(width).
 			AlignHorizontal(lipgloss.Center).
-			Render(i.title)
+			Render(title)
+		return s
 	}
 	return ""
 }
