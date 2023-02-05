@@ -1,37 +1,52 @@
 package main
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gocolly/colly"
 )
 
-func main() {
-	c := colly.NewCollector()
+func extract(url string) {
+	c := colly.NewCollector(colly.MaxBodySize(0))
 	c.SetRequestTimeout(1 * time.Minute)
 
 	c.OnHTML("tbody", func(e *colly.HTMLElement) {
+		category := ""
+		println("var emojis = map[string]Emoji{")
+
 		e.ForEach("tr", func(i int, t *colly.HTMLElement) {
 			v, _ := t.DOM.Children().First().Attr("class")
 			if v == "mediumhead" {
-				println(t.ChildText(".mediumhead"))
+				category = t.ChildText(".mediumhead")
 			}
 			if v == "rchars" {
-				println(t.ChildText(".code"))
+				code := t.ChildText(".code")
+				code = strings.ReplaceAll(code, "U+", "")
+				if code != "" {
+					name := t.ChildText(".name")
+					fmt.Printf(
+						"\t\"%s\": {\"%s\", \"%s\", \"%s\"},\n",
+						code,
+						category,
+						code,
+						name,
+					)
+				}
 			}
-			// t.ForEach(".mediumhead", func(i int, m *colly.HTMLElement) {
-			// 	println(m.Text)
-			// })
-			// println(h.Text)
 		})
-		// for _, n := range e.F {
-		// 	fmt.Printf("n. %+v\n", n.Data)
-		// }
+		println("}")
 	})
 
 	c.OnError(func(r *colly.Response, err error) {
 		panic(err)
 	})
 
-	c.Visit("https://unicode.org/emoji/charts/full-emoji-list.html")
+	c.Visit(url)
+}
+
+func main() {
+	// extract("https://unicode.org/emoji/charts/full-emoji-list.html")
+	extract("https://unicode.org/emoji/charts/full-emoji-modifiers.html")
 }
