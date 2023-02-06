@@ -1,21 +1,30 @@
 package utf8
 
 import (
+	"fmt"
+	"log"
+	"strings"
 	"unicode"
 )
 
-func isValid(r rune) bool {
+func runeToHex(r rune) string {
+	return strings.ToUpper(fmt.Sprintf("%x", r))
+}
+
+func isValid(runes []rune, pos int) bool {
+	r := runes[pos]
+	log.Printf("r %+v\n", r)
 	return unicode.IsPrint(r) &&
 		(isValidRange(r) ||
 			isValidEmoji(r) ||
-			isValidSkinTones(r) ||
-			isValidSmiley(r))
+			isSkinTonesEmoji(runes, pos))
 }
 
 func Normalize(s string) string {
 	normalized := make([]rune, 0)
-	for _, r := range s {
-		if isValid(r) {
+	runes := []rune(s)
+	for pos, r := range runes {
+		if isValid(runes, pos) {
 			normalized = append(normalized, r)
 		}
 	}

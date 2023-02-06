@@ -14,6 +14,7 @@ func extract(url string) {
 
 	c.OnHTML("tbody", func(e *colly.HTMLElement) {
 		category := ""
+		maxCodeSize := 0
 		println("var emojis = map[string]Emoji{")
 
 		e.ForEach("tr", func(i int, t *colly.HTMLElement) {
@@ -33,10 +34,16 @@ func extract(url string) {
 						code,
 						name,
 					)
+
+					size := len(strings.Split(code, " "))
+					if size > maxCodeSize {
+						maxCodeSize = size
+					}
 				}
 			}
 		})
 		println("}")
+		println("var maxCodeSize = ", maxCodeSize)
 	})
 
 	c.OnError(func(r *colly.Response, err error) {
@@ -47,6 +54,6 @@ func extract(url string) {
 }
 
 func main() {
-	// extract("https://unicode.org/emoji/charts/full-emoji-list.html")
+	extract("https://unicode.org/emoji/charts/full-emoji-list.html")
 	extract("https://unicode.org/emoji/charts/full-emoji-modifiers.html")
 }
