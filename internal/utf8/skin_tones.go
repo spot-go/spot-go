@@ -5,29 +5,31 @@ import (
 	"log"
 )
 
-func isSkinTonesEmoji(runes []rune, pos int) bool {
+func isSkinTonesEmoji(runes []rune, pos int) (bool, int) {
 	endPos := len(runes) - 1
-	log.Printf("pos %+v\n", pos)
-	log.Printf("endPos %+v\n", endPos)
 	if endPos-pos <= 1 {
-		return false
+		return false, 0
 	}
 
 	key := runeToHex(runes[pos])
 	keySize := 1
-	log.Printf("endPos %+v\n", endPos)
 	for i := pos + 1; i < endPos; i++ {
-		log.Printf("i %+v\n", i)
 		key = fmt.Sprint(key, " ", runeToHex(runes[i]))
 		log.Printf("key %+v\n", key)
 
 		keySize++
+		_, found := skinTonesEmojis[key]
+		if found {
+			log.Printf("found %+v\n", found)
+			return true, keySize
+		}
+
 		if keySize > skinTonesMaxCodeSize {
-			return false
+			return false, 0
 		}
 	}
 
-	return true
+	return false, 0
 }
 
 var skinTonesMaxCodeSize = 10
