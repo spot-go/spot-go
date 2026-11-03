@@ -6,12 +6,6 @@ type Emoji struct {
 	Name     string
 }
 
-func isValidEmoji(r rune) bool {
-	// _, ok := emojis[r]
-	// return ok
-	return false
-}
-
 var emojiMaxCodeSize = 8
 var emojis = map[string]Emoji{
 	"1F600":                       {"face-smiling", "1F600", "grinning face"},

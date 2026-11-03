@@ -1,37 +1,5 @@
 package utf8
 
-import (
-	"fmt"
-	"log"
-)
-
-func isSkinTonesEmoji(runes []rune, pos int) (bool, int) {
-	endPos := len(runes) - 1
-	if endPos-pos <= 1 {
-		return false, 0
-	}
-
-	key := runeToHex(runes[pos])
-	keySize := 1
-	for i := pos + 1; i < endPos; i++ {
-		key = fmt.Sprint(key, " ", runeToHex(runes[i]))
-		log.Printf("key %+v\n", key)
-
-		keySize++
-		_, found := skinTonesEmojis[key]
-		if found {
-			log.Printf("found %+v\n", found)
-			return true, keySize
-		}
-
-		if keySize > skinTonesMaxCodeSize {
-			return false, 0
-		}
-	}
-
-	return false, 0
-}
-
 var skinTonesMaxCodeSize = 10
 var skinTonesEmojis = map[string]Emoji{
 	"1F44B 1F3FB":                             {"hand-fingers-open", "1F44B 1F3FB", "waving hand: light skin tone"},

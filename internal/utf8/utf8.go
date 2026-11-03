@@ -2,35 +2,54 @@ package utf8
 
 import (
 	"fmt"
-	"strings"
 	"unicode"
 )
 
 func runeToHex(r rune) string {
-	return strings.ToUpper(fmt.Sprintf("%x", r))
+	return fmt.Sprintf("%04X", r)
 }
 
-func consumeRunes(runes []rune, pos int) (*rune, int) {
-	r := runes[pos]
-	if !unicode.IsPrint(r) {
-		return nil, 0
+func longestSequence(runes []rune, pos int, table map[string]Emoji, maxSize int) int {
+	longest := 0
+	key := ""
+	for size := 1; size <= maxSize && pos+size <= len(runes); size++ {
+		if size > 1 {
+			key += " "
+		}
+		key += runeToHex(runes[pos+size-1])
+		if _, found := table[key]; found {
+			longest = size
+		}
 	}
-	if isValidRange(r) {
-		return &r, 0
+	return longest
+}
+
+func consumeRunes(runes []rune, pos int) int {
+	size := longestSequence(runes, pos, emojis, emojiMaxCodeSize)
+	if skinTonesSize := longestSequence(runes, pos, skinTonesEmojis, skinTonesMaxCodeSize); skinTonesSize > size {
+		size = skinTonesSize
 	}
-	return unicode.IsPrint(r) &&
-		(isValidRange(r) ||
-			isValidEmoji(r) ||
-			isSkinTonesEmoji(runes, pos))
+	if size > 0 {
+		return size
+	}
+
+	if r := runes[pos]; unicode.IsPrint(r) && isValidRange(r) {
+		return 1
+	}
+	return 0
 }
 
 func Normalize(s string) string {
-	normalized := make([]rune, 0)
 	runes := []rune(s)
-	for pos, r := range runes {
-		if consumed := consumeRunes(runes, pos); consumed > 0 {
-			normalized = append(normalized, r)
+	normalized := make([]rune, 0, len(runes))
+	for pos := 0; pos < len(runes); {
+		size := consumeRunes(runes, pos)
+		if size == 0 {
+			pos++
+			continue
 		}
+		normalized = append(normalized, runes[pos:pos+size]...)
+		pos += size
 	}
 	return string(normalized)
 }
