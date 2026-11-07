@@ -514,3 +514,24 @@ func TestQuitKeys(t *testing.T) {
 		})
 	}
 }
+
+func TestFrameReachesTheRightEdge(t *testing.T) {
+	h := newHarness(t, 1, 24)
+	minWidth := lipgloss.Width(h.player().tabRow())
+	if minWidth > 80 {
+		t.Fatalf("the tab bar needs %d columns, want it to fit in 80", minWidth)
+	}
+
+	for width := minWidth; width <= 200; width++ {
+		h.send(tea.WindowSizeMsg{Width: width, Height: 24})
+		v := h.view()
+		if strings.Contains(v, tooSmallWindow) {
+			t.Fatalf("%dx24 shows the too small message", width)
+		}
+		for i, line := range strings.Split(v, "\n") {
+			if got := lipgloss.Width(line); got != width {
+				t.Fatalf("%dx24: line %d is %d columns wide, want %d:\n%s", width, i, got, width, v)
+			}
+		}
+	}
+}

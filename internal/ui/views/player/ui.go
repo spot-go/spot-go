@@ -183,10 +183,11 @@ func (m Model) tabRow() string {
 		BorderLeft(false).
 		BorderRight(false)
 	row := lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...)
-	gap := tabGap.Render(strings.Repeat(" ", max(0, m.Width-lipgloss.Width(row)-5)))
 	closeBox := lipgloss.NewStyle().
 		Foreground(styles.LipglossColorForegroundGreenSpotify).
 		Render("┐")
+	space := m.Width - lipgloss.Width(row) - lipgloss.Width(tabGap.Render("")) - lipgloss.Width(closeBox)
+	gap := tabGap.Render(strings.Repeat(" ", max(0, space)))
 	return lipgloss.JoinHorizontal(lipgloss.Bottom, row, gap, closeBox)
 }
 
