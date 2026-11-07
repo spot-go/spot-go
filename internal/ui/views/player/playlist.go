@@ -42,6 +42,12 @@ type (
 	}
 
 	playlistState int
+
+	playlistsLoaded []spotify.SimplePlaylist
+
+	playlistsLoadFailed struct {
+		err error
+	}
 )
 
 const (
@@ -75,19 +81,29 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch keypress := msg.String(); keypress {
 		case "tab":
-			p.leftFocus = !p.leftFocus
+			if !p.capturesInput() {
+				p.leftFocus = !p.leftFocus
+			}
+		case "r":
+			if p.state == statePlaylistError {
+				p.state = statePlaylistInit
+				p.msg = p.spinner.View()
+				return p, p.Init()
+			}
 		}
 
 	case contentDimension:
 		p.width = msg.width
 		p.height = msg.height
 
-	case error:
+	case playlistsLoadFailed:
 		p.state = statePlaylistError
-		p.msg = fmt.Sprintf("Fail to load playlists:\n%s", msg.Error())
+		p.msg = fmt.Sprintf("Fail to load playlists:\n%s\n\nPress r to try again.", msg.err.Error())
+		p.list = nil
+		p.alignHorizontal = lipgloss.Center
 		return p, nil
 
-	case []spotify.SimplePlaylist:
+	case playlistsLoaded:
 		p.state = statePlaylistLoaded
 
 		var items []list.Item
@@ -126,15 +142,19 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return p, cmd
 
 	case statePlaylistLoaded:
-		if p.leftFocus {
-			list, cmd := p.list.Update(msg)
-			p.list = &list
-
-			return p, cmd
+		if _, isKey := msg.(tea.KeyMsg); isKey && !p.leftFocus {
+			return p, nil
 		}
+		list, cmd := p.list.Update(msg)
+		p.list = &list
+		return p, cmd
 	}
 
 	return p, nil
+}
+
+func (p playlistModel) capturesInput() bool {
+	return p.list != nil && p.list.FilterState() == list.Filtering
 }
 
 func (p playlistModel) View() string {
@@ -144,7 +164,10 @@ func (p playlistModel) View() string {
 func (p playlistModel) rightView() string {
 	width := int(float64(p.width) * 0.75)
 	if p.list != nil {
-		i := p.list.SelectedItem().(item)
+		i, ok := p.list.SelectedItem().(item)
+		if !ok {
+			return ""
+		}
 		title := utf8.Normalize(i.title)
 		s := lipgloss.NewStyle().
 			Width(width).
@@ -169,6 +192,7 @@ func (p playlistModel) leftView() string {
 	}
 	return borderStyle.
 		Height(p.height).
+		MaxHeight(p.height).
 		Width(width).
 		AlignHorizontal(p.alignHorizontal).
 		Render(p.msg)
@@ -179,7 +203,7 @@ func (p playlistModel) playlists() tea.Msg {
 		p.ctx,
 	)
 	if err != nil {
-		return err
+		return playlistsLoadFailed{err}
 	}
-	return playlists
+	return playlistsLoaded(playlists)
 }

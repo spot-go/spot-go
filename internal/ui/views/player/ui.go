@@ -6,7 +6,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/spot-go/spot-go/internal/program"
 	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/styles"
 	"github.com/spot-go/spot-go/internal/ui/views"
@@ -24,18 +23,31 @@ type (
 	Model struct {
 		playerContext
 		views.WindowSize
-		contentDimension contentDimension
 
-		tabs          []string
-		tabContent    []tea.Model
-		activeContent tea.Model
-		activeTab     int
+		tabs      []tab
+		activeTab int
+	}
+
+	tab struct {
+		name        string
+		content     tea.Model
+		initialized bool
 	}
 
 	contentDimension struct {
 		width  int
 		height int
 	}
+
+	inputCapturer interface {
+		capturesInput() bool
+	}
+)
+
+const (
+	playlistsTab     = 1
+	minContentHeight = 4
+	tooSmallWindow   = "The terminal window is too small. Please make it bigger."
 )
 
 var (
@@ -53,10 +65,6 @@ var (
 			UnsetBorderTop()
 )
 
-func (c contentDimension) isReady() bool {
-	return c.height > 0 && c.width > 0
-}
-
 func NewModel(
 	windowSize views.WindowSize,
 	ctx context.Context,
@@ -70,74 +78,86 @@ func NewModel(
 		spotifyUser:    spotifyUser,
 		spotifydPlayer: spotifydPlayer,
 	}
-	tabs := []string{"Search", "Playlists", "Podcasts", "Artists", "Albums"}
-	tabContent := []tea.Model{
-		playlistModel{},
-		newPlaylistModel(playerContext),
-		playlistModel{},
-		playlistModel{},
-		playlistModel{},
-	}
-	return Model{
+	m := Model{
 		playerContext: playerContext,
-		tabs:          tabs,
-		tabContent:    tabContent,
-		activeTab:     1,
 		WindowSize:    windowSize,
+		tabs: []tab{
+			placeholderTab("Search"),
+			{name: "Playlists", content: newPlaylistModel(playerContext), initialized: true},
+			placeholderTab("Podcasts"),
+			placeholderTab("Artists"),
+			placeholderTab("Albums"),
+		},
+		activeTab: playlistsTab,
 	}
+	m.broadcast(m.contentDimension())
+	return m
 }
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return m.tabs[m.activeTab].content.Init()
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	activeContent := m.tabContent[m.activeTab]
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch keypress := msg.String(); keypress {
-		case "ctrl+q":
+		switch msg.String() {
+		case "ctrl+q", "ctrl+c":
 			return m, tea.Quit
-		case "right":
-			m.activeTab = min(m.activeTab+1, len(m.tabs)-1)
-			return m, activeContent.Init()
 		case "left":
-			m.activeTab = max(m.activeTab-1, 0)
-			return m, activeContent.Init()
+			if !m.activeCapturesInput() {
+				return m.switchTab(m.activeTab - 1)
+			}
+		case "right":
+			if !m.activeCapturesInput() {
+				return m.switchTab(m.activeTab + 1)
+			}
 		}
-		var cmd tea.Cmd
-		m.activeContent, cmd = m.activeContent.Update(msg)
-		return m, cmd
+		return m, m.updateTab(m.activeTab, msg)
 
 	case tea.WindowSizeMsg:
 		m.WindowSizeMsg = msg
-
-		return m, nil
-
-	case contentDimension:
-		m.contentDimension = msg
-		m.activeContent, _ = activeContent.Update(msg)
-		return m, activeContent.Init()
+		return m, m.broadcast(m.contentDimension())
 	}
 
-	var cmd tea.Cmd
-	m.activeContent, cmd = m.activeContent.Update(msg)
-	return m, cmd
+	return m, m.broadcast(msg)
 }
 
-func tabBorderWithBottom(left, middle, right string) lipgloss.Border {
-	border := lipgloss.RoundedBorder()
-	border.BottomLeft = left
-	border.Bottom = middle
-	border.BottomRight = right
-	return border
+func (m Model) switchTab(i int) (tea.Model, tea.Cmd) {
+	i = max(0, min(i, len(m.tabs)-1))
+	if i == m.activeTab {
+		return m, nil
+	}
+
+	m.activeTab = i
+	if m.tabs[i].initialized {
+		return m, nil
+	}
+	m.tabs[i].initialized = true
+	return m, m.tabs[i].content.Init()
 }
 
-func (m Model) View() string {
-	doc := strings.Builder{}
+func (m Model) updateTab(i int, msg tea.Msg) tea.Cmd {
+	content, cmd := m.tabs[i].content.Update(msg)
+	m.tabs[i].content = content
+	return cmd
+}
 
+func (m Model) broadcast(msg tea.Msg) tea.Cmd {
+	cmds := make([]tea.Cmd, len(m.tabs))
+	for i := range m.tabs {
+		cmds[i] = m.updateTab(i, msg)
+	}
+	return tea.Batch(cmds...)
+}
+
+func (m Model) activeCapturesInput() bool {
+	c, ok := m.tabs[m.activeTab].content.(inputCapturer)
+	return ok && c.capturesInput()
+}
+
+func (m Model) tabRow() string {
 	var renderedTabs []string
-
 	for i, t := range m.tabs {
 		var style lipgloss.Style
 		isFirst, isActive := i == 0, i == m.activeTab
@@ -155,7 +175,7 @@ func (m Model) View() string {
 			border.BottomLeft = "├"
 		}
 		style = style.Border(border)
-		renderedTabs = append(renderedTabs, style.Render(t))
+		renderedTabs = append(renderedTabs, style.Render(t.name))
 	}
 
 	tabGap := inactiveTabStyle.Copy().
@@ -167,33 +187,48 @@ func (m Model) View() string {
 	closeBox := lipgloss.NewStyle().
 		Foreground(styles.LipglossColorForegroundGreenSpotify).
 		Render("┐")
-	row = lipgloss.JoinHorizontal(lipgloss.Bottom, row, gap, closeBox)
-	doc.WriteString(row)
-	doc.WriteString("\n")
+	return lipgloss.JoinHorizontal(lipgloss.Bottom, row, gap, closeBox)
+}
 
-	contentWidth := lipgloss.Width(row) - windowStyle.GetHorizontalFrameSize()
-	contentHeight := m.Height - lipgloss.Height(row) - 2
-
-	cd := contentDimension{
-		width:  contentWidth,
-		height: contentHeight,
+func (m Model) layout() (string, contentDimension) {
+	row := m.tabRow()
+	return row, contentDimension{
+		width:  lipgloss.Width(row) - windowStyle.GetHorizontalFrameSize(),
+		height: m.Height - lipgloss.Height(row) - 2,
 	}
-	if m.contentDimension != cd || !cd.isReady() {
-		go program.Instance.Send(cd)
+}
+
+func (m Model) contentDimension() contentDimension {
+	_, cd := m.layout()
+	return cd
+}
+
+func (m Model) View() string {
+	row, cd := m.layout()
+	if lipgloss.Width(row) > m.Width || cd.height < minContentHeight {
+		return lipgloss.NewStyle().
+			Width(m.Width).
+			MaxHeight(m.Height).
+			Render(tooSmallWindow)
 	}
 
-	activeContent := m.tabContent[m.activeTab]
-	if m.activeContent != nil {
-		activeContent = m.activeContent
-	}
+	content := lipgloss.NewStyle().
+		MaxWidth(cd.width).
+		MaxHeight(cd.height).
+		Render(m.tabs[m.activeTab].content.View())
+	window := windowStyle.
+		Width(cd.width).
+		Height(cd.height).
+		Render(content)
+	return docStyle.Height(m.Height).Render(row + "\n" + window)
+}
 
-	content := windowStyle.
-		Width(contentWidth).
-		Height(contentHeight).
-		Render(activeContent.View())
-	doc.WriteString(content)
-
-	return docStyle.Height(m.Height).Render(doc.String())
+func tabBorderWithBottom(left, middle, right string) lipgloss.Border {
+	border := lipgloss.RoundedBorder()
+	border.BottomLeft = left
+	border.Bottom = middle
+	border.BottomRight = right
+	return border
 }
 
 func max(a, b int) int {
