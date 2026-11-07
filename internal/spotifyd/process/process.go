@@ -151,7 +151,7 @@ func (p *Process) handle(line string) {
 	case Failed:
 		p.failOnce.Do(func() {
 			p.mu.Lock()
-			p.failure = errors.New(strings.TrimSpace(line))
+			p.failure = errors.New(Message(line))
 			p.mu.Unlock()
 			close(p.failed)
 		})

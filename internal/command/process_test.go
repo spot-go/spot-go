@@ -94,7 +94,7 @@ func TestKill(t *testing.T) {
 }
 
 func TestKillProcessGroup(t *testing.T) {
-	script := writeScript(t, "echo started\nsleep 60\necho never\n")
+	script := writeScript(t, "sleep 60 &\necho started\nwait\necho never\n")
 
 	started := make(chan struct{})
 	var once sync.Once

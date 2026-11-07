@@ -20,18 +20,21 @@ const (
 	Authenticated
 	Failed
 
-	authURLPrefix = "Browse to: "
+	authURLPrefix         = "Browse to: "
+	retryableLoginFailure = "login failed with reason: try another access point"
 )
 
 var (
 	failureMarkers = []string{
 		"failed to connect to spotify",
 		"discovery unavailable and no credentials found",
+		"login failed with reason",
 		"library not loaded",
 		"librespot does not support",
 		"could not initialize spirc",
 	}
 	versionPattern = regexp.MustCompile(`spotifyd (\d+)\.(\d+)\.(\d+)`)
+	messagePrefix  = regexp.MustCompile(`^\s*(\[[A-Za-z]+\]\s*)?(\d+:\s+)?`)
 )
 
 func Classify(line string) Event {
@@ -43,6 +46,9 @@ func Classify(line string) Event {
 	if strings.HasPrefix(lower, "error:") && lower != "error:" {
 		return Failed
 	}
+	if strings.Contains(lower, retryableLoginFailure) {
+		return Other
+	}
 	for _, marker := range failureMarkers {
 		if strings.Contains(lower, marker) {
 			return Failed
@@ -52,13 +58,17 @@ func Classify(line string) Event {
 	return Other
 }
 
+func Message(line string) string {
+	return strings.TrimSpace(messagePrefix.ReplaceAllString(line, ""))
+}
+
 func AuthURL(line string) (string, bool) {
-	i := strings.Index(line, authURLPrefix)
-	if i < 0 {
+	_, url, found := strings.Cut(line, authURLPrefix)
+	if !found {
 		return "", false
 	}
 
-	url := strings.TrimSpace(line[i+len(authURLPrefix):])
+	url = strings.TrimSpace(url)
 	return url, url != ""
 }
 

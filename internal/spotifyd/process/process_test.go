@@ -55,8 +55,26 @@ exec sleep 60
 `, nil)
 
 	err := p.WaitAuthenticated(5 * time.Second)
-	if err == nil || err.Error() != "0: Discovery unavailable and no credentials found." {
+	if err == nil || err.Error() != "Discovery unavailable and no credentials found." {
 		t.Fatalf("WaitAuthenticated() = %v, want the error message after the Error: header", err)
+	}
+}
+
+func TestWaitAuthenticatedBadCredentials(t *testing.T) {
+	p := start(t, `echo "[INFO] Login via OAuth as user me."
+echo "[ERROR] connection to spotify failed: Permission denied { Login failed with reason: Bad credentials }"
+echo "[INFO] retrying connection in 5 seconds (retry 1/4)"
+exec sleep 60
+`, nil)
+
+	start := time.Now()
+	err := p.WaitAuthenticated(5 * time.Second)
+	want := "connection to spotify failed: Permission denied { Login failed with reason: Bad credentials }"
+	if err == nil || err.Error() != want {
+		t.Fatalf("WaitAuthenticated() = %v, want %q", err, want)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("WaitAuthenticated() took %v, want it to fail without waiting for the retries", elapsed)
 	}
 }
 

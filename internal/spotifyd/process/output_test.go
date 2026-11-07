@@ -13,7 +13,13 @@ func TestClassify(t *testing.T) {
 		{"[INFO] Authenticated as 'francisco' !", Authenticated},
 		{`Authenticated as "francisco" !`, Authenticated},
 		{"[ERROR] connection to spotify failed: Service unavailable", Other},
+		{"[ERROR] connection to spotify failed: Permission denied { Login failed with reason: Bad credentials }", Failed},
+		{"[ERROR] connection to spotify failed: Permission denied { Login failed with reason: Premium account required }", Failed},
+		{"[ERROR] connection to spotify failed: Permission denied { Login failed with reason: Try another access point }", Other},
+		{"[WARN] Instructed to try another access point...", Other},
+		{"[ERROR] Tried too many access points", Other},
 		{"[INFO] retrying connection in 5 seconds (retry 1/4)", Other},
+		{"[INFO] Login via OAuth as user me.", Other},
 		{"[ERROR] failed to enable discovery: address in use", Other},
 		{"Error: ", Other},
 		{"   0: failed to connect to spotify", Failed},
@@ -30,6 +36,23 @@ func TestClassify(t *testing.T) {
 	for _, tt := range tests {
 		if got := Classify(tt.line); got != tt.want {
 			t.Errorf("Classify(%q) = %v, want %v", tt.line, got, tt.want)
+		}
+	}
+}
+
+func TestMessage(t *testing.T) {
+	tests := map[string]string{
+		"[ERROR] connection to spotify failed: Permission denied { Login failed with reason: Bad credentials }": "connection to spotify failed: Permission denied { Login failed with reason: Bad credentials }",
+		"   0: Discovery unavailable and no credentials found.":                                                 "Discovery unavailable and no credentials found.",
+		"   12: failed to connect to spotify ":                                                                  "failed to connect to spotify",
+		`[ERROR] librespot does not support "free" accounts.`:                                                   `librespot does not support "free" accounts.`,
+		"error: unexpected argument '-u' found":                                                                 "error: unexpected argument '-u' found",
+		"dyld[123]: Library not loaded: /opt/homebrew/opt/portaudio/lib/libportaudio.2.dylib":                   "dyld[123]: Library not loaded: /opt/homebrew/opt/portaudio/lib/libportaudio.2.dylib",
+		"[ERROR] could not initialize spirc: Service unavailable {503}":                                         "could not initialize spirc: Service unavailable {503}",
+	}
+	for in, want := range tests {
+		if got := Message(in); got != want {
+			t.Errorf("Message(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
