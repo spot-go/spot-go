@@ -36,37 +36,33 @@ var (
 	Hostname    string
 )
 
-func init() {
+func Load() error {
 	var err error
 	Hostname, err = os.Hostname()
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("fail to get hostname: %w", err)
 	}
 
-	configPath := configdir.LocalConfig(appName)
-	err = configdir.MakePath(configPath)
+	err = configdir.MakePath(Path)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("fail to create config dir: %w", err)
 	}
 
 	if path.Exists(configFile) {
 		b, err := os.ReadFile(configFile)
 		if err != nil {
-			panic(err)
+			return fmt.Errorf("fail to read config file: %w", err)
 		}
 
 		// Ignore invalid json
 		err = json.Unmarshal(b, &AppSettings)
 		if err == nil {
-			return
+			return nil
 		}
 	}
 
 	AppSettings = &Settings{Auth: &Auth{}}
-	err = AppSettings.Save()
-	if err != nil {
-		panic(err)
-	}
+	return AppSettings.Save()
 }
 
 func (s *Settings) Save() error {
