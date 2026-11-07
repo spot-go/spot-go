@@ -21,6 +21,23 @@ On the first run spot-go asks you to log in twice in the browser:
 1. The Spotify Web API, used to read your playlists and control playback.
 2. spotifyd, so it can play on your account. You can instead connect from a Spotify app on the same local network, but that may not work with current Spotify apps.
 
+## Keys
+
+- `←` and `→` switch tabs.
+- `↑` and `↓` move in the focused list.
+- `tab` moves between the playlists and the songs of the selected playlist.
+- `enter` plays the selected playlist from the start, or the selected song.
+- `/` filters the playlists.
+- `r` reloads the songs of the selected playlist.
+
+Spotify may only list the songs of playlists you own or collaborate on, depending on the mode of the Spotify app. Other playlists still play with `enter`.
+
+## No sound
+
+If the status line shows `No sound: spotifyd got no audio key from Spotify`, Spotify refused to give spotifyd the key that decrypts the audio. This happens on some accounts and is [librespot issue #1649](https://github.com/librespot-org/librespot/issues/1649). spotifyd has no fix for it yet.
+
+## Debugging
+
 Set `DEBUG=1` to write a `debug.log` file. `make debug` starts the app under Delve on port 2345.
 
 ## Spotify app settings

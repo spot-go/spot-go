@@ -19,12 +19,17 @@ const (
 	Other Event = iota
 	Authenticated
 	Failed
+	AudioKeyRefused
 
 	authURLPrefix         = "Browse to: "
 	retryableLoginFailure = "login failed with reason: try another access point"
 )
 
 var (
+	audioKeyMarkers = []string{
+		"error audio key",
+		"audio key error",
+	}
 	failureMarkers = []string{
 		"failed to connect to spotify",
 		"discovery unavailable and no credentials found",
@@ -48,6 +53,11 @@ func Classify(line string) Event {
 	}
 	if strings.Contains(lower, retryableLoginFailure) {
 		return Other
+	}
+	for _, marker := range audioKeyMarkers {
+		if strings.Contains(lower, marker) {
+			return AudioKeyRefused
+		}
 	}
 	for _, marker := range failureMarkers {
 		if strings.Contains(lower, marker) {

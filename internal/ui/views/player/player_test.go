@@ -2,12 +2,16 @@ package player
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,39 +26,239 @@ import (
 
 var testPlaylists = []string{"Rock", "Jazz", "Samba", "Blues"}
 
-type fakeAPI struct{}
+const testDeviceID = "spot-go-device"
 
-func (fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
-	items := make([]string, len(testPlaylists))
-	for i, name := range testPlaylists {
-		items[i] = fmt.Sprintf(`{"id":"p%d","name":%q}`, i, name)
+type (
+	fakeAPI struct {
+		mu           sync.Mutex
+		songs        map[string][]string
+		songsStatus  map[string]int
+		songsErr     map[string]error
+		rateLimits   map[string]rateLimit
+		block        map[string]chan struct{}
+		totals       map[string]int
+		playStatus   int
+		songRequests []string
+		plays        []playRequest
 	}
-	body := fmt.Sprintf(`{"items":[%s],"total":%d,"limit":50,"offset":0}`, strings.Join(items, ","), len(items))
+
+	rateLimit struct {
+		offset     string
+		times      int
+		retryAfter string
+		status     int
+	}
+
+	playRequest struct {
+		deviceID string
+		body     map[string]any
+	}
+)
+
+func newFakeAPI() *fakeAPI {
+	return &fakeAPI{
+		songs: map[string][]string{
+			"p0": {
+				songJSON("Back in Black", "AC/DC", 255000),
+				songJSON("Paranoid", "Black Sabbath", 168000),
+				songJSON("Highway Star", "Deep Purple", 365000),
+			},
+			"p1": {songJSON("So What", "Miles Davis", 562000)},
+			"p2": manySongsJSON(120),
+		},
+		songsStatus: map[string]int{"p3": http.StatusForbidden},
+		songsErr:    map[string]error{},
+		rateLimits:  map[string]rateLimit{},
+		block:       map[string]chan struct{}{},
+		totals:      map[string]int{},
+	}
+}
+
+func songJSON(name, artist string, durationMs int) string {
+	return fmt.Sprintf(`{"is_local":false,"item":{"type":"track","name":%q,"uri":"spotify:track:%x","duration_ms":%d,"artists":[{"name":%q}]}}`,
+		name, name, durationMs, artist)
+}
+
+func manySongsJSON(n int) []string {
+	songs := make([]string, n)
+	for i := range songs {
+		songs[i] = songJSON(fmt.Sprintf("Song %d", i+1), "Cartola", 180000)
+	}
+	return songs
+}
+
+func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	path := strings.TrimPrefix(r.URL.Path, "/v1/")
+	switch {
+	case path == "me/playlists":
+		items := make([]string, len(testPlaylists))
+		for i, name := range testPlaylists {
+			items[i] = fmt.Sprintf(`{"id":"p%d","name":%q,"uri":"spotify:playlist:p%d"}`, i, name, i)
+		}
+		return response(r, http.StatusOK, fmt.Sprintf(`{"items":[%s],"total":%d,"limit":50,"offset":0}`, strings.Join(items, ","), len(items))), nil
+
+	case strings.HasPrefix(path, "playlists/") && strings.HasSuffix(path, "/items"):
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "playlists/"), "/items")
+		query := r.URL.Query()
+		f.songRequests = append(f.songRequests, id+"@"+query.Get("offset"))
+		if wait := f.block[id+"@"+query.Get("offset")]; wait != nil {
+			delete(f.block, id+"@"+query.Get("offset"))
+			f.mu.Unlock()
+			<-wait
+			f.mu.Lock()
+		}
+		if err := f.songsErr[id]; err != nil {
+			return nil, err
+		}
+		if status := f.songsStatus[id]; status != 0 {
+			return errorResponse(r, status, "request failed"), nil
+		}
+		if limit := f.rateLimits[id]; limit.times > 0 && limit.offset == query.Get("offset") {
+			limit.times--
+			f.rateLimits[id] = limit
+			status, message := http.StatusTooManyRequests, "API rate limit exceeded"
+			if limit.status != 0 {
+				status, message = limit.status, http.StatusText(limit.status)
+			}
+			resp := errorResponse(r, status, message)
+			resp.Header.Set("Retry-After", limit.retryAfter)
+			return resp, nil
+		}
+		if missing := missingSongsQuery(query); missing != "" {
+			return errorResponse(r, http.StatusBadRequest, "missing "+missing), nil
+		}
+		offset, _ := strconv.Atoi(query.Get("offset"))
+		limit, _ := strconv.Atoi(query.Get("limit"))
+		all := f.songs[id]
+		page := all[min(offset, len(all)):min(offset+limit, len(all))]
+		total := len(all)
+		if t, ok := f.totals[id]; ok {
+			total = t
+		}
+		return response(r, http.StatusOK, fmt.Sprintf(`{"items":[%s],"total":%d}`, strings.Join(page, ","), total)), nil
+
+	case path == "me/player/play" && r.Method == http.MethodPut:
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		f.plays = append(f.plays, playRequest{deviceID: r.URL.Query().Get("device_id"), body: body})
+		if f.playStatus != 0 {
+			return errorResponse(r, f.playStatus, "Player command failed: Premium required"), nil
+		}
+		return response(r, http.StatusNoContent, ""), nil
+	}
+
+	return errorResponse(r, http.StatusNotFound, "unexpected request "+r.Method+" "+r.URL.Path), nil
+}
+
+func missingSongsQuery(query url.Values) string {
+	if query.Get("market") != "from_token" {
+		return "market=from_token"
+	}
+	if !strings.Contains(query.Get("additional_types"), "episode") {
+		return "additional_types=episode"
+	}
+	if query.Get("limit") != "50" {
+		return "limit=50"
+	}
+	for _, field := range []string{"total", "is_local", "item(", "track(", "is_playable", "duration_ms", "artists(name)", "show(name)", "uri"} {
+		if !strings.Contains(query.Get("fields"), field) {
+			return "fields " + field
+		}
+	}
+	return ""
+}
+
+func (f *fakeAPI) requestsFor(playlistID string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	var reqs []string
+	for _, r := range f.songRequests {
+		if strings.HasPrefix(r, playlistID+"@") {
+			reqs = append(reqs, r)
+		}
+	}
+	return reqs
+}
+
+func (f *fakeAPI) playRequests() []playRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]playRequest(nil), f.plays...)
+}
+
+func (f *fakeAPI) set(fn func(f *fakeAPI)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	fn(f)
+}
+
+func response(r *http.Request, status int, body string) *http.Response {
 	return &http.Response{
-		StatusCode: http.StatusOK,
+		StatusCode: status,
 		Header:     http.Header{"Content-Type": {"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(body)),
 		Request:    r,
-	}, nil
+	}
 }
 
-type harness struct {
-	t             *testing.T
-	model         tea.Model
-	playlistLoads int
+func errorResponse(r *http.Request, status int, message string) *http.Response {
+	return response(r, status, fmt.Sprintf(`{"error":{"status":%d,"message":%q}}`, status, message))
 }
+
+type (
+	harness struct {
+		t             *testing.T
+		api           *fakeAPI
+		model         tea.Model
+		playlistLoads int
+		holdTimers    bool
+		timers        []tea.Msg
+		delays        []time.Duration
+	}
+
+	timerMsg struct {
+		delay time.Duration
+		msg   tea.Msg
+	}
+)
 
 func newModel(width, height int) Model {
-	client := spotify.NewClient(&http.Client{Transport: fakeAPI{}})
+	return newModelWith(newFakeAPI(), width, height)
+}
+
+func newModelWith(api *fakeAPI, width, height int) Model {
+	return newListeningModel(api, width, height, nil)
+}
+
+func newListeningModel(api *fakeAPI, width, height int, playbackErrors <-chan error) Model {
+	client := spotify.NewClient(&http.Client{Transport: api})
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: width, Height: height}}
-	return NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{})
+	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, playbackErrors)
+	playlists := m.tabs[playlistsTab].content.(playlistModel)
+	playlists.after = func(d time.Duration, msg tea.Msg) tea.Cmd {
+		return func() tea.Msg { return timerMsg{d, msg} }
+	}
+	m.tabs[playlistsTab].content = playlists
+	return m
 }
 
 func newHarness(t *testing.T, width, height int) *harness {
 	t.Helper()
 
-	m := newModel(width, height)
-	h := &harness{t: t, model: m}
+	return newHarnessWith(t, newFakeAPI(), width, height)
+}
+
+func newHarnessWith(t *testing.T, api *fakeAPI, width, height int) *harness {
+	t.Helper()
+
+	m := newModelWith(api, width, height)
+	h := &harness{t: t, api: api, model: m}
 	h.run(m.Init())
 	return h
 }
@@ -63,13 +267,21 @@ func (h *harness) send(msgs ...tea.Msg) {
 	h.t.Helper()
 
 	queue := msgs
-	for steps := 0; len(queue) > 0; steps++ {
+	for steps := 0; len(queue) > 0 || (len(h.timers) > 0 && !h.holdTimers); steps++ {
 		if steps > 1000 {
 			h.t.Fatal("too many messages, the model is probably in an update loop")
+		}
+		if len(queue) == 0 {
+			queue, h.timers = h.timers, nil
 		}
 		msg := queue[0]
 		queue = queue[1:]
 		if _, ok := msg.(spinner.TickMsg); ok {
+			continue
+		}
+		if timer, ok := msg.(timerMsg); ok {
+			h.delays = append(h.delays, timer.delay)
+			h.timers = append(h.timers, timer.msg)
 			continue
 		}
 		if _, ok := msg.(playlistsLoaded); ok {
