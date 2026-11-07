@@ -6,15 +6,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 )
 
-// Extract all entries in the tar file to dst
-func Extract(file, dst string) error {
-	f, err := os.Open(file)
+func ExtractFile(archive, name, dst string, mode os.FileMode) error {
+	f, err := os.Open(archive)
 	if err != nil {
 		return fmt.Errorf("fail to open file: %+v", err)
 	}
+	defer f.Close()
 
 	gzr, err := gzip.NewReader(f)
 	if err != nil {
@@ -23,43 +24,40 @@ func Extract(file, dst string) error {
 	defer gzr.Close()
 
 	tr := tar.NewReader(gzr)
-
 	for {
 		header, err := tr.Next()
-
-		switch {
-		case err == io.EOF:
-			return nil
-
-		case err != nil:
-			return err
-
-		case header == nil:
-			continue
+		if err == io.EOF {
+			return fmt.Errorf("%s not found in %s", name, filepath.Base(archive))
+		}
+		if err != nil {
+			return fmt.Errorf("fail to read tar file: %+v", err)
 		}
 
-		target := filepath.Join(dst, header.Name)
-
-		switch header.Typeflag {
-
-		case tar.TypeDir:
-			if _, err := os.Stat(target); err != nil {
-				if err := os.MkdirAll(target, 0755); err != nil {
-					return err
-				}
-			}
-
-		case tar.TypeReg:
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
-			if err != nil {
-				return fmt.Errorf("fail to open tar file: %+v", err)
-			}
-
-			if _, err := io.Copy(f, tr); err != nil && err != io.EOF {
-				return fmt.Errorf("fail to copy tar file: %+v", err)
-			}
-
-			f.Close()
+		if header.Typeflag == tar.TypeReg && path.Clean(header.Name) == name {
+			return writeFile(tr, dst, mode)
 		}
 	}
+}
+
+func writeFile(r io.Reader, dst string, mode os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(dst), "."+filepath.Base(dst)+"-*")
+	if err != nil {
+		return fmt.Errorf("fail to create temp file: %+v", err)
+	}
+	defer os.Remove(tmp.Name())
+
+	if _, err := io.Copy(tmp, r); err != nil {
+		tmp.Close()
+		return fmt.Errorf("fail to copy tar file: %+v", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("fail to close temp file: %+v", err)
+	}
+	if err := os.Chmod(tmp.Name(), mode); err != nil {
+		return fmt.Errorf("fail to set file mode: %+v", err)
+	}
+	if err := os.Rename(tmp.Name(), dst); err != nil {
+		return fmt.Errorf("fail to move file: %+v", err)
+	}
+	return nil
 }

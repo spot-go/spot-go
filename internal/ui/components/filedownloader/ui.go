@@ -2,7 +2,6 @@ package filedownloader
 
 import (
 	"fmt"
-	"os"
 	"path"
 	"path/filepath"
 	"time"
@@ -24,6 +23,9 @@ type (
 		err      error
 	}
 	DownloadFinished bool
+	DownloadFailed   struct {
+		Err error
+	}
 )
 
 func finalPause() tea.Cmd {
@@ -56,11 +58,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case progressMsg:
 		if msg.err != nil {
 			m.err = msg.err
-			return m, nil
+			return m, func() tea.Msg {
+				return DownloadFailed{msg.err}
+			}
 		}
 
 		var cmds []tea.Cmd
-		if msg.value >= 1.0 {
+		if msg.done {
 			cmds = append(cmds, tea.Sequence(finalPause(), func() tea.Msg {
 				return DownloadFinished(true)
 			}))
@@ -82,8 +86,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m Model) View() string {
 	if m.err != nil {
-		fmt.Printf("Fail to download file from url %s: %s\n", m.url, m.err.Error())
-		os.Exit(1)
+		return fmt.Sprintf("Fail to download file from url %s: %s", m.url, m.err.Error())
 	}
 
 	return fmt.Sprintf("Downloading spotifyd...\n%s", m.progress.View())

@@ -4,14 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spot-go/spot-go/internal/program"
 	"github.com/spot-go/spot-go/internal/spotifyd"
-	"github.com/spot-go/spot-go/internal/tar"
 )
 
 type (
@@ -22,6 +20,7 @@ type (
 	}
 	progressMsg struct {
 		value float64
+		done  bool
 		err   error
 	}
 )
@@ -44,6 +43,7 @@ func startDownload(url, dst string) tea.Cmd {
 		if err != nil {
 			return progressMsg{err: fmt.Errorf("fail to create file: %+v", err)}
 		}
+		defer os.Remove(dst)
 		defer file.Close()
 
 		pw := &progressWriter{
@@ -56,18 +56,16 @@ func startDownload(url, dst string) tea.Cmd {
 		if err != nil {
 			return progressMsg{err: fmt.Errorf("fail to copy file: %+v", err)}
 		}
-
-		err = tar.Extract(dst, spotifyd.ConfigFolder)
-		if err != nil {
-			return progressMsg{err: fmt.Errorf("fail to extract tar file: %+v", err)}
+		if err := file.Close(); err != nil {
+			return progressMsg{err: fmt.Errorf("fail to close file: %+v", err)}
 		}
 
-		err = os.Remove(dst)
+		err = spotifyd.InstallArchive(dst)
 		if err != nil {
-			return progressMsg{err: fmt.Errorf("fail to remove tar file: %+v", err)}
+			return progressMsg{err: fmt.Errorf("fail to install spotifyd: %+v", err)}
 		}
 
-		return progressMsg{value: 100}
+		return progressMsg{value: 1, done: true}
 	}
 }
 
@@ -83,9 +81,10 @@ func (pw *progressWriter) Write(p []byte) (int, error) {
 func getResponse(url string) (*http.Response, error) {
 	resp, err := http.Get(url)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
 		return nil, fmt.Errorf("receiving status of %d for url: %s", resp.StatusCode, url)
 	}
 	return resp, nil

@@ -10,6 +10,7 @@ import (
 	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
 	"github.com/spot-go/spot-go/internal/program"
+	"github.com/spot-go/spot-go/internal/spotifyd"
 	"github.com/spot-go/spot-go/internal/ui/views/login"
 )
 
@@ -30,10 +31,13 @@ func run(cmd *cobra.Command, args []string) {
 		defer f.Close()
 	}
 
+	spotifyd.KillStale()
 	lipgloss.SetHasDarkBackground(termenv.HasDarkBackground())
 	p := tea.NewProgram(login.NewModel(), tea.WithAltScreen())
 	program.Instance = p
-	if _, err := p.Run(); err != nil {
+	_, err := p.Run()
+	spotifyd.Stop()
+	if err != nil {
 		log.Fatal(err)
 	}
 }
