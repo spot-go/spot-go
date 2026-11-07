@@ -29,8 +29,6 @@ var (
 	oauthCredentials    = filepath.Join(ConfigFolder, "oauth", "credentials.json")
 	zeroconfCredentials = filepath.Join(ConfigFolder, "zeroconf", "credentials.json")
 
-	deviceName = fmt.Sprintf("spot-go@%s", config.Hostname)
-
 	ErrCredentialsNotFound = errors.New("spotifyd credentials not found")
 	ErrStopped             = process.ErrStopped
 
@@ -49,11 +47,12 @@ type (
 	}
 )
 
-func init() {
+func CreateConfigFolder() error {
 	err := os.MkdirAll(ConfigFolder, os.ModePerm)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("fail to create spotifyd config dir: %w", err)
 	}
+	return nil
 }
 
 func KillStale() {
@@ -122,7 +121,7 @@ func LoginDiscovery() LoginResponse {
 }
 
 func DeviceName() string {
-	return deviceName
+	return fmt.Sprintf("spot-go@%s", config.Hostname)
 }
 
 func runDaemon(timeout time.Duration, extraArgs ...string) LoginResponse {
@@ -130,7 +129,7 @@ func runDaemon(timeout time.Duration, extraArgs ...string) LoginResponse {
 		"--no-daemon",
 		"--cache-path", ConfigFolder,
 		"--config-path", configFile,
-		"--device-name", deviceName,
+		"--device-name", DeviceName(),
 		"--device-type", "computer",
 		"--no-audio-cache",
 	}
