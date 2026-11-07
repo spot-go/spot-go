@@ -1,40 +1,50 @@
 package spotifyd
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/spot-go/spot-go/internal/command"
 	"github.com/spot-go/spot-go/internal/config"
-	"github.com/spot-go/spot-go/internal/hash"
 	"github.com/spot-go/spot-go/internal/path"
+	"github.com/spot-go/spot-go/internal/spotifyd/process"
+)
+
+const (
+	loginTimeout   = 30 * time.Second
+	versionTimeout = 10 * time.Second
 )
 
 var (
-	ConfigFolder             = filepath.Join(config.Path, "spotifyd")
-	binaryFile               = filepath.Join(ConfigFolder, "spotifyd")
-	credentialsFile          = filepath.Join(ConfigFolder, "credentials.json")
-	expectedBinaryFileSha512 = map[string]string{
-		"linux":  "1cc4897e2394f37273e030b8633a7f6fba6fe232d560f10be03b3a74eba2c001704d40864501b68917b4c24691abf01f7e529c0673167e509467eabe3bab524d",
-		"darwin": "eb189206192894f5e11615a0154efaec5226297181f5e2f2fec58b8f2fb47eacd84ba00acb752ca153ada4e81f67bb7ab2adf893e756f3ffda067667e528a77b",
-	}
+	ConfigFolder        = filepath.Join(config.Path, "spotifyd")
+	configFile          = filepath.Join(ConfigFolder, "spotifyd.conf")
+	oauthCredentials    = filepath.Join(ConfigFolder, "oauth", "credentials.json")
+	zeroconfCredentials = filepath.Join(ConfigFolder, "zeroconf", "credentials.json")
 
 	deviceName = fmt.Sprintf("spot-go@%s", config.Hostname)
 
-	errConfigFileDoesNotExist = errors.New("config file does not exist")
+	ErrCredentialsNotFound = errors.New("spotifyd credentials not found")
+	ErrStopped             = process.ErrStopped
+
+	startMu sync.Mutex
+	mu      sync.Mutex
+	binary  string
+	current *process.Process
 )
 
 type (
-	credentials struct {
-		Username string `json:"username"`
-	}
 	LoginResponse struct {
+		Err error
+	}
+	AuthenticateResponse struct {
 		Err error
 	}
 )
@@ -44,118 +54,192 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-
-	// Ensure the process is always started by the spot-go.
-	// This can change in the future, but for now it's a simple
-	// solution to avoid issues.
-	command.Run("pkill -9 spotifyd")
 }
 
-func LoginWithUserAndPassword(user, pass string) LoginResponse {
-	errC := make(chan error)
-	t := time.NewTimer(10 * time.Second)
-	go func() {
-		<-t.C
-		errC <- errors.New("timeout trying to connect to spotify")
-	}()
+func KillStale() {
+	_ = exec.Command("pkill", "-f", process.StalePattern(ConfigFolder)).Run()
+}
 
-	c := fmt.Sprintf(
-		"%s -u %s -p %s --no-daemon --cache-path %s --device-name %s --device-type computer",
-		binaryFile,
-		user,
-		pass,
-		ConfigFolder,
-		deviceName,
-	)
-	go command.RunWithBufferedOutput(c, func(output string) {
-		if strings.Contains(output, "failed to connect to spotify") {
-			errC <- errors.New(output)
-		}
-		if strings.Contains(output, "Authenticated as") {
-			errC <- nil
+func Stop() {
+	startMu.Lock()
+	defer startMu.Unlock()
+
+	stopCurrent()
+}
+
+func Err() error {
+	mu.Lock()
+	p := current
+	mu.Unlock()
+
+	if p == nil {
+		return ErrStopped
+	}
+	return p.Err()
+}
+
+func Authenticate(onURL func(url string)) AuthenticateResponse {
+	port, err := freePort()
+	if err != nil {
+		return AuthenticateResponse{fmt.Errorf("fail to find a free port: %w", err)}
+	}
+
+	p, err := start([]string{
+		"authenticate",
+		"--cache-path", ConfigFolder,
+		"--config-path", configFile,
+		"--oauth-port", strconv.Itoa(port),
+	}, func(line string) {
+		if url, ok := process.AuthURL(line); ok && onURL != nil {
+			onURL(url)
 		}
 	})
-	err := <-errC
-	t.Stop()
+	if err != nil {
+		return AuthenticateResponse{err}
+	}
 
-	return LoginResponse{err}
+	err = p.Wait()
+	release(p)
+	if err != nil {
+		return AuthenticateResponse{err}
+	}
+	if !path.Exists(oauthCredentials) {
+		return AuthenticateResponse{errors.New("spotifyd finished without saving credentials")}
+	}
+	return AuthenticateResponse{nil}
 }
 
 func LoginWithCredentials() LoginResponse {
-	if !path.Exists(credentialsFile) {
-		return LoginResponse{errConfigFileDoesNotExist}
+	if !path.Exists(oauthCredentials) && !path.Exists(zeroconfCredentials) {
+		return LoginResponse{ErrCredentialsNotFound}
 	}
 
-	b, err := os.ReadFile(credentialsFile)
-	if err != nil {
-		return LoginResponse{
-			fmt.Errorf("fail to read file %s: %+v", credentialsFile, err),
-		}
-	}
-
-	var credentials credentials
-	err = json.Unmarshal(b, &credentials)
-	if err != nil {
-		return LoginResponse{
-			fmt.Errorf("fail to unmarshal json: %+v", err),
-		}
-	}
-
-	errC := make(chan error)
-	t := time.NewTimer(10 * time.Second)
-	go func() {
-		<-t.C
-		errC <- errors.New("timeout trying to connect to spotify")
-	}()
-
-	c := fmt.Sprintf(
-		"%s -u %s --no-daemon --cache-path %s --device-name %s --device-type computer",
-		binaryFile,
-		credentials.Username,
-		ConfigFolder,
-		deviceName,
-	)
-	go command.RunWithBufferedOutput(c, func(output string) {
-		if strings.Contains(output, "failed to connect to spotify") {
-			errC <- errors.New(output)
-		}
-		if strings.Contains(output, "Authenticated as") {
-			errC <- nil
-		}
-	})
-	err = <-errC
-	t.Stop()
-
-	return LoginResponse{err}
+	return runDaemon(loginTimeout, "--disable-discovery")
 }
 
 func LoginDiscovery() LoginResponse {
-	logged := make(chan bool)
-
-	c := fmt.Sprintf(
-		"%s --no-daemon --cache-path %s --device-name %s --device-type computer",
-		binaryFile,
-		ConfigFolder,
-		deviceName,
-	)
-	go command.RunWithBufferedOutput(c, func(output string) {
-		if strings.Contains(output, "Authenticated as") {
-			logged <- true
-		}
-	})
-	<-logged
-
-	return LoginResponse{nil}
-}
-
-func IsBinaryValid() bool {
-	return hash.SHA512Sum(binaryFile) == expectedBinaryFileSha512[runtime.GOOS]
-}
-
-func ShouldDownloadBinary() bool {
-	return !path.Exists(binaryFile) || !IsBinaryValid()
+	return runDaemon(0)
 }
 
 func DeviceName() string {
 	return deviceName
+}
+
+func runDaemon(timeout time.Duration, extraArgs ...string) LoginResponse {
+	args := []string{
+		"--no-daemon",
+		"--cache-path", ConfigFolder,
+		"--config-path", configFile,
+		"--device-name", deviceName,
+		"--device-type", "computer",
+		"--no-audio-cache",
+	}
+	args = append(args, platformDaemonArgs...)
+	args = append(args, extraArgs...)
+
+	p, err := start(args, nil)
+	if err != nil {
+		return LoginResponse{err}
+	}
+
+	if err := p.WaitAuthenticated(timeout); err != nil {
+		if release(p) {
+			p.Stop()
+		}
+		return LoginResponse{err}
+	}
+	return LoginResponse{nil}
+}
+
+func start(args []string, onLine func(string)) (*process.Process, error) {
+	bin, err := resolveBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	startMu.Lock()
+	defer startMu.Unlock()
+
+	stopCurrent()
+	p, err := process.Start(bin, args, onLine)
+	if err != nil {
+		return nil, err
+	}
+
+	mu.Lock()
+	current = p
+	mu.Unlock()
+	return p, nil
+}
+
+func stopCurrent() {
+	mu.Lock()
+	p := current
+	current = nil
+	mu.Unlock()
+
+	if p != nil {
+		p.Stop()
+	}
+}
+
+func release(p *process.Process) bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if current != p {
+		return false
+	}
+	current = nil
+	return true
+}
+
+func resolveBinary() (string, error) {
+	mu.Lock()
+	bin := binary
+	mu.Unlock()
+
+	if bin != "" {
+		return bin, nil
+	}
+	if err := CheckBinary(); err != nil {
+		return "", err
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	return binary, nil
+}
+
+func setBinary(bin string) {
+	mu.Lock()
+	binary = bin
+	mu.Unlock()
+}
+
+func binaryVersion(bin string) (process.Version, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), versionTimeout)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, bin, "--version").CombinedOutput()
+	text := strings.TrimSpace(string(out))
+	if err != nil {
+		return process.Version{}, fmt.Errorf("fail to run %s --version: %v\n%s", bin, err, text)
+	}
+
+	v, ok := process.ParseVersion(text)
+	if !ok {
+		return process.Version{}, fmt.Errorf("unexpected output from %s --version: %s", bin, text)
+	}
+	return v, nil
+}
+
+func freePort() (int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+
+	return l.Addr().(*net.TCPAddr).Port, nil
 }

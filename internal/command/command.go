@@ -1,10 +1,8 @@
 package command
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
-	"io"
 	"os/exec"
 	"os/user"
 	"regexp"
@@ -99,41 +97,6 @@ func RunMultiple(commands ...string) (Outputs, error) {
 	}
 
 	return outputs, err
-}
-
-func RunWithBufferedOutput(command string, fn func(output string)) error {
-	cmd, err := getCommand(command)
-	if err != nil {
-		return err
-	}
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf(`error piping to stdout"%s": %s`, command, err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf(`error piping to stderr"%s": %s`, command, err)
-	}
-
-	err = cmd.Start()
-	if err != nil {
-		return fmt.Errorf(`error starting command "%s": %s`, command, err)
-	}
-
-	bufferedOutput := func(read io.ReadCloser) {
-		buf := bufio.NewReader(read)
-		for {
-			line, _, _ := buf.ReadLine()
-			if len(line) > 0 {
-				fn(string(line))
-			}
-		}
-	}
-
-	go bufferedOutput(stdout)
-	go bufferedOutput(stderr)
-	return cmd.Wait()
 }
 
 func RunWithSudo(command string) (Output, error) {

@@ -27,7 +27,7 @@ type (
 )
 
 const (
-	localPort      = ":10888"
+	callbackAddr   = "127.0.0.1:10888"
 	ClientID       = "573247e4a8b84ca8842f2aca8b1f3878"
 	allowedCharset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456_.-~"
 )
@@ -41,7 +41,7 @@ var (
 		spotifyauth.ScopeUserReadCurrentlyPlaying,
 		spotifyauth.ScopePlaylistReadPrivate,
 	}
-	redirectURI = fmt.Sprintf("http://localhost%s/callback", localPort)
+	redirectURI = fmt.Sprintf("http://%s/callback", callbackAddr)
 	auth        = spotifyauth.New(
 		spotifyauth.WithRedirectURL(redirectURI),
 		spotifyauth.WithScopes(scopes...),
@@ -87,8 +87,9 @@ func randomString(n int) string {
 }
 
 func Authorize() ClientResponse {
-	http.HandleFunc("/callback", completeAuth)
-	server = &http.Server{Addr: localPort}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/callback", completeAuth)
+	server = &http.Server{Addr: callbackAddr, Handler: mux}
 	go server.ListenAndServe()
 
 	err := browser.Open(AuthURL)
