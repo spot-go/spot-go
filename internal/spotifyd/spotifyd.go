@@ -31,6 +31,9 @@ var (
 
 	ErrCredentialsNotFound = errors.New("spotifyd credentials not found")
 	ErrStopped             = process.ErrStopped
+	ErrNoAudioKey          = errors.New("spotifyd got no audio key from Spotify")
+
+	playbackErrors = make(chan error, 1)
 
 	startMu sync.Mutex
 	mu      sync.Mutex
@@ -136,7 +139,7 @@ func runDaemon(timeout time.Duration, extraArgs ...string) LoginResponse {
 	args = append(args, platformDaemonArgs...)
 	args = append(args, extraArgs...)
 
-	p, err := start(args, nil)
+	p, err := start(args, reportPlaybackError)
 	if err != nil {
 		return LoginResponse{err}
 	}
@@ -148,6 +151,20 @@ func runDaemon(timeout time.Duration, extraArgs ...string) LoginResponse {
 		return LoginResponse{err}
 	}
 	return LoginResponse{nil}
+}
+
+func PlaybackErrors() <-chan error {
+	return playbackErrors
+}
+
+func reportPlaybackError(line string) {
+	if process.Classify(line) != process.AudioKeyRefused {
+		return
+	}
+	select {
+	case playbackErrors <- ErrNoAudioKey:
+	default:
+	}
 }
 
 func start(args []string, onLine func(string)) (*process.Process, error) {

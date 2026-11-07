@@ -31,6 +31,10 @@ func TestClassify(t *testing.T) {
 		{"[INFO] Starting zeroconf server to advertise on local network.", Other},
 		{"[WARN] Failed reading config file", Other},
 		{"Browse to: https://accounts.spotify.com/authorize?x=1", Other},
+		{"[\x1b[31mERROR\x1b[0m librespot_core::audio_key] error audio key 0 1", AudioKeyRefused},
+		{"[\x1b[33mWARN\x1b[0m librespot_playback::player] Unable to load key, continuing without decryption: Service unavailable { audio key error }", AudioKeyRefused},
+		{"[DEBUG librespot::component] new AudioKeyManager", Other},
+		{"[WARN symphonia_bundle_mp3::demuxer] skipping junk at 4566 bytes", Other},
 		{"", Other},
 	}
 	for _, tt := range tests {

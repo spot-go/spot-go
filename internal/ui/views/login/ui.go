@@ -274,6 +274,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.spotifyClient,
 			m.spotifyUser,
 			m.spotifydPlayer,
+			spotifyd.PlaybackErrors(),
 		)
 		m.player = &mainModel
 		return m, m.player.Init()

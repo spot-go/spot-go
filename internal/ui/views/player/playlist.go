@@ -1,16 +1,20 @@
 package player
 
 import (
+	"context"
+	"errors"
 	"fmt"
-
-	"github.com/spot-go/spot-go/internal/utf8"
+	"net/http"
+	"net/url"
+	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/styles"
-	"github.com/zmb3/spotify/v2"
+	libspotify "github.com/zmb3/spotify/v2"
 )
 
 var (
@@ -22,6 +26,10 @@ var (
 			BorderForeground(styles.LipglossColorForegroundGreenSpotify).
 			UnsetBorderTop().
 			UnsetBorderBottom()
+	playingStyle = lipgloss.NewStyle().
+			Foreground(styles.LipglossAdaptiveColorGreenSpotify)
+	playbackErrorStyle = lipgloss.NewStyle().
+				Foreground(styles.LipglossColorRed)
 )
 
 type (
@@ -35,17 +43,68 @@ type (
 		msg             string
 		state           playlistState
 		list            *list.Model
+		songs           map[libspotify.ID]*playlistSongs
+		playback        playbackStatus
+		after           func(time.Duration, tea.Msg) tea.Cmd
 	}
 
 	item struct {
 		title, desc string
+		id          libspotify.ID
+		uri         libspotify.URI
+	}
+
+	playlistSongs struct {
+		state      songsState
+		err        error
+		list       *list.Model
+		gen        int
+		loaded     int
+		total      int
+		loading    bool
+		refreshing bool
+		buffer     []spotify.PlaylistItem
+	}
+
+	playbackStatus struct {
+		seq  int
+		text string
+		err  bool
 	}
 
 	playlistState int
 
-	playlistsLoaded []spotify.SimplePlaylist
+	songsState int
+
+	playlistsLoaded []libspotify.SimplePlaylist
 
 	playlistsLoadFailed struct {
+		err error
+	}
+
+	songsRequested struct {
+		playlistID libspotify.ID
+	}
+
+	songsPageLoaded struct {
+		playlistID libspotify.ID
+		gen        int
+		page       spotify.PlaylistItemsPage
+	}
+
+	songsLoadFailed struct {
+		playlistID libspotify.ID
+		gen        int
+		err        error
+	}
+
+	playbackStarted struct {
+		seq  int
+		name string
+	}
+
+	playbackFailed struct {
+		seq int
 		err error
 	}
 )
@@ -54,6 +113,22 @@ const (
 	statePlaylistInit = playlistState(iota)
 	statePlaylistError
 	statePlaylistLoaded
+)
+
+const (
+	stateSongsLoading = songsState(iota)
+	stateSongsLoaded
+	stateSongsError
+	stateSongsForbidden
+)
+
+const (
+	songsLoadDelay       = 150 * time.Millisecond
+	songsPageTimeout     = 45 * time.Second
+	playbackTimeout      = 15 * time.Second
+	rightViewChrome      = 4
+	rightViewPadding     = 1
+	minSongsStatusHeight = 4
 )
 
 func (i item) Title() string       { return i.title }
@@ -69,7 +144,15 @@ func newPlaylistModel(ctx playerContext) playlistModel {
 		spinner:         s,
 		alignHorizontal: lipgloss.Center,
 		leftFocus:       true,
+		songs:           make(map[libspotify.ID]*playlistSongs),
+		after:           after,
 	}
+}
+
+func after(d time.Duration, msg tea.Msg) tea.Cmd {
+	return tea.Tick(d, func(time.Time) tea.Msg {
+		return msg
+	})
 }
 
 func (p playlistModel) Init() tea.Cmd {
@@ -79,26 +162,18 @@ func (p playlistModel) Init() tea.Cmd {
 func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch keypress := msg.String(); keypress {
-		case "tab":
-			if !p.capturesInput() {
-				p.leftFocus = !p.leftFocus
-			}
-		case "r":
-			if p.state == statePlaylistError {
-				p.state = statePlaylistInit
-				p.msg = p.spinner.View()
-				return p, p.Init()
-			}
+		if m, cmd, handled := p.handleKey(msg); handled {
+			return m, cmd
 		}
 
 	case contentDimension:
 		p.width = msg.width
 		p.height = msg.height
+		p.resizeSongs()
 
 	case playlistsLoadFailed:
 		p.state = statePlaylistError
-		p.msg = fmt.Sprintf("Fail to load playlists:\n%s\n\nPress r to try again.", msg.err.Error())
+		p.msg = fmt.Sprintf("Fail to load playlists:\n%s\n\nPress r to try again.", errorText(msg.err))
 		p.list = nil
 		p.alignHorizontal = lipgloss.Center
 		return p, nil
@@ -107,12 +182,12 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		p.state = statePlaylistLoaded
 
 		var items []list.Item
-		for _, p := range msg {
-			title := p.Name
+		for _, pl := range msg {
+			title := pl.Name
 			if title == "" {
-				title = string(p.ID)
+				title = string(pl.ID)
 			}
-			items = append(items, item{title: title, desc: p.Description})
+			items = append(items, item{title: title, desc: pl.Description, id: pl.ID, uri: pl.URI})
 		}
 
 		d := list.NewDefaultDelegate()
@@ -131,6 +206,38 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		p.list = &l
 
+		if selected, ok := p.selectedPlaylist(); ok {
+			return p, p.loadSongs(selected.id)
+		}
+		return p, nil
+
+	case songsRequested:
+		if selected, ok := p.selectedPlaylist(); ok && selected.id == msg.playlistID {
+			return p, p.loadSongs(msg.playlistID)
+		}
+		return p, nil
+
+	case songsPageLoaded:
+		return p, p.addSongsPage(msg)
+
+	case songsLoadFailed:
+		p.failSongs(msg)
+		return p, nil
+
+	case playbackStarted:
+		if msg.seq == p.playback.seq {
+			p.playback = playbackStatus{seq: msg.seq, text: "Playing: " + msg.name}
+		}
+		return p, nil
+
+	case playbackFailed:
+		if msg.seq == p.playback.seq {
+			p.playback = playbackStatus{seq: msg.seq, text: "Fail to play: " + errorText(msg.err), err: true}
+		}
+		return p, nil
+
+	case spotifydPlaybackFailed:
+		p.playback = playbackStatus{seq: p.playback.seq, text: "No sound: " + errorText(msg.err), err: true}
 		return p, nil
 	}
 
@@ -143,43 +250,431 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case statePlaylistLoaded:
 		if _, isKey := msg.(tea.KeyMsg); isKey && !p.leftFocus {
-			return p, nil
+			return p, p.updateSongs(msg)
 		}
-		list, cmd := p.list.Update(msg)
-		p.list = &list
-		return p, cmd
+		return p.updatePlaylists(msg)
 	}
 
 	return p, nil
+}
+
+func (p playlistModel) handleKey(msg tea.KeyMsg) (playlistModel, tea.Cmd, bool) {
+	if p.capturesInput() {
+		return p, nil, false
+	}
+
+	switch msg.String() {
+	case "tab":
+		p.leftFocus = !p.leftFocus
+		p.focusSongs()
+		return p, nil, true
+
+	case "r":
+		if p.state == statePlaylistError {
+			p.state = statePlaylistInit
+			p.msg = p.spinner.View()
+			return p, p.Init(), true
+		}
+		if selected, ok := p.selectedPlaylist(); ok {
+			return p, p.refreshSongs(selected.id), true
+		}
+
+	case "enter":
+		if p.state == statePlaylistLoaded {
+			m, cmd := p.play()
+			return m, cmd, true
+		}
+	}
+
+	return p, nil, false
+}
+
+func (p playlistModel) updatePlaylists(msg tea.Msg) (tea.Model, tea.Cmd) {
+	before, _ := p.selectedPlaylist()
+	l, cmd := p.list.Update(msg)
+	p.list = &l
+
+	current, ok := p.selectedPlaylist()
+	if !ok || current.id == before.id {
+		return p, cmd
+	}
+	return p, tea.Batch(cmd, p.scheduleSongs(current.id))
+}
+
+func (p playlistModel) updateSongs(msg tea.Msg) tea.Cmd {
+	songs := p.selectedSongs()
+	if songs == nil || songs.list == nil {
+		return nil
+	}
+	l, cmd := songs.list.Update(msg)
+	songs.list = &l
+	return cmd
 }
 
 func (p playlistModel) capturesInput() bool {
 	return p.list != nil && p.list.FilterState() == list.Filtering
 }
 
+func (p playlistModel) selectedPlaylist() (item, bool) {
+	if p.list == nil {
+		return item{}, false
+	}
+	i, ok := p.list.SelectedItem().(item)
+	return i, ok
+}
+
+func (p playlistModel) selectedSongs() *playlistSongs {
+	selected, ok := p.selectedPlaylist()
+	if !ok {
+		return nil
+	}
+	return p.songs[selected.id]
+}
+
+func (p playlistModel) selectedSong() (spotify.PlaylistItem, bool) {
+	songs := p.selectedSongs()
+	if songs == nil || songs.list == nil {
+		return spotify.PlaylistItem{}, false
+	}
+	s, ok := songs.list.SelectedItem().(songItem)
+	return s.PlaylistItem, ok
+}
+
+func (p playlistModel) scheduleSongs(playlistID libspotify.ID) tea.Cmd {
+	if _, ok := p.songs[playlistID]; ok {
+		return nil
+	}
+	return p.after(songsLoadDelay, songsRequested{playlistID})
+}
+
+func (p playlistModel) loadSongs(playlistID libspotify.ID) tea.Cmd {
+	old, ok := p.songs[playlistID]
+	if ok && old.state != stateSongsError {
+		return nil
+	}
+
+	songs := &playlistSongs{state: stateSongsLoading, loading: true}
+	if ok {
+		songs.gen = old.gen + 1
+	}
+	p.songs[playlistID] = songs
+	return p.fetchSongs(playlistID, songs.gen, 0)
+}
+
+func (p playlistModel) refreshSongs(playlistID libspotify.ID) tea.Cmd {
+	songs, ok := p.songs[playlistID]
+	if !ok || songs.state == stateSongsError {
+		return p.loadSongs(playlistID)
+	}
+
+	songs.gen++
+	songs.loading, songs.refreshing, songs.buffer, songs.err = true, true, nil, nil
+	return p.fetchSongs(playlistID, songs.gen, 0)
+}
+
+func (p playlistModel) fetchSongs(playlistID libspotify.ID, gen, offset int) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(p.ctx, songsPageTimeout)
+		defer cancel()
+
+		page, err := p.spotifyClient.PlaylistItemsPage(ctx, playlistID, offset)
+		if err != nil {
+			return songsLoadFailed{playlistID, gen, err}
+		}
+		return songsPageLoaded{playlistID, gen, page}
+	}
+}
+
+func (p playlistModel) addSongsPage(msg songsPageLoaded) tea.Cmd {
+	songs, ok := p.songs[msg.playlistID]
+	if !ok || msg.gen != songs.gen || !songs.loading {
+		return nil
+	}
+	songs.loaded, songs.total = msg.page.Next, msg.page.Total
+
+	switch {
+	case songs.refreshing:
+		songs.buffer = append(songs.buffer, msg.page.Items...)
+		if msg.page.Last {
+			index := reselect(songs.list, songs.buffer)
+			songs.list = p.newSongsList(songs.buffer)
+			songs.list.Select(index)
+			songs.buffer = nil
+		}
+	case songs.list == nil:
+		songs.list = p.newSongsList(msg.page.Items)
+		songs.state = stateSongsLoaded
+	default:
+		songs.list.SetItems(append(songs.list.Items(), songItems(msg.page.Items)...))
+	}
+
+	if !msg.page.Last {
+		return p.fetchSongs(msg.playlistID, msg.gen, msg.page.Next)
+	}
+	songs.state, songs.loading, songs.refreshing = stateSongsLoaded, false, false
+	return nil
+}
+
+func (p playlistModel) failSongs(msg songsLoadFailed) {
+	songs, ok := p.songs[msg.playlistID]
+	if !ok || msg.gen != songs.gen || !songs.loading {
+		return
+	}
+
+	songs.loading, songs.refreshing, songs.buffer, songs.err = false, false, nil, msg.err
+	if songs.list != nil {
+		songs.state = stateSongsLoaded
+		return
+	}
+	songs.state = stateSongsError
+	var apiErr libspotify.Error
+	if errors.As(msg.err, &apiErr) && apiErr.Status == http.StatusForbidden {
+		songs.state = stateSongsForbidden
+	}
+}
+
+func reselect(previous *list.Model, songs []spotify.PlaylistItem) int {
+	if previous == nil {
+		return 0
+	}
+	index := min(previous.Index(), max(0, len(songs)-1))
+	selected, ok := previous.SelectedItem().(songItem)
+	if !ok {
+		return index
+	}
+
+	distance := func(s spotify.PlaylistItem) int {
+		d := s.Position - selected.Position
+		if d < 0 {
+			return -d
+		}
+		return d
+	}
+	best := -1
+	for i, s := range songs {
+		if s.URI == selected.URI && (best < 0 || distance(s) < distance(songs[best])) {
+			best = i
+		}
+	}
+	if best < 0 {
+		return index
+	}
+	return best
+}
+
+func songItems(songs []spotify.PlaylistItem) []list.Item {
+	items := make([]list.Item, len(songs))
+	for i, s := range songs {
+		items[i] = songItem{s}
+	}
+	return items
+}
+
+func (p playlistModel) newSongsList(songs []spotify.PlaylistItem) *list.Model {
+	l := list.New(songItems(songs), songDelegate{focused: !p.leftFocus}, 0, 0)
+	l.SetFilteringEnabled(false)
+	l.SetShowTitle(false)
+	l.SetShowHelp(false)
+	l.SetShowPagination(false)
+	l.DisableQuitKeybindings()
+	l.SetStatusBarItemName("song", "songs")
+	p.resizeSongsList(&l)
+	return &l
+}
+
+func (p playlistModel) focusSongs() {
+	for _, songs := range p.songs {
+		if songs.list != nil {
+			songs.list.SetDelegate(songDelegate{focused: !p.leftFocus})
+		}
+	}
+}
+
+func (p playlistModel) resizeSongs() {
+	for _, songs := range p.songs {
+		if songs.list != nil {
+			p.resizeSongsList(songs.list)
+		}
+	}
+}
+
+func (p playlistModel) resizeSongsList(l *list.Model) {
+	l.SetShowStatusBar(p.songsHeight() >= minSongsStatusHeight)
+	l.SetSize(p.rightWidth(), p.songsHeight())
+}
+
+func (p playlistModel) play() (playlistModel, tea.Cmd) {
+	playlist, ok := p.selectedPlaylist()
+	if !ok {
+		return p, nil
+	}
+
+	position, name := 0, playlist.title
+	if !p.leftFocus {
+		if song, ok := p.selectedSong(); ok {
+			if !song.Playable {
+				p.playback = playbackStatus{seq: p.playback.seq + 1, text: unplayableReason(song), err: true}
+				return p, nil
+			}
+			position, name = song.Position, song.Name
+		}
+	}
+
+	p.playback = playbackStatus{seq: p.playback.seq + 1, text: "Starting " + name + "..."}
+	return p, p.startPlayback(p.playback.seq, playlist.uri, position, name)
+}
+
+func (p playlistModel) startPlayback(seq int, playlist libspotify.URI, position int, name string) tea.Cmd {
+	var deviceID libspotify.ID
+	if p.spotifydPlayer != nil {
+		deviceID = p.spotifydPlayer.ID
+	}
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(p.ctx, playbackTimeout)
+		defer cancel()
+
+		if err := p.spotifyClient.PlayPlaylist(ctx, deviceID, playlist, position); err != nil {
+			return playbackFailed{seq, err}
+		}
+		return playbackStarted{seq, name}
+	}
+}
+
+func unplayableReason(song spotify.PlaylistItem) string {
+	if song.IsLocal {
+		return "Local files can't be played from spot-go"
+	}
+	return song.Name + " is unavailable"
+}
+
+func errorText(err error) string {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		err = urlErr.Err
+	}
+	return err.Error()
+}
+
 func (p playlistModel) View() string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, p.leftView(), p.rightView())
 }
 
+func (p playlistModel) leftWidth() int {
+	return int(float64(p.width) * 0.2)
+}
+
+func (p playlistModel) rightWidth() int {
+	return max(0, int(float64(p.width)*0.75)-rightViewPadding)
+}
+
+func (p playlistModel) songsHeight() int {
+	return max(0, p.height-rightViewChrome)
+}
+
 func (p playlistModel) rightView() string {
-	width := int(float64(p.width) * 0.75)
-	if p.list != nil {
-		i, ok := p.list.SelectedItem().(item)
-		if !ok {
-			return ""
-		}
-		title := utf8.Normalize(i.title)
-		s := lipgloss.NewStyle().
+	playlist, ok := p.selectedPlaylist()
+	if !ok {
+		return ""
+	}
+
+	width := p.rightWidth()
+	note := songsProgress(p.selectedSongs())
+	title := fit(printable(playlist.title), width-lipgloss.Width(note)) + note
+	parts := []string{
+		lipgloss.NewStyle().
 			Width(width).
 			AlignHorizontal(lipgloss.Center).
-			Render(title)
-		return s
+			Render(fit(title, width)),
+		"",
+	}
+	if height := p.songsHeight(); height > 0 {
+		parts = append(parts, lipgloss.NewStyle().
+			Width(width).
+			Height(height).
+			MaxHeight(height).
+			Render(p.songsView()))
+	}
+	parts = append(parts, p.playbackView(), p.rightHelp())
+
+	return lipgloss.NewStyle().
+		PaddingLeft(rightViewPadding).
+		MaxWidth(width + rightViewPadding).
+		MaxHeight(p.height).
+		Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
+}
+
+func (p playlistModel) songsView() string {
+	songs := p.selectedSongs()
+	if songs == nil {
+		return p.notice("Loading songs...")
+	}
+
+	switch songs.state {
+	case stateSongsLoaded:
+		if songs.list == nil {
+			return ""
+		}
+		return songs.list.View()
+	case stateSongsForbidden:
+		return p.notice("Spotify only shows the songs of playlists you own or collaborate on.\n\nPress enter to play this playlist.")
+	case stateSongsError:
+		return p.notice(fmt.Sprintf("Fail to load songs:\n%s\n\nPress r to try again.", errorText(songs.err)))
+	}
+	return p.notice("Loading songs...")
+}
+
+func songsProgress(songs *playlistSongs) string {
+	switch {
+	case songs == nil:
+		return ""
+	case songs.refreshing:
+		return " (refreshing...)"
+	case songs.loading && songs.list != nil:
+		return fmt.Sprintf(" (loading %d of %d...)", songs.loaded, songs.total)
+	case songs.err != nil && songs.list != nil:
+		return " (fail to load: " + errorText(songs.err) + ")"
 	}
 	return ""
 }
 
+func (p playlistModel) notice(text string) string {
+	return lipgloss.NewStyle().
+		Width(p.rightWidth()).
+		PaddingTop(1).
+		AlignHorizontal(lipgloss.Center).
+		Render(text)
+}
+
+func (p playlistModel) playbackView() string {
+	style := playingStyle
+	if p.playback.err {
+		style = playbackErrorStyle
+	}
+	return style.Render(fit(printable(p.playback.text), p.rightWidth()))
+}
+
+func (p playlistModel) rightHelp() string {
+	target := "songs"
+	if !p.leftFocus {
+		target = "playlists"
+	}
+
+	s := p.list.Help.Styles
+	separator := s.ShortSeparator.Inline(true).Render(" • ")
+	help := s.ShortKey.Inline(true).Render("tab") + " " + s.ShortDesc.Inline(true).Render(target) +
+		separator +
+		s.ShortKey.Inline(true).Render("enter") + " " + s.ShortDesc.Inline(true).Render("play") +
+		separator +
+		s.ShortKey.Inline(true).Render("r") + " " + s.ShortDesc.Inline(true).Render("refresh")
+	return lipgloss.NewStyle().
+		Width(p.rightWidth()).
+		AlignHorizontal(lipgloss.Center).
+		Render(fit(help, p.rightWidth()))
+}
+
 func (p playlistModel) leftView() string {
-	width := int(float64(p.width) * 0.2)
+	width := p.leftWidth()
 	if p.list != nil {
 		p.list.SetSize(width, p.height-3)
 		helpStyles := p.list.Help.Styles
