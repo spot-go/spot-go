@@ -13,8 +13,8 @@ type placeholderModel struct {
 	height int
 }
 
-func newPlaceholderModel(name string) placeholderModel {
-	return placeholderModel{name: name}
+func placeholderTab(name string) tab {
+	return tab{name: name, content: placeholderModel{name: name}}
 }
 
 func (p placeholderModel) Init() tea.Cmd {

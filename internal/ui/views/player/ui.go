@@ -82,11 +82,11 @@ func NewModel(
 		playerContext: playerContext,
 		WindowSize:    windowSize,
 		tabs: []tab{
-			{name: "Search", content: newPlaceholderModel("Search")},
+			placeholderTab("Search"),
 			{name: "Playlists", content: newPlaylistModel(playerContext), initialized: true},
-			{name: "Podcasts", content: newPlaceholderModel("Podcasts")},
-			{name: "Artists", content: newPlaceholderModel("Artists")},
-			{name: "Albums", content: newPlaceholderModel("Albums")},
+			placeholderTab("Podcasts"),
+			placeholderTab("Artists"),
+			placeholderTab("Albums"),
 		},
 		activeTab: playlistsTab,
 	}

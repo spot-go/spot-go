@@ -459,7 +459,9 @@ func TestViewFitsTheWindow(t *testing.T) {
 
 func TestOversizedTabContentIsClipped(t *testing.T) {
 	h := newHarness(t, 80, 24)
-	h.player().tabs[0].content = tallModel{}
+	m := h.player()
+	m.tabs[0] = tab{name: "Search", content: tallModel{}}
+	h.model = m
 
 	h.send(keys("left")...)
 
