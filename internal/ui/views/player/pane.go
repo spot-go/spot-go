@@ -3,6 +3,7 @@ package player
 import (
 	"errors"
 	"net/url"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/help"
@@ -34,6 +35,7 @@ const (
 	rightViewChrome     = 4
 	rightViewPadding    = 1
 	minListStatusHeight = 4
+	leftHelpIndent      = 6
 	followGrace         = 3 * time.Second
 )
 
@@ -139,14 +141,9 @@ func (s paneSize) listHeight() int {
 func (s paneSize) leftPane(l *list.Model, msg string, align lipgloss.Position) string {
 	width := s.leftWidth()
 	if l != nil {
-		l.SetSize(width, s.height-3)
-		helpStyles := l.Help.Styles
-		helpMsg := helpStyles.ShortKey.Inline(true).Render("/") + " " +
-			helpStyles.ShortDesc.Inline(true).Render("filter")
-		msg = l.View() + "\n\n" +
-			lipgloss.NewStyle().
-				PaddingLeft(6).
-				Render(helpMsg)
+		help := leftHelp(l.Help.Styles, width)
+		l.SetSize(width, s.height-2-lipgloss.Height(help))
+		msg = l.View() + "\n\n" + help
 	}
 	return borderStyle.
 		Height(s.height).
@@ -154,6 +151,20 @@ func (s paneSize) leftPane(l *list.Model, msg string, align lipgloss.Position) s
 		Width(width + borderStyle.GetHorizontalBorderSize()).
 		AlignHorizontal(align).
 		Render(msg)
+}
+
+func leftHelp(h help.Styles, width int) string {
+	hints := []string{
+		h.ShortKey.Inline(true).Render("/") + " " + h.ShortDesc.Inline(true).Render("filter"),
+		h.ShortKey.Inline(true).Render("s") + " " + h.ShortDesc.Inline(true).Render("sort"),
+	}
+	text := strings.Join(hints, h.ShortSeparator.Inline(true).Render(" • "))
+	if lipgloss.Width(text) > width-leftHelpIndent {
+		text = strings.Join(hints, "\n")
+	}
+	return lipgloss.NewStyle().
+		PaddingLeft(max(0, min(leftHelpIndent, width-lipgloss.Width(text)))).
+		Render(text)
 }
 
 func (s paneSize) rightPane(title, note string, body func() string, status playbackStatus, keys string) string {
@@ -204,9 +215,7 @@ func (s paneSize) keyHelp(h help.Styles, target string) string {
 		separator +
 		h.ShortKey.Inline(true).Render("enter") + " " + h.ShortDesc.Inline(true).Render("play") +
 		separator +
-		h.ShortKey.Inline(true).Render("r") + " " + h.ShortDesc.Inline(true).Render("refresh") +
-		separator +
-		h.ShortKey.Inline(true).Render("s") + " " + h.ShortDesc.Inline(true).Render("sort")
+		h.ShortKey.Inline(true).Render("r") + " " + h.ShortDesc.Inline(true).Render("refresh")
 	return lipgloss.NewStyle().
 		Width(s.rightWidth()).
 		AlignHorizontal(lipgloss.Center).

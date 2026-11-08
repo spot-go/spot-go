@@ -73,6 +73,31 @@ func TestSortKeyCyclesTheOrders(t *testing.T) {
 	}
 }
 
+func TestSortHintSitsUnderTheLibraryList(t *testing.T) {
+	h := newHarness(t, 120, 40)
+	h.wantView("/ filter • s sort")
+	h.dontWantView("refresh • s sort")
+
+	h.send(key("right"))
+	h.wantView("/ filter • s sort")
+	h.dontWantView("refresh • s sort")
+}
+
+func TestSortHintStacksUnderTheFilterHintWhenNarrow(t *testing.T) {
+	h := newHarness(t, 80, 40)
+
+	lines := strings.Split(h.view(), "\n")
+	for i, line := range lines[:len(lines)-1] {
+		if col := strings.Index(line, "/ filter"); col >= 0 {
+			if strings.Index(lines[i+1], "s sort") != col {
+				t.Fatalf("sort hint is not right below the filter hint:\n%s", h.view())
+			}
+			return
+		}
+	}
+	t.Fatalf("view does not show the filter hint:\n%s", h.view())
+}
+
 func TestSortKeyWorksFromTheSongs(t *testing.T) {
 	h := newHarness(t, 120, 40)
 
