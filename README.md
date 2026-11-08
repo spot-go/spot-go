@@ -1,5 +1,7 @@
 # spot-go
 
+<img src="assets/logo.png" alt="spot-go logo: a Go Gopher wearing headphones with a green treble clef" width="200">
+
 A Spotify terminal UI.
 
 ## Requirements
@@ -73,7 +75,9 @@ Apps in development mode only work for up to 5 users added to the app's user lis
 
 ## License
 
-spot-go is MIT licensed. spot-go never ships Soloist or spotifyd:
+spot-go's source code is MIT licensed. spot-go never ships Soloist or spotifyd:
 
 - Soloist is proprietary software from Spotify. spot-go downloads it from Spotify's servers on your computer.
 - spotifyd is GPL-3.0 licensed. spot-go never links it, it only runs the spotifyd binary you installed or that spot-go downloaded from the official release.
+
+The [project logo](assets/logo.png) is an adaptation of the [Go Gopher](https://go.dev/blog/gopher), originally designed by Renée French, and is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The adaptation was created with AI assistance and adds headphones, a green-and-black treble clef, and a transparent background.
