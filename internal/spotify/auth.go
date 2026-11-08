@@ -38,6 +38,8 @@ const (
 	callbackAddr   = "127.0.0.1:10888"
 	ClientID       = "573247e4a8b84ca8842f2aca8b1f3878"
 	allowedCharset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456_.-~"
+
+	scopeUserReadPlaybackPosition = "user-read-playback-position"
 )
 
 var (
@@ -49,6 +51,8 @@ var (
 		spotifyauth.ScopeUserReadCurrentlyPlaying,
 		spotifyauth.ScopePlaylistReadPrivate,
 		spotifyauth.ScopeUserReadRecentlyPlayed,
+		spotifyauth.ScopeUserLibraryRead,
+		scopeUserReadPlaybackPosition,
 	}
 	redirectURI = fmt.Sprintf("http://%s/callback", callbackAddr)
 	auth        = spotifyauth.New(

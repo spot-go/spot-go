@@ -50,6 +50,18 @@ type (
 		paused         bool
 		playerStatus   int
 		playerRequests int
+		playingType    string
+		playingItem    string
+		playingName    string
+		progressMs     int
+		durationMs     int
+		shows          []string
+		showsStatus    int
+		showRequests   int
+		episodes       map[string][]string
+		fresh          map[string]string
+		episodeStatus  int
+		episodeReads   []string
 	}
 
 	recentPlay struct {
@@ -87,6 +99,17 @@ func newFakeAPI() *fakeAPI {
 		rateLimits:  map[string]rateLimit{},
 		block:       map[string]chan struct{}{},
 		totals:      map[string]int{},
+		shows:       testShowsJSON(),
+		episodes: map[string][]string{
+			"s0": {
+				episodeJSON(testEpisode{name: "How the Vote Count Works", date: "2024-11-07", precision: "day", durationMs: 3134000, fullyPlayed: true}),
+				episodeJSON(testEpisode{name: "Inside the Final Hours", date: "2024-11-06", precision: "day", durationMs: 3600000, resumeMs: 1740000}),
+				episodeJSON(testEpisode{name: "Trailer", date: "2018", precision: "year", durationMs: 125000, unplayable: true}),
+			},
+			"s1": manyEpisodesJSON(120),
+			"s2": {},
+		},
+		fresh: map[string]string{},
 	}
 }
 
@@ -138,47 +161,78 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		if f.playing == "" {
 			return response(r, http.StatusNoContent, ""), nil
 		}
-		return response(r, http.StatusOK, fmt.Sprintf(`{"is_playing":%t,"context":{"type":"playlist","uri":%q}}`, !f.paused, f.playing)), nil
+		item, context := "null", fmt.Sprintf(`{"type":"playlist","uri":%q}`, f.playing)
+		if f.playingItem != "" {
+			item = fmt.Sprintf(`{"uri":%q,"name":%q,"duration_ms":%d}`, f.playingItem, f.playingName, f.durationMs)
+		}
+		switch f.playingType {
+		case "show":
+			context = fmt.Sprintf(`{"type":"show","uri":%q}`, f.playing)
+		case "episode":
+			context = "null"
+			item = fmt.Sprintf(`{"type":"episode","uri":%q,"name":%q,"duration_ms":%d,"show":{"uri":%q}}`, f.playingItem, f.playingName, f.durationMs, f.playing)
+		}
+		return response(r, http.StatusOK, fmt.Sprintf(`{"is_playing":%t,"progress_ms":%d,"context":%s,"item":%s}`, !f.paused, f.progressMs, context, item)), nil
 
 	case strings.HasPrefix(path, "playlists/") && strings.HasSuffix(path, "/items"):
 		id := strings.TrimSuffix(strings.TrimPrefix(path, "playlists/"), "/items")
 		query := r.URL.Query()
-		f.songRequests = append(f.songRequests, id+"@"+query.Get("offset"))
-		if wait := f.block[id+"@"+query.Get("offset")]; wait != nil {
-			delete(f.block, id+"@"+query.Get("offset"))
-			f.mu.Unlock()
-			<-wait
-			f.mu.Lock()
-		}
-		if err := f.songsErr[id]; err != nil {
-			return nil, err
-		}
-		if status := f.songsStatus[id]; status != 0 {
-			return errorResponse(r, status, "request failed"), nil
-		}
-		if limit := f.rateLimits[id]; limit.times > 0 && limit.offset == query.Get("offset") {
-			limit.times--
-			f.rateLimits[id] = limit
-			status, message := http.StatusTooManyRequests, "API rate limit exceeded"
-			if limit.status != 0 {
-				status, message = limit.status, http.StatusText(limit.status)
-			}
-			resp := errorResponse(r, status, message)
-			resp.Header.Set("Retry-After", limit.retryAfter)
-			return resp, nil
+		if resp, err := f.injected(r, id, query.Get("offset")); resp != nil || err != nil {
+			return resp, err
 		}
 		if missing := missingSongsQuery(query); missing != "" {
 			return errorResponse(r, http.StatusBadRequest, "missing "+missing), nil
 		}
-		offset, _ := strconv.Atoi(query.Get("offset"))
-		limit, _ := strconv.Atoi(query.Get("limit"))
-		all := f.songs[id]
-		page := all[min(offset, len(all)):min(offset+limit, len(all))]
-		total := len(all)
-		if t, ok := f.totals[id]; ok {
-			total = t
+		return f.page(r, id, f.songs[id], query), nil
+
+	case path == "me/shows":
+		f.showRequests++
+		query := r.URL.Query()
+		if f.showsStatus != 0 {
+			return errorResponse(r, f.showsStatus, "request failed"), nil
 		}
-		return response(r, http.StatusOK, fmt.Sprintf(`{"items":[%s],"total":%d}`, strings.Join(page, ","), total)), nil
+		if query.Get("limit") != "50" {
+			return errorResponse(r, http.StatusBadRequest, "missing limit=50"), nil
+		}
+		offset, _ := strconv.Atoi(query.Get("offset"))
+		page := f.shows[min(offset, len(f.shows)):min(offset+50, len(f.shows))]
+		next := "null"
+		if offset+50 < len(f.shows) {
+			next = fmt.Sprintf(`"https://api.spotify.com/v1/me/shows?offset=%d&limit=50"`, offset+50)
+		}
+		return response(r, http.StatusOK, fmt.Sprintf(`{"items":[%s],"total":%d,"next":%s}`, strings.Join(page, ","), len(f.shows), next)), nil
+
+	case strings.HasPrefix(path, "shows/") && strings.HasSuffix(path, "/episodes"):
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "shows/"), "/episodes")
+		query := r.URL.Query()
+		if resp, err := f.injected(r, id, query.Get("offset")); resp != nil || err != nil {
+			return resp, err
+		}
+		if missing := missingEpisodesQuery(query); missing != "" {
+			return errorResponse(r, http.StatusBadRequest, "missing "+missing), nil
+		}
+		return f.page(r, id, f.episodes[id], query), nil
+
+	case strings.HasPrefix(path, "episodes/"):
+		id := strings.TrimPrefix(path, "episodes/")
+		f.episodeReads = append(f.episodeReads, id)
+		if f.episodeStatus != 0 {
+			return errorResponse(r, f.episodeStatus, "request failed"), nil
+		}
+		if r.URL.Query().Get("market") != "from_token" {
+			return errorResponse(r, http.StatusBadRequest, "missing market=from_token"), nil
+		}
+		if fresh, ok := f.fresh[id]; ok {
+			return response(r, http.StatusOK, fresh), nil
+		}
+		for _, episodes := range f.episodes {
+			for _, e := range episodes {
+				if strings.Contains(e, fmt.Sprintf(`"id":%q`, id)) {
+					return response(r, http.StatusOK, e), nil
+				}
+			}
+		}
+		return errorResponse(r, http.StatusNotFound, "Non existing id"), nil
 
 	case path == "me/player/play" && r.Method == http.MethodPut:
 		var body map[string]any
@@ -191,6 +245,55 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 
 	return errorResponse(r, http.StatusNotFound, "unexpected request "+r.Method+" "+r.URL.Path), nil
+}
+
+func (f *fakeAPI) injected(r *http.Request, id, offset string) (*http.Response, error) {
+	f.songRequests = append(f.songRequests, id+"@"+offset)
+	if wait := f.block[id+"@"+offset]; wait != nil {
+		delete(f.block, id+"@"+offset)
+		f.mu.Unlock()
+		<-wait
+		f.mu.Lock()
+	}
+	if err := f.songsErr[id]; err != nil {
+		return nil, err
+	}
+	if status := f.songsStatus[id]; status != 0 {
+		return errorResponse(r, status, "request failed"), nil
+	}
+	if limit := f.rateLimits[id]; limit.times > 0 && limit.offset == offset {
+		limit.times--
+		f.rateLimits[id] = limit
+		status, message := http.StatusTooManyRequests, "API rate limit exceeded"
+		if limit.status != 0 {
+			status, message = limit.status, http.StatusText(limit.status)
+		}
+		resp := errorResponse(r, status, message)
+		resp.Header.Set("Retry-After", limit.retryAfter)
+		return resp, nil
+	}
+	return nil, nil
+}
+
+func (f *fakeAPI) page(r *http.Request, id string, all []string, query url.Values) *http.Response {
+	offset, _ := strconv.Atoi(query.Get("offset"))
+	limit, _ := strconv.Atoi(query.Get("limit"))
+	page := all[min(offset, len(all)):min(offset+limit, len(all))]
+	total := len(all)
+	if t, ok := f.totals[id]; ok {
+		total = t
+	}
+	return response(r, http.StatusOK, fmt.Sprintf(`{"items":[%s],"total":%d}`, strings.Join(page, ","), total))
+}
+
+func missingEpisodesQuery(query url.Values) string {
+	if query.Get("market") != "from_token" {
+		return "market=from_token"
+	}
+	if query.Get("limit") != "50" {
+		return "limit=50"
+	}
+	return ""
 }
 
 func missingSongsQuery(query url.Values) string {
@@ -257,6 +360,7 @@ type (
 		api           *fakeAPI
 		model         tea.Model
 		playlistLoads int
+		podcastLoads  int
 		holdTimers    bool
 		timers        []tea.Msg
 		delays        []time.Duration
@@ -281,12 +385,17 @@ func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: width, Height: height}}
 	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store)
 	playlists := m.tabs[playlistsTab].content.(playlistModel)
-	playlists.after = func(d time.Duration, msg tea.Msg) tea.Cmd {
-		return func() tea.Msg { return timerMsg{d, msg} }
-	}
+	playlists.after = testAfter
 	playlists.pollEvery = 0
 	m.tabs[playlistsTab].content = playlists
+	podcasts := m.tabs[podcastsTab].content.(podcastModel)
+	podcasts.after = testAfter
+	m.tabs[podcastsTab].content = podcasts
 	return m
+}
+
+func testAfter(d time.Duration, msg tea.Msg) tea.Cmd {
+	return func() tea.Msg { return timerMsg{d, msg} }
 }
 
 func newHarness(t *testing.T, width, height int) *harness {
@@ -325,8 +434,11 @@ func (h *harness) send(msgs ...tea.Msg) {
 			h.timers = append(h.timers, timer.msg)
 			continue
 		}
-		if _, ok := msg.(playlistsLoaded); ok {
+		switch msg.(type) {
+		case playlistsLoaded:
 			h.playlistLoads++
+		case showsLoaded:
+			h.podcastLoads++
 		}
 
 		var cmd tea.Cmd
@@ -411,6 +523,8 @@ func tabSize(content tea.Model) contentDimension {
 	switch c := content.(type) {
 	case playlistModel:
 		return contentDimension{width: c.width, height: c.height}
+	case podcastModel:
+		return contentDimension{width: c.width, height: c.height}
 	case placeholderModel:
 		return contentDimension{width: c.width, height: c.height}
 	}
@@ -441,6 +555,8 @@ func key(k string) tea.Msg {
 		return tea.KeyPressMsg{Code: tea.KeyEnter}
 	case "esc":
 		return tea.KeyPressMsg{Code: tea.KeyEscape}
+	case "end":
+		return tea.KeyPressMsg{Code: tea.KeyEnd}
 	case "ctrl+c":
 		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
 	case "ctrl+q":
@@ -487,23 +603,34 @@ func TestArrowKeysSwitchTabsWithoutPanicking(t *testing.T) {
 	if h.playlistLoads != 1 {
 		t.Fatalf("playlists loaded %d times, want 1", h.playlistLoads)
 	}
+	if h.podcastLoads != 1 {
+		t.Fatalf("podcasts loaded %d times, want 1", h.podcastLoads)
+	}
 }
 
 func TestTabContentFollowsActiveTab(t *testing.T) {
 	h := newHarness(t, 120, 40)
 
 	h.send(key("right"))
-	if v := h.view(); !strings.Contains(v, "Podcasts is coming soon") || strings.Contains(v, "Rock") {
+	if v := h.view(); !strings.Contains(v, "Morning Briefing") || strings.Contains(v, "Rock") {
 		t.Fatalf("Podcasts tab shows the wrong content:\n%s", v)
 	}
 
 	h.send(key("down"))
+	if got := h.selectedShow(); got != "Go Weekly" {
+		t.Fatalf("down on the Podcasts tab selected %q, want Go Weekly", got)
+	}
 	h.send(key("left"))
 	if v := h.view(); !strings.Contains(v, "Rock") {
 		t.Fatalf("Playlists tab does not show the playlists:\n%s", v)
 	}
 	if got := h.selected(); got != "Rock" {
 		t.Fatalf("keys on the Podcasts tab moved the playlist cursor to %q", got)
+	}
+
+	h.send(keys("right", "right")...)
+	if v := h.view(); !strings.Contains(v, "Artists is coming soon") {
+		t.Fatalf("Artists tab shows the wrong content:\n%s", v)
 	}
 }
 
@@ -574,8 +701,8 @@ func TestArrowKeysMoveTheFilterCursor(t *testing.T) {
 	}
 
 	h.send(keys("esc", "right")...)
-	if got := h.player().activeTab; got != playlistsTab+1 {
-		t.Fatalf("activeTab after leaving the filter = %d, want %d", got, playlistsTab+1)
+	if got := h.player().activeTab; got != podcastsTab {
+		t.Fatalf("activeTab after leaving the filter = %d, want %d", got, podcastsTab)
 	}
 }
 
@@ -605,8 +732,8 @@ func TestTabWhileFilteringAppliesTheFilter(t *testing.T) {
 	}
 
 	h.send(key("right"))
-	if got := h.player().activeTab; got != playlistsTab+1 {
-		t.Fatalf("activeTab = %d, want %d", got, playlistsTab+1)
+	if got := h.player().activeTab; got != podcastsTab {
+		t.Fatalf("activeTab = %d, want %d", got, podcastsTab)
 	}
 }
 

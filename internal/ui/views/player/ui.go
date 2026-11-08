@@ -2,8 +2,10 @@ package player
 
 import (
 	"context"
+	"errors"
 	"strings"
 
+	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/spot-go/spot-go/internal/library"
@@ -20,6 +22,8 @@ type (
 		spotifyUser   *libspotify.PrivateUser
 		playerDevice  *libspotify.PlayerDevice
 		historyStore  *library.Store
+		history       *library.History
+		plays         *int
 	}
 
 	Model struct {
@@ -44,10 +48,16 @@ type (
 	inputCapturer interface {
 		capturesInput() bool
 	}
+
+	tabFilterMatches struct {
+		tab     int
+		matches list.FilterMatchesMsg
+	}
 )
 
 const (
 	playlistsTab     = 1
+	podcastsTab      = 2
 	minContentHeight = 4
 	tooSmallWindow   = "The terminal window is too small. Please make it bigger."
 )
@@ -75,20 +85,32 @@ func NewModel(
 	playerDevice *libspotify.PlayerDevice,
 	historyStore *library.Store,
 ) Model {
+	var (
+		history    library.History
+		historyErr error
+	)
+	if historyStore != nil {
+		history, historyErr = historyStore.Load()
+		if historyErr != nil && !errors.Is(historyErr, library.ErrCorrupt) {
+			historyStore = nil
+		}
+	}
 	playerContext := playerContext{
 		ctx:           ctx,
 		spotifyClient: spotifyClient,
 		spotifyUser:   spotifyUser,
 		playerDevice:  playerDevice,
 		historyStore:  historyStore,
+		history:       &history,
+		plays:         new(int),
 	}
 	m := Model{
 		playerContext: playerContext,
 		WindowSize:    windowSize,
 		tabs: []tab{
 			placeholderTab("Search"),
-			{name: "Playlists", content: newPlaylistModel(playerContext), initialized: true},
-			placeholderTab("Podcasts"),
+			{name: "Playlists", content: newPlaylistModel(playerContext, historyErr), initialized: true},
+			{name: "Podcasts", content: newPodcastModel(playerContext, historyErr)},
 			placeholderTab("Artists"),
 			placeholderTab("Albums"),
 		},
@@ -122,6 +144,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.WindowSizeMsg = msg
 		return m, m.broadcast(m.contentDimension())
+
+	case tabFilterMatches:
+		if msg.tab < 0 || msg.tab >= len(m.tabs) {
+			return m, nil
+		}
+		return m, m.updateTab(msg.tab, msg.matches)
 	}
 
 	return m, m.broadcast(msg)
@@ -144,7 +172,27 @@ func (m Model) switchTab(i int) (tea.Model, tea.Cmd) {
 func (m Model) updateTab(i int, msg tea.Msg) tea.Cmd {
 	content, cmd := m.tabs[i].content.Update(msg)
 	m.tabs[i].content = content
-	return cmd
+	return ownFilterMatches(i, cmd)
+}
+
+func ownFilterMatches(tab int, cmd tea.Cmd) tea.Cmd {
+	if cmd == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		switch msg := cmd().(type) {
+		case list.FilterMatchesMsg:
+			return tabFilterMatches{tab: tab, matches: msg}
+		case tea.BatchMsg:
+			owned := make(tea.BatchMsg, len(msg))
+			for i, c := range msg {
+				owned[i] = ownFilterMatches(tab, c)
+			}
+			return owned
+		default:
+			return msg
+		}
+	}
 }
 
 func (m Model) broadcast(msg tea.Msg) tea.Cmd {
