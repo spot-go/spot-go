@@ -8,10 +8,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/reflow/truncate"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/styles"
 )
@@ -29,7 +29,7 @@ type (
 var (
 	songStyle         = lipgloss.NewStyle()
 	selectedSongStyle = lipgloss.NewStyle().
-				Foreground(styles.LipglossAdaptiveColorGreenSpotify)
+				Foreground(styles.LipglossColorForegroundGreenSpotify)
 )
 
 func (s songItem) FilterValue() string { return s.Name }
@@ -59,7 +59,7 @@ func (d songDelegate) Render(w io.Writer, m list.Model, index int, li list.Item)
 		}
 	}
 	if !song.Playable {
-		style = style.Copy().Faint(true)
+		style = style.Faint(true)
 	}
 
 	number := fmt.Sprintf("%*d  ", positionWidth(m), song.Position+1)
@@ -98,7 +98,7 @@ func fit(s string, width int) string {
 	if lipgloss.Width(s) <= width {
 		return s
 	}
-	return truncate.StringWithTail(s, uint(width), "…")
+	return ansi.Truncate(s, width, "…")
 }
 
 func printable(s string) string {

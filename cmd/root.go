@@ -1,17 +1,18 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
 	"github.com/spot-go/spot-go/internal/backend"
 	"github.com/spot-go/spot-go/internal/config"
 	"github.com/spot-go/spot-go/internal/program"
+	"github.com/spot-go/spot-go/internal/ui/styles"
 	"github.com/spot-go/spot-go/internal/ui/views/login"
 )
 
@@ -51,12 +52,12 @@ func run(cmd *cobra.Command, args []string) {
 	}
 
 	backend.KillStale()
-	lipgloss.SetHasDarkBackground(termenv.HasDarkBackground())
-	p := tea.NewProgram(login.NewModel(player), tea.WithAltScreen())
+	styles.HasDarkBackground = lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
+	p := tea.NewProgram(login.NewModel(player))
 	program.Instance = p
 	_, err = p.Run()
 	backend.Stop()
-	if err != nil {
+	if err != nil && !errors.Is(err, tea.ErrInterrupted) {
 		log.Fatal(err)
 	}
 }

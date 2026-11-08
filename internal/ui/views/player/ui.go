@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/styles"
 	"github.com/spot-go/spot-go/internal/ui/views"
@@ -61,11 +61,11 @@ var (
 	docStyle          = lipgloss.NewStyle()
 	inactiveTabStyle  = lipgloss.NewStyle().
 				Border(inactiveTabBorder, true).
-				BorderForeground(styles.LipglossAdaptiveColorGreenSpotify).
+				BorderForeground(styles.LipglossColorForegroundGreenSpotify).
 				Padding(0, 1)
-	activeTabStyle = inactiveTabStyle.Copy().Border(activeTabBorder, true)
+	activeTabStyle = inactiveTabStyle.Border(activeTabBorder, true)
 	windowStyle    = lipgloss.NewStyle().
-			BorderForeground(styles.LipglossAdaptiveColorGreenSpotify).
+			BorderForeground(styles.LipglossColorForegroundGreenSpotify).
 			Border(lipgloss.NormalBorder()).
 			UnsetBorderTop()
 )
@@ -120,7 +120,7 @@ func (m Model) waitForPlaybackError() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "ctrl+q", "ctrl+c":
 			return m, tea.Quit
@@ -185,11 +185,11 @@ func (m Model) tabRow() string {
 		var style lipgloss.Style
 		isFirst, isActive := i == 0, i == m.activeTab
 		if isActive {
-			style = activeTabStyle.Copy().
+			style = activeTabStyle.
 				Background(styles.LipglossColorBackgroundGreenSpotify).
 				Foreground(styles.LipglossColorBlack)
 		} else {
-			style = inactiveTabStyle.Copy()
+			style = inactiveTabStyle
 		}
 		border, _, _, _, _ := style.GetBorder()
 		if isFirst && isActive {
@@ -201,7 +201,7 @@ func (m Model) tabRow() string {
 		renderedTabs = append(renderedTabs, style.Render(t.name))
 	}
 
-	tabGap := inactiveTabStyle.Copy().
+	tabGap := inactiveTabStyle.
 		BorderTop(false).
 		BorderLeft(false).
 		BorderRight(false)
@@ -227,24 +227,24 @@ func (m Model) contentDimension() contentDimension {
 	return cd
 }
 
-func (m Model) View() string {
+func (m Model) View() tea.View {
 	row, cd := m.layout()
 	if lipgloss.Width(row) > m.Width || cd.height < minContentHeight {
-		return lipgloss.NewStyle().
+		return views.FullScreen(lipgloss.NewStyle().
 			Width(m.Width).
 			MaxHeight(m.Height).
-			Render(tooSmallWindow)
+			Render(tooSmallWindow), m.Height)
 	}
 
 	content := lipgloss.NewStyle().
 		MaxWidth(cd.width).
 		MaxHeight(cd.height).
-		Render(m.tabs[m.activeTab].content.View())
+		Render(m.tabs[m.activeTab].content.View().Content)
 	window := windowStyle.
-		Width(cd.width).
-		Height(cd.height).
+		Width(cd.width + windowStyle.GetHorizontalBorderSize()).
+		Height(cd.height + windowStyle.GetVerticalBorderSize()).
 		Render(content)
-	return docStyle.Height(m.Height).Render(row + "\n" + window)
+	return views.FullScreen(docStyle.Height(m.Height).Render(row+"\n"+window), m.Height)
 }
 
 func tabBorderWithBottom(left, middle, right string) lipgloss.Border {
@@ -253,18 +253,4 @@ func tabBorderWithBottom(left, middle, right string) lipgloss.Border {
 	border.Bottom = middle
 	border.BottomRight = right
 	return border
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

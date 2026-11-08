@@ -1,20 +1,15 @@
 package styles
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
-const (
-	ColorGreenSpotify = "#1DB954"
+const ColorGreenSpotify = "#1DB954"
 
+var (
 	LipglossColorForegroundGreenSpotify = lipgloss.Color(ColorGreenSpotify)
-	LipglossColorBackgroundGreenSpotify = lipgloss.Color(lipgloss.Color("#CEFAD0"))
+	LipglossColorBackgroundGreenSpotify = lipgloss.Color("#CEFAD0")
 
 	LipglossColorRed   = lipgloss.Color("#FF0000")
 	LipglossColorBlack = lipgloss.Color("#000000")
-)
 
-var (
-	LipglossAdaptiveColorGreenSpotify = lipgloss.AdaptiveColor{
-		Light: ColorGreenSpotify,
-		Dark:  ColorGreenSpotify,
-	}
+	HasDarkBackground = true
 )

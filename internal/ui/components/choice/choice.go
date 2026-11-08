@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/spot-go/spot-go/internal/ui/views"
 )
 
@@ -37,7 +37,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.WindowSizeMsg = msg
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "enter":
 			return m, func() tea.Msg {
@@ -61,7 +61,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) View() string {
+func (m Model) View() tea.View {
 	s := strings.Builder{}
 
 	for i := 0; i < len(m.choices); i++ {
@@ -77,11 +77,11 @@ func (m Model) View() string {
 		Align(lipgloss.Left, lipgloss.Center).
 		Render(s.String())
 
-	return lipgloss.Place(
+	return tea.NewView(lipgloss.Place(
 		m.Width,
 		m.Height,
 		lipgloss.Center,
 		lipgloss.Center,
 		fmt.Sprintf("%s\n%s", m.title, body),
-	)
+	))
 }

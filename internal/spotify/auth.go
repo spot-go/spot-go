@@ -113,8 +113,8 @@ func Login(ctx context.Context) ClientResponse {
 	if !authSettings.Token.Valid() {
 		newToken, err := c.Token()
 		if err != nil {
-			if err != nil &&
-				strings.Contains(err.Error(), `"error_description":"Refresh token revoked"`) {
+			var retrieveErr *oauth2.RetrieveError
+			if errors.As(err, &retrieveErr) && retrieveErr.ErrorDescription == "Refresh token revoked" {
 				return ClientResponse{nil, ErrNeedsAuth}
 			}
 			return ClientResponse{nil, fmt.Errorf("fail to get new token: %+v", err)}

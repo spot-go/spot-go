@@ -3,8 +3,8 @@ package player
 import (
 	"fmt"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type placeholderModel struct {
@@ -29,12 +29,12 @@ func (p placeholderModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return p, nil
 }
 
-func (p placeholderModel) View() string {
-	return lipgloss.Place(
+func (p placeholderModel) View() tea.View {
+	return tea.NewView(lipgloss.Place(
 		p.width,
 		p.height,
 		lipgloss.Center,
 		lipgloss.Center,
 		fmt.Sprintf("%s is coming soon", p.name),
-	)
+	))
 }

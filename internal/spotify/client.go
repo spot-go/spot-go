@@ -145,7 +145,7 @@ func (c Client) PlaylistItemsPage(ctx context.Context, playlistID spotify.ID, of
 func (c Client) PlayPlaylist(ctx context.Context, deviceID spotify.ID, playlist spotify.URI, position int) error {
 	opt := &spotify.PlayOptions{
 		PlaybackContext: &playlist,
-		PlaybackOffset:  &spotify.PlaybackOffset{Position: position},
+		PlaybackOffset:  &spotify.PlaybackOffset{Position: &position},
 	}
 	if deviceID != "" {
 		opt.DeviceID = &deviceID

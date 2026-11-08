@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/spot-go/spot-go/internal/ui/styles"
 	"github.com/spot-go/spot-go/internal/ui/views"
 )
 
@@ -26,8 +27,13 @@ func NewModel(windowSize views.WindowSize, title, placeholder string) Model {
 	input.Placeholder = placeholder
 	input.EchoMode = textinput.EchoPassword
 	input.EchoCharacter = '•'
-	input.Width = inputWidth
-	input.SetCursorMode(textinput.CursorStatic)
+	input.SetWidth(inputWidth)
+	inputStyles := textinput.DefaultStyles(styles.HasDarkBackground)
+	inputStyles.Focused.Prompt = lipgloss.NewStyle()
+	inputStyles.Blurred.Prompt = lipgloss.NewStyle()
+	inputStyles.Cursor.Color = nil
+	inputStyles.Cursor.Blink = false
+	input.SetStyles(inputStyles)
 	input.Focus()
 
 	return Model{
@@ -51,8 +57,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.WindowSizeMsg = msg
 		return m, nil
 
-	case tea.KeyMsg:
-		if msg.Type == tea.KeyEnter {
+	case tea.KeyPressMsg:
+		if msg.String() == "enter" {
 			value := strings.TrimSpace(m.input.Value())
 			if value == "" {
 				return m, nil
@@ -68,12 +74,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) View() string {
-	return lipgloss.Place(
+func (m Model) View() tea.View {
+	return tea.NewView(lipgloss.Place(
 		m.Width,
 		m.Height,
 		lipgloss.Center,
 		lipgloss.Center,
 		fmt.Sprintf("%s\n\n%s", m.title, m.input.View()),
-	)
+	))
 }

@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/spot-go/spot-go/internal/backend"
 	"github.com/spot-go/spot-go/internal/program"
 	"github.com/spot-go/spot-go/internal/soloist"
@@ -20,9 +22,6 @@ import (
 	"github.com/spot-go/spot-go/internal/ui/views"
 	"github.com/spot-go/spot-go/internal/ui/views/player"
 	libspotify "github.com/zmb3/spotify/v2"
-
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 
 	"golang.design/x/clipboard"
 )
@@ -117,13 +116,8 @@ var (
 
 		"Use a desktop or mobile app connected on your local network (may not work with current spotify apps)": stateSpotifydAppOnLocalNetworkSelected,
 	}
-	spotifydConfigChoices = maps.Keys(spotifydConfigChoicesStates)
+	spotifydConfigChoices = slices.Sorted(maps.Keys(spotifydConfigChoicesStates))
 )
-
-func init() {
-	// Ensure order
-	slices.Sort(spotifydConfigChoices)
-}
 
 func NewModel(player backend.Kind) Model {
 	s := spinner.New()
@@ -146,7 +140,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg := message.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "esc":
 			if m.isSpotifydLoggingIn() {
@@ -176,7 +170,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg := message.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "enter":
 			switch m.state {
@@ -196,12 +190,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "c":
 			switch m.state {
 			case stateWebAPILoggingIn:
-				clipboard.Write(clipboard.FmtText, []byte(spotify.AuthURL))
+				clipboard.Write(m.ctx, clipboard.FmtText, []byte(spotify.AuthURL))
 				m.state = stateCopyWebAPIAuthURL
 				m.msg = webAPIURLCopiedToClipboardMsg
 			case stateSpotifydBrowserSelected:
 				if m.spotifydAuthURL != "" {
-					clipboard.Write(clipboard.FmtText, []byte(m.spotifydAuthURL))
+					clipboard.Write(m.ctx, clipboard.FmtText, []byte(m.spotifydAuthURL))
 					m.msg = spotifydURLCopiedToClipboardMsg
 				}
 			}
@@ -372,22 +366,22 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) View() string {
+func (m Model) View() tea.View {
 	if m.player != nil {
 		return m.player.View()
 	}
 
 	if m.activeModel != nil {
-		return m.activeModel.View()
+		return views.FullScreen(m.activeModel.View().Content, m.Height)
 	}
 
-	return lipgloss.Place(
+	return views.FullScreen(lipgloss.Place(
 		m.Width,
 		m.Height,
 		lipgloss.Center,
 		lipgloss.Center,
 		m.msg,
-	)
+	), m.Height)
 }
 
 func (m Model) isSpotifydLoggingIn() bool {
