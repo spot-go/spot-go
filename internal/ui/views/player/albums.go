@@ -93,6 +93,7 @@ const (
 
 const (
 	savedAlbumsTimeout = 45 * time.Second
+	albumContextPrefix = "spotify:album:"
 	noSavedAlbums      = "You haven't saved any albums.\n\nSave albums in the Spotify app, then press r."
 	noAlbumSongs       = "No songs in this album."
 )
@@ -172,6 +173,13 @@ func (a albumModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.playingURI = msg.uri
 		return a.played(msg.uri, time.Now())
 
+	case artistPlaybackStarted:
+		if !strings.HasPrefix(string(msg.uri), albumContextPrefix) {
+			return a, nil
+		}
+		a.playingURI = msg.uri
+		return a.played(msg.uri, time.Now())
+
 	case albumPlaybackFailed:
 		if msg.seq == a.playback.seq {
 			a.playback = playbackStatus{seq: msg.seq, text: "Fail to play: " + errorText(msg.err), err: true}
@@ -196,7 +204,7 @@ func (a albumModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		a.playingURI = uri
-		if strings.HasPrefix(string(uri), "spotify:album:") {
+		if strings.HasPrefix(string(uri), albumContextPrefix) {
 			return a.played(uri, time.Now())
 		}
 		return a, nil

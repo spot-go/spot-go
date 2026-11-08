@@ -688,7 +688,7 @@ func TestAlbumsViewDoesNotStartGoroutines(t *testing.T) {
 	}
 }
 
-func TestEnterOnAnAlbumPlaysItFromTheStart(t *testing.T) {
+func TestEnterOnASavedAlbumPlaysItFromTheStart(t *testing.T) {
 	h := newAlbumsHarness(t, newFakeAPI())
 
 	h.send(keys("down", "enter")...)
@@ -1020,10 +1020,46 @@ func TestPollingBeforeTheAlbumsTabOpensIsKept(t *testing.T) {
 	h.wantSavedAlbums("Recents", "Kind of Blue", "Abbey Road", "Clube da Esquina")
 }
 
+func TestAlbumsStartedFromTheArtistsTabAreRecorded(t *testing.T) {
+	h := newAlbumsHarness(t, newFakeAPI())
+	h.send(key("enter"))
+	seq := h.albumTab().playback.seq
+
+	h.send(artistPlaybackStarted{seq: seq, name: "Kind of Blue", artist: "spotify:artist:ar0", uri: "spotify:album:a1"})
+
+	h.wantSavedAlbums("Recents", "Kind of Blue", "Abbey Road", "Clube da Esquina")
+	h.wantView("Playing: Abbey Road")
+	played := h.albumTab().history.AlbumLastPlayed("spotify:album:a1")
+	if played.IsZero() {
+		t.Fatal("the album started from the artists tab was not recorded")
+	}
+	h.send(playbackPolled{playing: spotify.NowPlaying{Context: "spotify:album:a1"}})
+	if got := h.albumTab().history.AlbumLastPlayed("spotify:album:a1"); !got.Equal(played) {
+		t.Fatalf("the poll of the album the artists tab started recorded it again at %v, want %v", got, played)
+	}
+}
+
+func TestArtistsStartedFromTheArtistsTabAreNotAlbums(t *testing.T) {
+	h := newAlbumsHarness(t, newFakeAPI())
+	h.send(key("enter"))
+	seq := h.albumTab().playback.seq
+
+	h.send(artistPlaybackStarted{seq: seq, name: "Radiohead", artist: "spotify:artist:ar0", uri: "spotify:artist:ar0"})
+	h.send(artistPlaybackFailed{seq: seq, err: errors.New("artist failure")})
+
+	h.wantSavedAlbums("Recents", "Abbey Road", "Kind of Blue", "Clube da Esquina")
+	h.wantView("Playing: Abbey Road")
+	h.dontWantView("Radiohead", "failure")
+	if got := h.albumTab().history.AlbumLastPlayed("spotify:artist:ar0"); !got.IsZero() {
+		t.Fatalf("the artist was recorded as an album at %v", got)
+	}
+}
+
 func TestRecentlyPlayedAlbumsComeFirst(t *testing.T) {
+	latest := ago(time.Hour)
 	api := newFakeAPI()
 	api.recent = []recentPlay{
-		{"album", "spotify:album:a2", ago(time.Hour)},
+		{"album", "spotify:album:a2", latest},
 		{"playlist", "spotify:playlist:p0", ago(time.Minute)},
 		{"album", "spotify:album:not-saved", ago(time.Minute)},
 		{"", "", ago(time.Minute)},
@@ -1037,7 +1073,7 @@ func TestRecentlyPlayedAlbumsComeFirst(t *testing.T) {
 		t.Fatalf("selected = %q, want the first album", got)
 	}
 	history := h.albumTab().history
-	if got := history.AlbumLastPlayed("spotify:album:a2"); !got.Equal(ago(time.Hour)) {
+	if got := history.AlbumLastPlayed("spotify:album:a2"); !got.Equal(latest) {
 		t.Fatalf("a2 last played = %v, want the latest play", got)
 	}
 	if got := history.AlbumLastPlayed("spotify:album:not-saved"); !got.IsZero() {
