@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/spot-go/spot-go/internal/library"
 	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/styles"
 	"github.com/spot-go/spot-go/internal/ui/views"
@@ -18,6 +19,7 @@ type (
 		spotifyClient *spotify.Client
 		spotifyUser   *libspotify.PrivateUser
 		playerDevice  *libspotify.PlayerDevice
+		historyStore  *library.Store
 	}
 
 	Model struct {
@@ -76,6 +78,7 @@ func NewModel(
 	spotifyClient *spotify.Client,
 	spotifyUser *libspotify.PrivateUser,
 	playerDevice *libspotify.PlayerDevice,
+	historyStore *library.Store,
 	playbackErrors <-chan error,
 ) Model {
 	playerContext := playerContext{
@@ -83,6 +86,7 @@ func NewModel(
 		spotifyClient: spotifyClient,
 		spotifyUser:   spotifyUser,
 		playerDevice:  playerDevice,
+		historyStore:  historyStore,
 	}
 	m := Model{
 		playerContext: playerContext,

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 
 	"github.com/kirsle/configdir"
 	"github.com/spot-go/spot-go/internal/path"
@@ -29,11 +30,14 @@ const (
 )
 
 var (
-	Path       = configdir.LocalConfig(appName)
-	configFile = filepath.Join(Path, "settings.json")
+	Path        = configdir.LocalConfig(appName)
+	configFile  = filepath.Join(Path, "settings.json")
+	LibraryFile = filepath.Join(Path, "library.json")
 
 	AppSettings *Settings
 	Hostname    string
+
+	saveMu sync.Mutex
 )
 
 func Load() error {
@@ -66,6 +70,21 @@ func Load() error {
 }
 
 func (s *Settings) Save() error {
+	saveMu.Lock()
+	defer saveMu.Unlock()
+
+	return s.save()
+}
+
+func SaveToken(t *oauth2.Token) error {
+	saveMu.Lock()
+	defer saveMu.Unlock()
+
+	AppSettings.Auth.Token = t
+	return AppSettings.save()
+}
+
+func (s *Settings) save() error {
 	b, err := json.Marshal(s)
 	if err != nil {
 		return fmt.Errorf("fail to marshal json: %+v", err)

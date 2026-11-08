@@ -13,6 +13,7 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/spot-go/spot-go/internal/library"
 	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/styles"
 	libspotify "github.com/zmb3/spotify/v2"
@@ -48,12 +49,18 @@ type (
 		songs           map[libspotify.ID]*playlistSongs
 		playback        playbackStatus
 		after           func(time.Duration, tea.Msg) tea.Cmd
+		history         library.History
+		sortPending     bool
+		pollEvery       time.Duration
+		polling         bool
+		playingURI      libspotify.URI
 	}
 
 	item struct {
-		title, desc string
-		id          libspotify.ID
-		uri         libspotify.URI
+		title, desc, owner string
+		id                 libspotify.ID
+		uri                libspotify.URI
+		index              int
 	}
 
 	playlistSongs struct {
@@ -78,7 +85,10 @@ type (
 
 	songsState int
 
-	playlistsLoaded []libspotify.SimplePlaylist
+	playlistsLoaded struct {
+		playlists []libspotify.SimplePlaylist
+		recent    []spotify.PlayedPlaylist
+	}
 
 	playlistsLoadFailed struct {
 		err error
@@ -103,10 +113,22 @@ type (
 	playbackStarted struct {
 		seq  int
 		name string
+		uri  libspotify.URI
 	}
 
 	playbackFailed struct {
 		seq int
+		err error
+	}
+
+	pollPlayback struct{}
+
+	playbackPolled struct {
+		uri libspotify.URI
+		err error
+	}
+
+	historySaveFailed struct {
 		err error
 	}
 )
@@ -125,12 +147,14 @@ const (
 )
 
 const (
-	songsLoadDelay       = 150 * time.Millisecond
-	songsPageTimeout     = 45 * time.Second
-	playbackTimeout      = 15 * time.Second
-	rightViewChrome      = 4
-	rightViewPadding     = 1
-	minSongsStatusHeight = 4
+	songsLoadDelay        = 150 * time.Millisecond
+	songsPageTimeout      = 45 * time.Second
+	playbackTimeout       = 15 * time.Second
+	playbackPollInterval  = 30 * time.Second
+	recentlyPlayedTimeout = 3 * time.Second
+	rightViewChrome       = 4
+	rightViewPadding      = 1
+	minSongsStatusHeight  = 4
 )
 
 func (i item) Title() string       { return i.title }
@@ -141,14 +165,26 @@ func newPlaylistModel(ctx playerContext) playlistModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 
-	return playlistModel{
+	p := playlistModel{
 		playerContext:   ctx,
 		spinner:         s,
 		alignHorizontal: lipgloss.Center,
 		leftFocus:       true,
 		songs:           make(map[libspotify.ID]*playlistSongs),
 		after:           after,
+		pollEvery:       playbackPollInterval,
 	}
+	if ctx.historyStore != nil {
+		history, err := ctx.historyStore.Load()
+		if err != nil {
+			p.playback = playbackStatus{text: "Fail to read the playlist history: " + errorText(err), err: true}
+			if !errors.Is(err, library.ErrCorrupt) {
+				p.historyStore = nil
+			}
+		}
+		p.history = history
+	}
+	return p
 }
 
 func after(d time.Duration, msg tea.Msg) tea.Cmd {
@@ -183,13 +219,23 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case playlistsLoaded:
 		p.state = statePlaylistLoaded
 
-		var items []list.Item
-		for _, pl := range msg {
+		items := make([]list.Item, 0, len(msg.playlists))
+		uris := make([]libspotify.URI, 0, len(msg.playlists))
+		for i, pl := range msg.playlists {
 			title := pl.Name
 			if title == "" {
 				title = string(pl.ID)
 			}
-			items = append(items, item{title: title, desc: pl.Description, id: pl.ID, uri: pl.URI})
+			owner := pl.Owner.DisplayName
+			if owner == "" {
+				owner = pl.Owner.ID
+			}
+			items = append(items, item{title: title, desc: pl.Description, owner: owner, id: pl.ID, uri: pl.URI, index: i})
+			uris = append(uris, pl.URI)
+		}
+		p.history.Sync(uris, time.Now())
+		for _, played := range msg.recent {
+			p.history.Played(played.URI, played.At)
 		}
 
 		d := list.NewDefaultDelegate()
@@ -198,22 +244,32 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Foreground(styles.LipglossColorForegroundGreenSpotify).
 			BorderForeground(styles.LipglossColorForegroundGreenSpotify)
 		d.ShowDescription = false
-		l := newList(items, d)
+		l := newList(sortItems(items, p.order(), p.history), d)
 		filterStyles := l.Styles.Filter
 		filterStyles.Cursor.Color = styles.LipglossColorForegroundGreenSpotify
 		l.FilterInput.SetStyles(filterStyles)
+		l.Filter = list.UnsortedFilter
+		l.Title = orderLabels[p.order()]
+		l.Styles.Title = l.Styles.Title.
+			Background(styles.LipglossColorBackgroundGreenSpotify).
+			Foreground(styles.LipglossColorBlack)
+		l.Styles.TitleBar = l.Styles.TitleBar.PaddingLeft(1)
 		l.SetStatusBarItemName("playlist", "playlists")
-		l.SetShowTitle(false)
 		l.SetShowHelp(false)
 		l.DisableQuitKeybindings()
 		p.alignHorizontal = lipgloss.Left
 
 		p.list = &l
 
-		if selected, ok := p.selectedPlaylist(); ok {
-			return p, p.loadSongs(selected.id)
+		cmds := []tea.Cmd{p.saveHistory()}
+		if !p.polling && p.pollEvery > 0 {
+			p.polling = true
+			cmds = append(cmds, p.fetchPlaying())
 		}
-		return p, nil
+		if selected, ok := p.selectedPlaylist(); ok {
+			cmds = append(cmds, p.loadSongs(selected.id))
+		}
+		return p, tea.Batch(cmds...)
 
 	case songsRequested:
 		if selected, ok := p.selectedPlaylist(); ok && selected.id == msg.playlistID {
@@ -232,7 +288,8 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.seq == p.playback.seq {
 			p.playback = playbackStatus{seq: msg.seq, text: "Playing: " + msg.name}
 		}
-		return p, nil
+		p.playingURI = msg.uri
+		return p.played(msg.uri, time.Now())
 
 	case playbackFailed:
 		if msg.seq == p.playback.seq {
@@ -242,6 +299,26 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case spotifydPlaybackFailed:
 		p.playback = playbackStatus{seq: p.playback.seq, text: "No sound: " + errorText(msg.err), err: true}
+		return p, nil
+
+	case pollPlayback:
+		return p, p.fetchPlaying()
+
+	case playbackPolled:
+		var cmd tea.Cmd
+		if msg.err == nil && msg.uri != p.playingURI {
+			p.playingURI = msg.uri
+			if msg.uri != "" {
+				p, cmd = p.played(msg.uri, time.Now())
+			}
+		}
+		if p.pollEvery > 0 {
+			cmd = tea.Batch(cmd, p.after(p.pollEvery, pollPlayback{}))
+		}
+		return p, cmd
+
+	case historySaveFailed:
+		p.playback = playbackStatus{seq: p.playback.seq, text: "Fail to save the playlist history: " + errorText(msg.err), err: true}
 		return p, nil
 	}
 
@@ -298,6 +375,13 @@ func (p playlistModel) handleKey(msg tea.KeyPressMsg) (playlistModel, tea.Cmd, b
 			m, cmd := p.play()
 			return m, cmd, true
 		}
+
+	case "s":
+		if p.state == statePlaylistLoaded {
+			p.history.SetOrder(nextOrder(p.order()))
+			p = p.sorted()
+			return p, p.saveHistory(), true
+		}
 	}
 
 	return p, nil, false
@@ -307,6 +391,9 @@ func (p playlistModel) updatePlaylists(msg tea.Msg) (tea.Model, tea.Cmd) {
 	before, _ := p.selectedPlaylist()
 	l, cmd := p.list.Update(msg)
 	p.list = &l
+	if p.sortPending {
+		p = p.sorted()
+	}
 
 	current, ok := p.selectedPlaylist()
 	if !ok || current.id == before.id {
@@ -335,6 +422,75 @@ func (p playlistModel) selectedPlaylist() (item, bool) {
 	}
 	i, ok := p.list.SelectedItem().(item)
 	return i, ok
+}
+
+func (p playlistModel) order() library.Order {
+	return validOrder(p.history.Order)
+}
+
+func (p playlistModel) sorted() playlistModel {
+	if p.list == nil {
+		return p
+	}
+	p.list.Title = orderLabels[p.order()]
+	if p.list.FilterState() == list.Filtering {
+		p.sortPending = true
+		return p
+	}
+
+	p.sortPending = false
+	selected, ok := p.selectedPlaylist()
+	p.list.SetItems(sortItems(p.list.Items(), p.order(), p.history))
+	if p.list.FilterState() == list.FilterApplied {
+		p.list.SetFilterText(p.list.FilterValue())
+	}
+	if ok {
+		p.selectPlaylist(selected.id)
+	}
+	return p
+}
+
+func (p playlistModel) selectPlaylist(id libspotify.ID) {
+	for i, li := range p.list.VisibleItems() {
+		if it, ok := li.(item); ok && it.id == id {
+			p.list.Select(i)
+			return
+		}
+	}
+}
+
+func (p playlistModel) played(uri libspotify.URI, at time.Time) (playlistModel, tea.Cmd) {
+	if !p.history.Played(uri, at) {
+		return p, nil
+	}
+	if p.order() == library.OrderRecents {
+		p = p.sorted()
+	}
+	return p, p.saveHistory()
+}
+
+func (p playlistModel) saveHistory() tea.Cmd {
+	store := p.historyStore
+	if store == nil {
+		return nil
+	}
+	h := p.history.Clone()
+	return func() tea.Msg {
+		if err := store.Save(h); err != nil {
+			return historySaveFailed{err}
+		}
+		return nil
+	}
+}
+
+func (p playlistModel) fetchPlaying() tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(p.ctx, playbackTimeout)
+		defer cancel()
+
+		uri, err := p.spotifyClient.PlayingPlaylist(ctx)
+		return playbackPolled{uri, err}
+	}
 }
 
 func (p playlistModel) selectedSongs() *playlistSongs {
@@ -551,7 +707,7 @@ func (p playlistModel) startPlayback(seq int, playlist libspotify.URI, position 
 		if err := p.spotifyClient.PlayPlaylist(ctx, deviceID, playlist, position); err != nil {
 			return playbackFailed{seq, err}
 		}
-		return playbackStarted{seq, name}
+		return playbackStarted{seq, name, playlist}
 	}
 }
 
@@ -680,7 +836,9 @@ func (p playlistModel) rightHelp() string {
 		separator +
 		s.ShortKey.Inline(true).Render("enter") + " " + s.ShortDesc.Inline(true).Render("play") +
 		separator +
-		s.ShortKey.Inline(true).Render("r") + " " + s.ShortDesc.Inline(true).Render("refresh")
+		s.ShortKey.Inline(true).Render("r") + " " + s.ShortDesc.Inline(true).Render("refresh") +
+		separator +
+		s.ShortKey.Inline(true).Render("s") + " " + s.ShortDesc.Inline(true).Render("sort")
 	return lipgloss.NewStyle().
 		Width(p.rightWidth()).
 		AlignHorizontal(lipgloss.Center).
@@ -714,5 +872,9 @@ func (p playlistModel) playlists() tea.Msg {
 	if err != nil {
 		return playlistsLoadFailed{err}
 	}
-	return playlistsLoaded(playlists)
+
+	ctx, cancel := context.WithTimeout(p.ctx, recentlyPlayedTimeout)
+	defer cancel()
+	recent, _ := p.spotifyClient.RecentlyPlayedPlaylists(ctx)
+	return playlistsLoaded{playlists, recent}
 }

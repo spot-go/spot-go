@@ -48,6 +48,11 @@ type (
 		Last  bool
 	}
 
+	PlayedPlaylist struct {
+		URI spotify.URI
+		At  time.Time
+	}
+
 	playlistItemsResponse struct {
 		Total int `json:"total"`
 		Items []struct {
@@ -70,6 +75,23 @@ type (
 	named struct {
 		Name string `json:"name"`
 	}
+
+	recentlyPlayedResponse struct {
+		Items []struct {
+			PlayedAt time.Time        `json:"played_at"`
+			Context  *playbackContext `json:"context"`
+		} `json:"items"`
+	}
+
+	playerResponse struct {
+		IsPlaying bool             `json:"is_playing"`
+		Context   *playbackContext `json:"context"`
+	}
+
+	playbackContext struct {
+		Type string      `json:"type"`
+		URI  spotify.URI `json:"uri"`
+	}
 )
 
 const (
@@ -87,11 +109,10 @@ func NewClient(httpClient *http.Client) *Client {
 func (c Client) AllCurrentUsersPlaylists(ctx context.Context) ([]spotify.SimplePlaylist, error) {
 	return cacheMapGet(cacheKeyAllCurrentUsersPlaylists,
 		func() ([]spotify.SimplePlaylist, error) {
-			total := maxItemsPerPage
-			offset := 0
 			res := make([]spotify.SimplePlaylist, 0)
-			for total == maxItemsPerPage {
-				playlists, err := c.CurrentUsersPlaylists(
+			seen := make(map[spotify.ID]bool)
+			for offset := 0; ; offset += maxItemsPerPage {
+				page, err := c.CurrentUsersPlaylists(
 					ctx,
 					spotify.Limit(maxItemsPerPage),
 					spotify.Offset(offset),
@@ -99,12 +120,16 @@ func (c Client) AllCurrentUsersPlaylists(ctx context.Context) ([]spotify.SimpleP
 				if err != nil {
 					return res, err
 				}
-				res = append(res, playlists.Playlists...)
-				total = len(playlists.Playlists)
-				offset = offset + total
+				for _, pl := range page.Playlists {
+					if !seen[pl.ID] {
+						seen[pl.ID] = true
+						res = append(res, pl)
+					}
+				}
+				if page.Next == "" || offset+maxItemsPerPage >= int(page.Total) {
+					return res, nil
+				}
 			}
-
-			return res, nil
 		},
 	)
 }
@@ -142,6 +167,33 @@ func (c Client) PlaylistItemsPage(ctx context.Context, playlistID spotify.ID, of
 	return page, nil
 }
 
+func (c Client) RecentlyPlayedPlaylists(ctx context.Context) ([]PlayedPlaylist, error) {
+	query := url.Values{"limit": {strconv.Itoa(maxItemsPerPage)}}
+	var resp recentlyPlayedResponse
+	if err := c.getJSON(ctx, c.baseURL+"me/player/recently-played?"+query.Encode(), &resp); err != nil {
+		return nil, err
+	}
+
+	var played []PlayedPlaylist
+	for _, item := range resp.Items {
+		if uri, ok := item.Context.playlist(); ok {
+			played = append(played, PlayedPlaylist{URI: uri, At: item.PlayedAt})
+		}
+	}
+	return played, nil
+}
+
+func (c Client) PlayingPlaylist(ctx context.Context) (spotify.URI, error) {
+	var resp playerResponse
+	if err := c.getJSON(ctx, c.baseURL+"me/player", &resp); err != nil {
+		return "", err
+	}
+	if uri, ok := resp.Context.playlist(); ok && resp.IsPlaying {
+		return uri, nil
+	}
+	return "", nil
+}
+
 func (c Client) PlayPlaylist(ctx context.Context, deviceID spotify.ID, playlist spotify.URI, position int) error {
 	opt := &spotify.PlayOptions{
 		PlaybackContext: &playlist,
@@ -170,6 +222,9 @@ func (c Client) getJSON(ctx context.Context, endpoint string, result any) error 
 		}
 
 		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusNoContent {
+			return nil
+		}
 		if resp.StatusCode != http.StatusOK {
 			return decodeError(resp)
 		}
@@ -225,6 +280,13 @@ func decodeError(resp *http.Response) error {
 	}
 	e.E.Status = resp.StatusCode
 	return e.E
+}
+
+func (c *playbackContext) playlist() (spotify.URI, bool) {
+	if c == nil || c.Type != "playlist" || c.URI == "" {
+		return "", false
+	}
+	return c.URI, true
 }
 
 func (p playable) playlistItem(position int, isLocal bool) PlaylistItem {

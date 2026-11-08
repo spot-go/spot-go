@@ -12,6 +12,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/spot-go/spot-go/internal/backend"
+	"github.com/spot-go/spot-go/internal/config"
+	"github.com/spot-go/spot-go/internal/library"
 	"github.com/spot-go/spot-go/internal/program"
 	"github.com/spot-go/spot-go/internal/soloist"
 	"github.com/spot-go/spot-go/internal/spotify"
@@ -305,6 +307,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.spotifyClient,
 			m.spotifyUser,
 			m.playerDevice,
+			library.NewStore(config.LibraryFile),
 			m.playbackErrors(),
 		)
 		m.player = &mainModel

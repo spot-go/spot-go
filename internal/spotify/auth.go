@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/spot-go/spot-go/internal/browser"
 	"github.com/spot-go/spot-go/internal/config"
@@ -23,6 +24,13 @@ type (
 	ClientResponse struct {
 		Client *Client
 		Err    error
+	}
+
+	savingTokenSource struct {
+		mu          sync.Mutex
+		src         oauth2.TokenSource
+		accessToken string
+		save        func(*oauth2.Token) error
 	}
 )
 
@@ -40,6 +48,7 @@ var (
 		spotifyauth.ScopeUserModifyPlaybackState,
 		spotifyauth.ScopeUserReadCurrentlyPlaying,
 		spotifyauth.ScopePlaylistReadPrivate,
+		spotifyauth.ScopeUserReadRecentlyPlayed,
 	}
 	redirectURI = fmt.Sprintf("http://%s/callback", callbackAddr)
 	auth        = spotifyauth.New(
@@ -106,7 +115,7 @@ func Login(ctx context.Context) ClientResponse {
 		return ClientResponse{nil, ErrNeedsAuth}
 	}
 	authSettings := config.AppSettings.Auth
-	c := NewClient(auth.Client(ctx, authSettings.Token))
+	c := newSessionClient(ctx, authSettings.Token)
 
 	// PKCE allows only one refresh per access_token
 	// The code below saves the new token (thus the new access token) after a refresh
@@ -156,7 +165,30 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("fail to save config: %+v\n", err)
 	}
 
-	client := NewClient(auth.Client(r.Context(), t))
+	client := newSessionClient(context.Background(), t)
 	fmt.Fprint(w, authSuccessPage)
 	clientResp <- ClientResponse{client, nil}
+}
+
+func newSessionClient(ctx context.Context, t *oauth2.Token) *Client {
+	httpClient := auth.Client(ctx, t)
+	if transport, ok := httpClient.Transport.(*oauth2.Transport); ok {
+		transport.Source = &savingTokenSource{src: transport.Source, accessToken: t.AccessToken, save: config.SaveToken}
+	}
+	return NewClient(httpClient)
+}
+
+func (s *savingTokenSource) Token() (*oauth2.Token, error) {
+	t, err := s.src.Token()
+	if err != nil {
+		return nil, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if t.AccessToken != s.accessToken {
+		s.accessToken = t.AccessToken
+		_ = s.save(t)
+	}
+	return t, nil
 }

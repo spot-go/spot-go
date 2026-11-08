@@ -20,27 +20,42 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/spot-go/spot-go/internal/library"
 	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/views"
 	libspotify "github.com/zmb3/spotify/v2"
 )
 
-var testPlaylists = []string{"Rock", "Jazz", "Samba", "Blues"}
+var (
+	testPlaylists = []string{"Rock", "Jazz", "Samba", "Blues"}
+	testCreators  = []string{"Zeca", "Ana", "Bia", "Ana"}
+)
 
 const testDeviceID = "spot-go-device"
 
 type (
 	fakeAPI struct {
-		mu           sync.Mutex
-		songs        map[string][]string
-		songsStatus  map[string]int
-		songsErr     map[string]error
-		rateLimits   map[string]rateLimit
-		block        map[string]chan struct{}
-		totals       map[string]int
-		playStatus   int
-		songRequests []string
-		plays        []playRequest
+		mu             sync.Mutex
+		songs          map[string][]string
+		songsStatus    map[string]int
+		songsErr       map[string]error
+		rateLimits     map[string]rateLimit
+		block          map[string]chan struct{}
+		totals         map[string]int
+		playStatus     int
+		songRequests   []string
+		plays          []playRequest
+		recent         []recentPlay
+		playing        string
+		paused         bool
+		playerStatus   int
+		playerRequests int
+	}
+
+	recentPlay struct {
+		contextType string
+		uri         string
+		at          time.Time
 	}
 
 	rateLimit struct {
@@ -97,9 +112,33 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	case path == "me/playlists":
 		items := make([]string, len(testPlaylists))
 		for i, name := range testPlaylists {
-			items[i] = fmt.Sprintf(`{"id":"p%d","name":%q,"uri":"spotify:playlist:p%d"}`, i, name, i)
+			items[i] = fmt.Sprintf(`{"id":"p%d","name":%q,"uri":"spotify:playlist:p%d","owner":{"id":"u%d","display_name":%q}}`, i, name, i, i, testCreators[i])
 		}
 		return response(r, http.StatusOK, fmt.Sprintf(`{"items":[%s],"total":%d,"limit":50,"offset":0}`, strings.Join(items, ","), len(items))), nil
+
+	case path == "me/player/recently-played":
+		if r.URL.Query().Get("limit") != "50" {
+			return errorResponse(r, http.StatusBadRequest, "missing limit=50"), nil
+		}
+		items := make([]string, len(f.recent))
+		for i, play := range f.recent {
+			context := "null"
+			if play.uri != "" {
+				context = fmt.Sprintf(`{"type":%q,"uri":%q}`, play.contextType, play.uri)
+			}
+			items[i] = fmt.Sprintf(`{"played_at":%q,"context":%s}`, play.at.Format(time.RFC3339), context)
+		}
+		return response(r, http.StatusOK, fmt.Sprintf(`{"items":[%s]}`, strings.Join(items, ","))), nil
+
+	case path == "me/player" && r.Method == http.MethodGet:
+		f.playerRequests++
+		if f.playerStatus != 0 {
+			return errorResponse(r, f.playerStatus, http.StatusText(f.playerStatus)), nil
+		}
+		if f.playing == "" {
+			return response(r, http.StatusNoContent, ""), nil
+		}
+		return response(r, http.StatusOK, fmt.Sprintf(`{"is_playing":%t,"context":{"type":"playlist","uri":%q}}`, !f.paused, f.playing)), nil
 
 	case strings.HasPrefix(path, "playlists/") && strings.HasSuffix(path, "/items"):
 		id := strings.TrimSuffix(strings.TrimPrefix(path, "playlists/"), "/items")
@@ -238,13 +277,18 @@ func newModelWith(api *fakeAPI, width, height int) Model {
 }
 
 func newListeningModel(api *fakeAPI, width, height int, playbackErrors <-chan error) Model {
+	return newStoredModel(api, width, height, nil, playbackErrors)
+}
+
+func newStoredModel(api *fakeAPI, width, height int, store *library.Store, playbackErrors <-chan error) Model {
 	client := spotify.NewClient(&http.Client{Transport: api})
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: width, Height: height}}
-	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, playbackErrors)
+	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store, playbackErrors)
 	playlists := m.tabs[playlistsTab].content.(playlistModel)
 	playlists.after = func(d time.Duration, msg tea.Msg) tea.Cmd {
 		return func() tea.Msg { return timerMsg{d, msg} }
 	}
+	playlists.pollEvery = 0
 	m.tabs[playlistsTab].content = playlists
 	return m
 }
@@ -765,11 +809,11 @@ func TestEmojiNamesKeepTheFrameAligned(t *testing.T) {
 		"Melhores caipiras 🎻",
 		"👋🏻 uma playlist com um nome bem comprido 👋🏿",
 	}
-	loaded := make(playlistsLoaded, len(names))
+	loaded := make([]libspotify.SimplePlaylist, len(names))
 	for i, name := range names {
 		loaded[i] = libspotify.SimplePlaylist{ID: libspotify.ID(fmt.Sprintf("p%d", i)), Name: name}
 	}
-	h.send(loaded)
+	h.send(playlistsLoaded{playlists: loaded})
 	h.wantView("teste 👋🏻", "Tchau 👋🏽")
 
 	for width := 60; width <= 160; width++ {
