@@ -20,6 +20,8 @@ type (
 		progress progress.Model
 		url      string
 		dstFile  string
+		name     string
+		install  func(file string) error
 		err      error
 	}
 	DownloadFinished bool
@@ -34,16 +36,18 @@ func finalPause() tea.Cmd {
 	})
 }
 
-func NewModel(url, dst string) Model {
+func NewModel(url, dst, name string, install func(file string) error) Model {
 	return Model{
 		url:      url,
 		dstFile:  path.Join(dst, filepath.Base(url)),
+		name:     name,
+		install:  install,
 		progress: progress.New(progress.WithDefaultGradient()),
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return startDownload(m.url, m.dstFile)
+	return startDownload(m.url, m.dstFile, m.name, m.install)
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -89,5 +93,5 @@ func (m Model) View() string {
 		return fmt.Sprintf("Fail to download file from url %s: %s", m.url, m.err.Error())
 	}
 
-	return fmt.Sprintf("Downloading spotifyd...\n%s", m.progress.View())
+	return fmt.Sprintf("Downloading %s...\n%s", m.name, m.progress.View())
 }

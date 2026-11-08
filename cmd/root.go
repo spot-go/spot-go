@@ -9,9 +9,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
+	"github.com/spot-go/spot-go/internal/backend"
 	"github.com/spot-go/spot-go/internal/config"
 	"github.com/spot-go/spot-go/internal/program"
-	"github.com/spot-go/spot-go/internal/spotifyd"
 	"github.com/spot-go/spot-go/internal/ui/views/login"
 )
 
@@ -22,7 +22,20 @@ var rootCmd = &cobra.Command{
 	Run:   run,
 }
 
+var playerFlag string
+
+func init() {
+	rootCmd.Flags().StringVar(&playerFlag, "player", string(backend.Default()),
+		fmt.Sprintf("program that plays the audio: %s or %s", backend.Soloist, backend.Spotifyd))
+}
+
 func run(cmd *cobra.Command, args []string) {
+	player, err := backend.Parse(playerFlag)
+	if err != nil {
+		fmt.Println("fatal:", err)
+		os.Exit(1)
+	}
+
 	if err := loadSettings(); err != nil {
 		fmt.Println("fatal:", err)
 		os.Exit(1)
@@ -37,12 +50,12 @@ func run(cmd *cobra.Command, args []string) {
 		defer f.Close()
 	}
 
-	spotifyd.KillStale()
+	backend.KillStale()
 	lipgloss.SetHasDarkBackground(termenv.HasDarkBackground())
-	p := tea.NewProgram(login.NewModel(), tea.WithAltScreen())
+	p := tea.NewProgram(login.NewModel(player), tea.WithAltScreen())
 	program.Instance = p
-	_, err := p.Run()
-	spotifyd.Stop()
+	_, err = p.Run()
+	backend.Stop()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -52,7 +65,7 @@ func loadSettings() error {
 	if err := config.Load(); err != nil {
 		return err
 	}
-	return spotifyd.CreateConfigFolder()
+	return backend.CreateFolders()
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

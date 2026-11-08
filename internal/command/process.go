@@ -55,6 +55,10 @@ func (p *Process) Kill() error {
 	return syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
 }
 
+func (p *Process) Terminate() error {
+	return syscall.Kill(-p.cmd.Process.Pid, syscall.SIGTERM)
+}
+
 func (w *lineWriter) Write(b []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()

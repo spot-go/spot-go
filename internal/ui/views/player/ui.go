@@ -14,10 +14,10 @@ import (
 
 type (
 	playerContext struct {
-		ctx            context.Context
-		spotifyClient  *spotify.Client
-		spotifyUser    *libspotify.PrivateUser
-		spotifydPlayer *libspotify.PlayerDevice
+		ctx           context.Context
+		spotifyClient *spotify.Client
+		spotifyUser   *libspotify.PrivateUser
+		playerDevice  *libspotify.PlayerDevice
 	}
 
 	Model struct {
@@ -75,14 +75,14 @@ func NewModel(
 	ctx context.Context,
 	spotifyClient *spotify.Client,
 	spotifyUser *libspotify.PrivateUser,
-	spotifydPlayer *libspotify.PlayerDevice,
+	playerDevice *libspotify.PlayerDevice,
 	playbackErrors <-chan error,
 ) Model {
 	playerContext := playerContext{
-		ctx:            ctx,
-		spotifyClient:  spotifyClient,
-		spotifyUser:    spotifyUser,
-		spotifydPlayer: spotifydPlayer,
+		ctx:           ctx,
+		spotifyClient: spotifyClient,
+		spotifyUser:   spotifyUser,
+		playerDevice:  playerDevice,
 	}
 	m := Model{
 		playerContext: playerContext,

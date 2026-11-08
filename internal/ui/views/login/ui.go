@@ -9,11 +9,14 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spot-go/spot-go/internal/backend"
 	"github.com/spot-go/spot-go/internal/program"
+	"github.com/spot-go/spot-go/internal/soloist"
 	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/spotifyd"
 	"github.com/spot-go/spot-go/internal/ui/components/choice"
 	"github.com/spot-go/spot-go/internal/ui/components/filedownloader"
+	"github.com/spot-go/spot-go/internal/ui/components/secretinput"
 	"github.com/spot-go/spot-go/internal/ui/views"
 	"github.com/spot-go/spot-go/internal/ui/views/player"
 	libspotify "github.com/zmb3/spotify/v2"
@@ -27,17 +30,19 @@ import (
 type (
 	Model struct {
 		views.WindowSize
-		ctx             context.Context
-		spotifyClient   *spotify.Client
-		spotifyUser     *libspotify.PrivateUser
-		spotifydPlayer  *libspotify.PlayerDevice
-		spotifydAuthURL string
-		webAPILoginSent bool
-		msg             string
-		state           state
-		spinner         spinner.Model
-		activeModel     tea.Model
-		filedownloader  filedownloader.Model
+		ctx                context.Context
+		backend            backend.Kind
+		spotifyClient      *spotify.Client
+		spotifyUser        *libspotify.PrivateUser
+		playerDevice       *libspotify.PlayerDevice
+		spotifydAuthURL    string
+		webAPILoginSent    bool
+		soloistUpdateTried bool
+		msg                string
+		state              state
+		spinner            spinner.Model
+		activeModel        tea.Model
+		filedownloader     filedownloader.Model
 
 		player *player.Model
 	}
@@ -47,8 +52,8 @@ type (
 	fatalError struct {
 		err error
 	}
-	spotifydAuthURLMsg  string
-	spotifydDeviceError struct {
+	spotifydAuthURLMsg string
+	playerDeviceError  struct {
 		err error
 	}
 )
@@ -65,6 +70,10 @@ const (
 	stateSpotifydLogged
 	stateSpotifydBrowserSelected
 	stateSpotifydAppOnLocalNetworkSelected
+	stateSoloistDownload
+	stateSoloistAPIKey
+	stateSoloistLoggingIn
+	stateSoloistPairing
 	stateFatal
 
 	deviceWaitAttempts = 20
@@ -78,7 +87,7 @@ and past it on your browser manually.`
 	webAPIURLCopiedToClipboardMsg = "URL copied to clipboard. Paste it on your browser and continue the login."
 	webAPIWelcomeMsg              = `Welcome %s.
 
-Now we are going to configure the spotify player (spotifyd).
+Now we are going to configure the spotify player (%s).
 Press enter to continue`
 
 	spotifydRetryMsg = "Press enter to try again."
@@ -116,11 +125,12 @@ func init() {
 	slices.Sort(spotifydConfigChoices)
 }
 
-func NewModel() Model {
+func NewModel(player backend.Kind) Model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	return Model{
 		ctx:     context.Background(),
+		backend: player,
 		msg:     s.View(),
 		spinner: s,
 	}
@@ -143,8 +153,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				spotifyd.Stop()
 				return m.showSpotifydChoices(nil), nil
 			}
+			if m.state == stateSoloistPairing {
+				soloist.Stop()
+				return m.showSoloistAPIKey(nil), nil
+			}
 			return m, tea.Quit
-		case "q", "ctrl+c":
+		case "q":
+			if !m.capturesInput() {
+				return m, tea.Quit
+			}
+		case "ctrl+c":
 			return m, tea.Quit
 		}
 	}
@@ -163,6 +181,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			switch m.state {
 			case stateWebAPILogged:
+				if m.backend == backend.Soloist {
+					return m.prepareSoloist()
+				}
 				return m.prepareSpotifyd()
 			case stateWebAPINeedsAuth:
 				m.state = stateWebAPILoggingIn
@@ -197,7 +218,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case fatalError:
-		spotifyd.Stop()
+		backend.Stop()
 		m.state = stateFatal
 		m.activeModel = nil
 		m.msg = fmt.Sprintf(fatalMsg, msg.err)
@@ -218,6 +239,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	case *libspotify.PrivateUser:
 		m.spotifyUser = msg
+		if m.backend == backend.Soloist {
+			return m, m.soloistStartupLogin
+		}
 		return m, m.spotifydLogin
 
 	case spotifyd.LoginResponse:
@@ -228,7 +252,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			if m.state <= stateWebAPILoggingIn {
 				m.state = stateWebAPILogged
-				m.msg = fmt.Sprintf(webAPIWelcomeMsg, m.spotifyUser.DisplayName)
+				m.msg = m.welcomeMsg()
 				if !errors.Is(msg.Err, spotifyd.ErrCredentialsNotFound) {
 					m.msg = fmt.Sprintf("%s\n\nspotifyd could not log in with the saved credentials:\n%s", m.msg, msg.Err)
 				}
@@ -240,7 +264,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.msg = m.spinner.View()
 		m.activeModel = nil
 		m.state = stateSpotifydLoggingIn
-		return m, tea.Batch(m.waitForSpotifydPlayerDevice, m.spinner.Tick)
+		return m, tea.Batch(m.waitForPlayerDevice, m.spinner.Tick)
 
 	case spotifyd.AuthenticateResponse:
 		if errors.Is(msg.Err, spotifyd.ErrStopped) || m.state != stateSpotifydBrowserSelected {
@@ -261,25 +285,41 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case spotifydDeviceError:
+	case soloist.LoginResponse:
+		return m.handleSoloistLogin(msg)
+
+	case soloistPairingNeeded:
+		return m.showSoloistPairing(), nil
+
+	case secretinput.Submitted:
+		return m.saveSoloistAPIKey(string(msg))
+
+	case playerDeviceError:
+		if m.backend == backend.Soloist {
+			soloist.Stop()
+			return m.soloistRetry(msg.err), nil
+		}
 		spotifyd.Stop()
 		return m.showSpotifydChoices(msg.err), nil
 
 	case libspotify.PlayerDevice:
 		m.state = stateSpotifydLogged
-		m.spotifydPlayer = &msg
+		m.playerDevice = &msg
 		mainModel := player.NewModel(
 			m.WindowSize,
 			m.ctx,
 			m.spotifyClient,
 			m.spotifyUser,
-			m.spotifydPlayer,
-			spotifyd.PlaybackErrors(),
+			m.playerDevice,
+			m.playbackErrors(),
 		)
 		m.player = &mainModel
 		return m, m.player.Init()
 
 	case filedownloader.DownloadFinished:
+		if m.backend == backend.Soloist {
+			return m.soloistDownloadFinished()
+		}
 		if err := spotifyd.CheckBinary(); err != nil {
 			m.state = stateWebAPILogged
 			m.msg = fmt.Sprintf("%s\n\n%s", err, spotifydRetryMsg)
@@ -288,6 +328,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.showSpotifydChoices(nil), nil
 
 	case filedownloader.DownloadFailed:
+		if m.backend == backend.Soloist {
+			return m.soloistDownloadFailed(msg.Err)
+		}
 		m.state = stateWebAPILogged
 		m.msg = fmt.Sprintf("Fail to download spotifyd: %s\n\n%s", msg.Err, spotifydRetryMsg)
 		return m, nil
@@ -312,12 +355,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		switch m.state {
 
-		case stateSpotifydDownload:
+		case stateSpotifydDownload, stateSoloistDownload:
 			m.filedownloader, cmd = m.filedownloader.Update(msg)
 			m.msg = m.filedownloader.View()
 			return m, cmd
 
-		case stateInit, stateSpotifydLoggingIn:
+		case stateInit, stateSpotifydLoggingIn, stateSoloistLoggingIn:
 			m.spinner, cmd = m.spinner.Update(msg)
 			m.msg = m.spinner.View()
 			return m, cmd
@@ -372,7 +415,7 @@ func (m Model) prepareSpotifyd() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	m.filedownloader = filedownloader.NewModel(url, spotifyd.ConfigFolder)
+	m.filedownloader = filedownloader.NewModel(url, spotifyd.ConfigFolder, "spotifyd", spotifyd.InstallArchive)
 	m.msg = m.filedownloader.View()
 	m.state = stateSpotifydDownload
 	return m, m.filedownloader.Init()
@@ -421,24 +464,60 @@ func (m Model) spotifydAuthenticate() tea.Msg {
 	})
 }
 
-func (m Model) waitForSpotifydPlayerDevice() tea.Msg {
+func (m Model) welcomeMsg() string {
+	return fmt.Sprintf(webAPIWelcomeMsg, m.spotifyUser.DisplayName, m.backend.Name())
+}
+
+func (m Model) capturesInput() bool {
+	c, ok := m.activeModel.(interface{ CapturesInput() bool })
+	return ok && c.CapturesInput()
+}
+
+func (m Model) waitForPlayerDevice() tea.Msg {
 	for attempt := 0; attempt < deviceWaitAttempts; attempt++ {
-		if err := spotifyd.Err(); err != nil {
-			return spotifydDeviceError{err}
+		if err := m.playerErr(); err != nil {
+			return playerDeviceError{err}
 		}
 
 		devices, err := m.spotifyClient.PlayerDevices(m.ctx)
 		if err != nil {
-			return spotifydDeviceError{fmt.Errorf("fail to list spotify devices: %w", err)}
+			return playerDeviceError{fmt.Errorf("fail to list spotify devices: %w", err)}
 		}
-		idx := slices.IndexFunc(devices, func(e libspotify.PlayerDevice) bool {
-			return e.Name == spotifyd.DeviceName()
-		})
+		idx := slices.IndexFunc(devices, m.isPlayerDevice)
 		if idx > -1 {
 			return devices[idx]
 		}
 		time.Sleep(1 * time.Second)
 	}
 
-	return spotifydDeviceError{fmt.Errorf(`the device "%s" did not show up in your spotify devices`, spotifyd.DeviceName())}
+	return playerDeviceError{fmt.Errorf(`the device "%s" did not show up in your spotify devices`, m.playerDeviceName())}
+}
+
+func (m Model) playerErr() error {
+	if m.backend == backend.Soloist {
+		return soloist.Err()
+	}
+	return spotifyd.Err()
+}
+
+func (m Model) isPlayerDevice(d libspotify.PlayerDevice) bool {
+	if m.backend == backend.Soloist {
+		id := soloist.DeviceID()
+		return id != "" && string(d.ID) == id
+	}
+	return d.Name == spotifyd.DeviceName()
+}
+
+func (m Model) playerDeviceName() string {
+	if m.backend == backend.Soloist {
+		return soloist.DeviceName()
+	}
+	return spotifyd.DeviceName()
+}
+
+func (m Model) playbackErrors() <-chan error {
+	if m.backend == backend.Soloist {
+		return nil
+	}
+	return spotifyd.PlaybackErrors()
 }

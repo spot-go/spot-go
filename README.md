@@ -6,9 +6,11 @@ A Spotify terminal UI.
 
 - Go 1.20 or newer
 - A Spotify Premium account
-- [spotifyd](https://github.com/Spotifyd/spotifyd) 0.4.2, which plays the audio:
-  - macOS (Apple Silicon or Intel): install it with `brew install spotifyd`
-  - Linux (x86_64, aarch64 or armv7): spot-go downloads the official 0.4.2 release on the first run
+- A program that plays the audio. spot-go uses [Soloist](https://developer.spotify.com/documentation/soloist), Spotify's own player, on:
+  - macOS on Apple Silicon
+  - Linux on x86_64, aarch64 or armv7, with PipeWire or PulseAudio
+
+  spot-go downloads Soloist from Spotify on the first run. On Intel Macs, use [spotifyd](https://github.com/Spotifyd/spotifyd) 0.4.2 instead (see [spotifyd](#spotifyd)).
 
 ## Running
 
@@ -16,10 +18,27 @@ A Spotify terminal UI.
 go run .
 ```
 
-On the first run spot-go asks you to log in twice in the browser:
+On the first run spot-go:
 
-1. The Spotify Web API, used to read your playlists and control playback.
-2. spotifyd, so it can play on your account. You can instead connect from a Spotify app on the same local network, but that may not work with current Spotify apps.
+1. Asks you to log in to the Spotify Web API in the browser. spot-go uses it to read your playlists and control playback.
+2. Downloads Soloist. On macOS it only installs a binary signed by Spotify.
+3. Asks for a Soloist API key. Create one at the [Soloist dashboard](https://developer.spotify.com/dashboard/soloist) and paste it. spot-go saves it only on your computer, in its config folder.
+4. Shows the device name, `spot-go@<hostname>`. Open Spotify on a phone or computer on the same network, open the list of devices and select it. Soloist remembers the login, so you only do this once.
+
+Each Soloist build stops working 90 days after it was built. spot-go downloads a newer one when the current build has less than 14 days left.
+
+The API key is passed to Soloist on its command line, so other users of the same computer can see it in `ps`.
+
+## spotifyd
+
+Run `go run . --player spotifyd` to play with spotifyd instead of Soloist:
+
+- macOS (Apple Silicon or Intel): install it with `brew install spotifyd`
+- Linux (x86_64, aarch64 or armv7): spot-go downloads the official 0.4.2 release on the first run
+
+spot-go asks you to log in to spotifyd in the browser. You can instead connect from a Spotify app on the same local network, but that may not work with current Spotify apps.
+
+If the status line shows `No sound: spotifyd got no audio key from Spotify`, Spotify refused to give spotifyd the key that decrypts the audio. This happens on some accounts and is [librespot issue #1649](https://github.com/librespot-org/librespot/issues/1649). spotifyd has no fix for it.
 
 ## Keys
 
@@ -31,10 +50,6 @@ On the first run spot-go asks you to log in twice in the browser:
 - `r` reloads the songs of the selected playlist.
 
 Spotify may only list the songs of playlists you own or collaborate on, depending on the mode of the Spotify app. Other playlists still play with `enter`.
-
-## No sound
-
-If the status line shows `No sound: spotifyd got no audio key from Spotify`, Spotify refused to give spotifyd the key that decrypts the audio. This happens on some accounts and is [librespot issue #1649](https://github.com/librespot-org/librespot/issues/1649). spotifyd has no fix for it yet.
 
 ## Debugging
 
@@ -52,4 +67,7 @@ Apps in development mode only work for up to 5 users added to the app's user lis
 
 ## License
 
-spot-go is MIT licensed. spotifyd is GPL-3.0 licensed: spot-go never ships or links it, it only runs the spotifyd binary you installed or that spot-go downloaded from the official release.
+spot-go is MIT licensed. spot-go never ships Soloist or spotifyd:
+
+- Soloist is proprietary software from Spotify. spot-go downloads it from Spotify's servers on your computer.
+- spotifyd is GPL-3.0 licensed. spot-go never links it, it only runs the spotifyd binary you installed or that spot-go downloaded from the official release.
