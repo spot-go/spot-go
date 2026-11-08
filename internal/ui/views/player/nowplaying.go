@@ -30,6 +30,7 @@ func (m Model) publishNowPlaying(item libspotify.URI, info media.Info, now time.
 	if m.publish == nil {
 		return m
 	}
+	info.ID = string(item)
 	m.nowPlaying.info, m.nowPlaying.item, m.nowPlaying.at = info, item, now
 	m.publish(info)
 	return m

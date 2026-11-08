@@ -53,6 +53,8 @@ The API key is passed to Soloist on its command line, so other users of the same
 
 On macOS, the play/pause, next and previous keys of the keyboard, and the Now Playing controls in Control Center, work too, even when the terminal is in the background. spot-go shows macOS what Spotify is playing, so it takes over these keys while Spotify plays. If another app, such as Music, plays after it, the keys go to that app until Spotify plays again.
 
+On Linux, spot-go shows up as an MPRIS media player on the D-Bus session bus, so the media keys of desktops such as GNOME and KDE, their media controls and `playerctl` work too. Desktops usually send the keys to the player that played last.
+
 Spotify may only list the songs of playlists you own or collaborate on, depending on the mode of the Spotify app. Other playlists still play with `enter`.
 
 ## Playlist order
