@@ -85,13 +85,7 @@ import "C"
 
 import (
 	"runtime"
-	"sync"
 	"unsafe"
-)
-
-var (
-	handlerMu sync.Mutex
-	handler   func(Command)
 )
 
 func init() {
@@ -107,9 +101,7 @@ func Main(run func()) {
 }
 
 func Listen(fn func(Command)) {
-	handlerMu.Lock()
-	handler = fn
-	handlerMu.Unlock()
+	setHandler(fn)
 	C.mediaListen()
 }
 
@@ -122,13 +114,4 @@ func Publish(info Info) {
 		playing = 1
 	}
 	C.mediaPublish(title, artist, C.double(info.Duration.Seconds()), C.double(info.Elapsed.Seconds()), playing)
-}
-
-func dispatch(code int) {
-	handlerMu.Lock()
-	fn := handler
-	handlerMu.Unlock()
-	if fn != nil {
-		go fn(Command(code))
-	}
 }

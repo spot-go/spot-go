@@ -6,5 +6,5 @@ import "C"
 
 //export mediaCommand
 func mediaCommand(code C.int) {
-	dispatch(int(code))
+	dispatch(Command(code))
 }

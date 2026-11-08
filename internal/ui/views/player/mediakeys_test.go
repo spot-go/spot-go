@@ -170,7 +170,7 @@ func TestNowPlayingFollowsPolls(t *testing.T) {
 
 	h.send(pollPlayback{})
 
-	want := media.Info{Title: "So What", Artist: "Miles Davis", Duration: 562 * time.Second, Elapsed: time.Minute, Playing: true}
+	want := media.Info{ID: "spotify:track:so-what", Title: "So What", Artist: "Miles Davis", Duration: 562 * time.Second, Elapsed: time.Minute, Playing: true}
 	if got := lastInfo(t, published); got != want {
 		t.Fatalf("now playing = %+v, want %+v", got, want)
 	}
@@ -213,7 +213,7 @@ func TestNowPlayingShowsTheEpisodePosition(t *testing.T) {
 
 	h.send(keys("tab", "down", "enter")...)
 
-	if got, want := lastInfo(t, published), (media.Info{Title: "Inside the Final Hours", Elapsed: 29 * time.Minute, Playing: true}); got != want {
+	if got, want := lastInfo(t, published), (media.Info{ID: string(episodeURI("Inside the Final Hours")), Title: "Inside the Final Hours", Elapsed: 29 * time.Minute, Playing: true}); got != want {
 		t.Fatalf("now playing = %+v, want %+v", got, want)
 	}
 }
