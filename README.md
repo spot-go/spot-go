@@ -1,6 +1,8 @@
 # spot-go
 
-<img src="assets/logo.png" alt="spot-go logo: a Go Gopher wearing headphones with a green treble clef" width="200">
+<p align="center">
+  <img src="assets/logo.png" alt="spot-go logo: a Go Gopher wearing headphones with a green treble clef" width="200">
+</p>
 
 A Spotify terminal UI.
 
