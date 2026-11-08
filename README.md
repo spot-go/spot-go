@@ -4,7 +4,7 @@ A Spotify terminal UI.
 
 ## Requirements
 
-- Go 1.27.3 or newer
+- Go 1.27.3 or newer. `mise.toml` pins this version, so with [mise](https://mise.jdx.dev) you can install it with `mise install`.
 - A Spotify Premium account
 - A program that plays the audio. spot-go uses [Soloist](https://developer.spotify.com/documentation/soloist), Spotify's own player, on:
   - macOS on Apple Silicon
@@ -16,6 +16,12 @@ A Spotify terminal UI.
 
 ```bash
 go run .
+```
+
+With mise, run it with the pinned Go:
+
+```bash
+mise exec -- go run .
 ```
 
 On the first run spot-go:
