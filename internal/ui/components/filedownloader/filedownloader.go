@@ -9,7 +9,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spot-go/spot-go/internal/program"
-	"github.com/spot-go/spot-go/internal/spotifyd"
 )
 
 type (
@@ -25,7 +24,7 @@ type (
 	}
 )
 
-func startDownload(url, dst string) tea.Cmd {
+func startDownload(url, dst, name string, install func(file string) error) tea.Cmd {
 	return func() tea.Msg {
 		resp, err := getResponse(url)
 		if err != nil {
@@ -60,9 +59,9 @@ func startDownload(url, dst string) tea.Cmd {
 			return progressMsg{err: fmt.Errorf("fail to close file: %+v", err)}
 		}
 
-		err = spotifyd.InstallArchive(dst)
+		err = install(dst)
 		if err != nil {
-			return progressMsg{err: fmt.Errorf("fail to install spotifyd: %+v", err)}
+			return progressMsg{err: fmt.Errorf("fail to install %s: %+v", name, err)}
 		}
 
 		return progressMsg{value: 1, done: true}

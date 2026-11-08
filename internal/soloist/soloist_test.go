@@ -1,0 +1,228 @@
+package soloist
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+func TestAPIKey(t *testing.T) {
+	useTempFolder(t)
+
+	if HasAPIKey() {
+		t.Fatal("HasAPIKey() = true before saving one")
+	}
+	if _, err := APIKey(); !errors.Is(err, ErrNoAPIKey) {
+		t.Fatalf("APIKey() = %v, want %v", err, ErrNoAPIKey)
+	}
+	if err := SaveAPIKey("   "); !errors.Is(err, ErrNoAPIKey) {
+		t.Fatalf("SaveAPIKey(blank) = %v, want %v", err, ErrNoAPIKey)
+	}
+
+	if err := os.WriteFile(apiKeyFile, []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveAPIKey("  my-key\n"); err != nil {
+		t.Fatalf("SaveAPIKey() = %v", err)
+	}
+	key, err := APIKey()
+	if err != nil || key != "my-key" {
+		t.Fatalf("APIKey() = %q, %v", key, err)
+	}
+
+	info, err := os.Stat(apiKeyFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0600 {
+		t.Fatalf("api key file mode = %o, want 600", perm)
+	}
+}
+
+func TestStalePatternMatchesDaemonArgs(t *testing.T) {
+	useTempFolder(t)
+
+	re := regexp.MustCompile(stalePattern(dataDir))
+	cmdline := binaryFile + " " + strings.Join(daemonArgs("key"), " ")
+	if !re.MatchString(cmdline) {
+		t.Fatalf("stalePattern() does not match %q", cmdline)
+	}
+
+	other := strings.Replace(cmdline, dataDir, dataDir+"-other", 1)
+	if re.MatchString(other) {
+		t.Fatalf("stalePattern() matches another data dir: %q", other)
+	}
+}
+
+func TestLoginWithStoredSession(t *testing.T) {
+	useTempFolder(t)
+	writeScript(t, binaryFile, fakeScript(time.Now(), `
+echo "2026-11-07 16:55:43.837: ready, device_name=spot-go@host device_id=84680ce4-e21b-44ea-96eb-921b6f18fc63"
+echo "2026-11-07 16:55:43.837: restoring session"
+echo "2026-11-07 16:55:44.529: logged in as me"
+exec sleep 60
+`))
+	if err := SaveAPIKey("key"); err != nil {
+		t.Fatal(err)
+	}
+
+	var paired atomic.Bool
+	resp := Login(func() { paired.Store(true) })
+	if resp.Err != nil {
+		t.Fatalf("Login() = %v", resp.Err)
+	}
+	if paired.Load() {
+		t.Fatal("Login() asked to pair while restoring a session")
+	}
+	if id := DeviceID(); id != "84680ce4-e21b-44ea-96eb-921b6f18fc63" {
+		t.Fatalf("DeviceID() = %q", id)
+	}
+	if err := Err(); err != nil {
+		t.Fatalf("Err() after login = %v", err)
+	}
+
+	Stop()
+	if err := Err(); !errors.Is(err, ErrStopped) {
+		t.Fatalf("Err() after Stop() = %v, want %v", err, ErrStopped)
+	}
+}
+
+func TestLoginPairing(t *testing.T) {
+	useTempFolder(t)
+	marker := filepath.Join(t.TempDir(), "paired")
+	writeScript(t, binaryFile, fakeScript(time.Now(), `
+echo "2026-11-07 16:55:52.825: ready, device_name=spot-go@host device_id=621d8765-e503-4833-bbac-3795c43ae65f"
+echo '2026-11-07 16:55:52.825: waiting for login — connect to "spot-go@host" from your Spotify app'
+while [ ! -f "`+marker+`" ]; do sleep 0.05; done
+echo "2026-11-07 16:56:00.000: logged in as me"
+exec sleep 60
+`))
+	if err := SaveAPIKey("key"); err != nil {
+		t.Fatal(err)
+	}
+
+	var pairings atomic.Int32
+	resp := Login(func() {
+		pairings.Add(1)
+		_ = os.WriteFile(marker, nil, 0644)
+	})
+	if resp.Err != nil {
+		t.Fatalf("Login() = %v", resp.Err)
+	}
+	if n := pairings.Load(); n != 1 {
+		t.Fatalf("onPairing was called %d times, want 1", n)
+	}
+}
+
+func TestLoginErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		daemon string
+		want   error
+		text   string
+	}{
+		{
+			name: "invalid api key",
+			daemon: `echo "2026-11-07 16:56:16.120: restoring session"
+echo "2026-11-07 16:56:16.721: login failed: make sure --api-key is valid"
+exec sleep 60`,
+			want: ErrInvalidAPIKey,
+		},
+		{
+			name: "expired build",
+			daemon: `echo "2026-11-07 16:56:16.120: this build has expired" >&2
+exit 10`,
+			want: ErrExpired,
+		},
+		{
+			name: "data dir in use",
+			daemon: `echo 'Error: another session is running for data directory "/tmp/data".' >&2
+echo "Stop the running session before starting soloist again." >&2
+exit 1`,
+			text: `Error: another session is running for data directory "/tmp/data".`,
+		},
+		{
+			name: "crash",
+			daemon: `echo "something went wrong" >&2
+exit 3`,
+			text: "something went wrong",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			useTempFolder(t)
+			writeScript(t, binaryFile, fakeScript(time.Now(), tt.daemon))
+			if err := SaveAPIKey("key"); err != nil {
+				t.Fatal(err)
+			}
+
+			resp := Login(nil)
+			if tt.want != nil && !errors.Is(resp.Err, tt.want) {
+				t.Fatalf("Login() = %v, want %v", resp.Err, tt.want)
+			}
+			if tt.text != "" && (resp.Err == nil || !strings.Contains(resp.Err.Error(), tt.text)) {
+				t.Fatalf("Login() = %v, want an error with %q", resp.Err, tt.text)
+			}
+			if err := Err(); !errors.Is(err, ErrStopped) {
+				t.Fatalf("Err() after a failed login = %v, want %v", err, ErrStopped)
+			}
+		})
+	}
+}
+
+func TestLoginWithoutSetup(t *testing.T) {
+	useTempFolder(t)
+
+	if resp := Login(nil); !errors.Is(resp.Err, ErrNoAPIKey) {
+		t.Fatalf("Login() without a key = %v, want %v", resp.Err, ErrNoAPIKey)
+	}
+
+	if err := SaveAPIKey("key"); err != nil {
+		t.Fatal(err)
+	}
+	if resp := Login(nil); !errors.Is(resp.Err, ErrNotInstalled) {
+		t.Fatalf("Login() without a binary = %v, want %v", resp.Err, ErrNotInstalled)
+	}
+}
+
+func TestStopEndsPairing(t *testing.T) {
+	useTempFolder(t)
+	writeScript(t, binaryFile, fakeScript(time.Now(), `
+echo '2026-11-07 16:55:52.825: waiting for login — connect to "spot-go@host" from your Spotify app'
+trap 'exit 0' TERM
+while true; do sleep 0.05; done
+`))
+	if err := SaveAPIKey("key"); err != nil {
+		t.Fatal(err)
+	}
+
+	paired := make(chan struct{})
+	done := make(chan LoginResponse, 1)
+	go func() { done <- Login(func() { close(paired) }) }()
+
+	select {
+	case <-paired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Login() never asked to pair")
+	}
+
+	start := time.Now()
+	Stop()
+	select {
+	case resp := <-done:
+		if !errors.Is(resp.Err, ErrStopped) {
+			t.Fatalf("Login() after Stop() = %v, want %v", resp.Err, ErrStopped)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Login() did not return after Stop()")
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("Stop() took %v, want SIGTERM to end the daemon right away", elapsed)
+	}
+}

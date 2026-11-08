@@ -526,8 +526,8 @@ func (p playlistModel) play() (playlistModel, tea.Cmd) {
 
 func (p playlistModel) startPlayback(seq int, playlist libspotify.URI, position int, name string) tea.Cmd {
 	var deviceID libspotify.ID
-	if p.spotifydPlayer != nil {
-		deviceID = p.spotifydPlayer.ID
+	if p.playerDevice != nil {
+		deviceID = p.playerDevice.ID
 	}
 
 	return func() tea.Msg {
