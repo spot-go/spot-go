@@ -81,7 +81,7 @@ func discographyType(a spotify.Album) string {
 }
 
 func discographyYear(a spotify.Album) string {
-	if a.Released.IsZero() {
+	if a.Released.IsZero() || a.Released.Year() < 1 {
 		return ""
 	}
 	return strconv.Itoa(a.Released.Year())

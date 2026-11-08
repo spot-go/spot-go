@@ -78,6 +78,33 @@ func (h *harness) selectedDiscographyAlbum() string {
 	return a.Name
 }
 
+func (h *harness) discographyCursorIsGreen() bool {
+	h.t.Helper()
+
+	d := h.artists().selectedDiscography()
+	if d == nil || d.list == nil {
+		h.t.Fatalf("albums are not loaded:\n%s", h.view())
+	}
+	row := func(focused bool) string {
+		var b bytes.Buffer
+		discographyDelegate{focused: focused}.Render(&b, *d.list, d.list.Index(), d.list.SelectedItem())
+		return b.String()
+	}
+	green, plain := row(true), row(false)
+	if green == plain {
+		h.t.Fatalf("the focused row looks like the unfocused one: %q", green)
+	}
+	view := h.model.View().Content
+	switch {
+	case strings.Contains(view, green):
+		return true
+	case strings.Contains(view, plain):
+		return false
+	}
+	h.t.Fatalf("the selected album row %q is not in the view:\n%s", ansi.Strip(plain), view)
+	return false
+}
+
 func (h *harness) wantArtistPlay(i int, artist string) {
 	h.t.Helper()
 
@@ -460,6 +487,25 @@ func TestRefreshReloadsTheLoadedAlbums(t *testing.T) {
 	h.wantView("Radiohead (20 of 35)")
 }
 
+func TestRefreshDropsAlbumsThatShiftBetweenPages(t *testing.T) {
+	api := newFakeAPI()
+	h := newArtistHarness(t, api)
+
+	first := h.artists().refreshDiscography("ar0")()
+	api.set(func(f *fakeAPI) {
+		f.artistAlbums["ar0"] = append([]string{albumJSON("al-new", "New Album", "album", "2031", "year", 9, "Radiohead")}, f.artistAlbums["ar0"]...)
+	})
+	h.send(first)
+
+	if got, want := api.requestsFor("ar0"), []string{"ar0@0", "ar0@10", "ar0@0", "ar0@10"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("album requests = %v, want %v", got, want)
+	}
+	if got, want := h.discographyNames(), manyAlbumNames(1, 19); !reflect.DeepEqual(got, want) {
+		t.Fatalf("albums after refreshing = %v, want %v with Album 10 listed once", got, want)
+	}
+	h.dontWantView("refreshing")
+}
+
 func TestRefreshKeepsTheAlbumsWhileLoading(t *testing.T) {
 	h := newArtistHarness(t, newFakeAPI())
 
@@ -620,6 +666,51 @@ func TestDiscographyRowsAreGreenOnlyWhenFocused(t *testing.T) {
 	}
 }
 
+func TestTabTurnsTheSelectedAlbumGreen(t *testing.T) {
+	h := newArtistHarness(t, newFakeAPI())
+	if h.discographyCursorIsGreen() {
+		t.Fatal("the selected album is green while the artists are focused")
+	}
+
+	h.send(key("tab"))
+	if !h.discographyCursorIsGreen() {
+		t.Fatal("the selected album is not green after tab focused the albums")
+	}
+
+	h.send(key("tab"))
+	if h.discographyCursorIsGreen() {
+		t.Fatal("the selected album is still green after tab focused the artists")
+	}
+}
+
+func TestAlbumsLoadedWhileFocusedAreGreen(t *testing.T) {
+	h := newArtistHarness(t, newFakeAPI())
+	h.holdTimers = true
+	h.send(keys("down", "tab")...)
+
+	h.holdTimers = false
+	h.send()
+	if got := h.selectedDiscographyAlbum(); got != "Dummy" {
+		t.Fatalf("selected = %q, want Dummy", got)
+	}
+	if !h.discographyCursorIsGreen() {
+		t.Fatal("albums loaded while focused are not green")
+	}
+
+	h.send(key("r"))
+	if got := h.api.requestsFor("ar1"); len(got) != 2 {
+		t.Fatalf("album requests = %v, want r to refresh them", got)
+	}
+	if !h.discographyCursorIsGreen() {
+		t.Fatal("albums refreshed while focused are not green")
+	}
+
+	h.send(key("tab"))
+	if h.discographyCursorIsGreen() {
+		t.Fatal("refreshed albums are still green after tab focused the artists")
+	}
+}
+
 func TestDiscographyType(t *testing.T) {
 	for _, tt := range []struct{ kind, want string }{
 		{"album", "Album"},
@@ -645,11 +736,37 @@ func TestDiscographyYear(t *testing.T) {
 		{time.Date(1997, 5, 21, 0, 0, 0, 0, time.UTC), "day", "1997"},
 		{time.Date(1995, 1, 1, 0, 0, 0, 0, time.UTC), "month", "1995"},
 		{time.Date(1994, 1, 1, 0, 0, 0, 0, time.UTC), "year", "1994"},
+		{time.Date(0, 1, 1, 0, 0, 0, 0, time.UTC), "year", ""},
 		{time.Time{}, "", ""},
 	} {
 		if got := discographyYear(spotify.Album{Released: tt.released, Precision: tt.precision}); got != tt.want {
 			t.Errorf("discographyYear(%v, %s) = %q, want %q", tt.released, tt.precision, got, tt.want)
 		}
+	}
+}
+
+func TestAlbumsWithAnUnknownReleaseDateShowNoYear(t *testing.T) {
+	api := newFakeAPI()
+	api.artistAlbums["ar2"] = []string{
+		albumJSON("al-unknown", "Unknown Date", "album", "0000", "year", 5, "Björk"),
+		albumJSON("al-debut", "Debut", "album", "1993", "year", 11, "Björk"),
+	}
+	h := newArtistHarness(t, api)
+
+	h.send(keys("down", "down")...)
+
+	h.wantView("Debut", "Album        1993")
+	var row string
+	for _, line := range strings.Split(h.view(), "\n") {
+		if strings.Contains(line, "Unknown Date") {
+			row = line
+		}
+	}
+	if row == "" {
+		t.Fatalf("the album without a date is not listed:\n%s", h.view())
+	}
+	if fields := strings.Fields(strings.Trim(row, " │")); fields[len(fields)-1] != "Album" {
+		t.Fatalf("the album without a date ends with %q, want no year after its type: %q", fields[len(fields)-1], row)
 	}
 }
 
@@ -778,7 +895,7 @@ func TestEnterOnAnArtistPlaysTheArtist(t *testing.T) {
 	}
 }
 
-func TestEnterOnAnAlbumPlaysItFromTheStart(t *testing.T) {
+func TestEnterOnADiscographyAlbumPlaysItFromTheStart(t *testing.T) {
 	h := newArtistHarness(t, newFakeAPI())
 
 	h.send(key("down"))
@@ -875,6 +992,10 @@ func TestArtistStatusFollowsWhatSpotifyPicks(t *testing.T) {
 	plays := *h.artists().plays
 	h.send(playbackPolled{plays: plays, playing: spotify.NowPlaying{Context: "spotify:artist:ar0", Item: "spotify:track:airbag", Name: "Airbag"}})
 	h.wantView("Playing: Airbag")
+
+	h.send(playbackPolled{plays: plays - 1, playing: spotify.NowPlaying{Context: "spotify:artist:ar0", Item: "spotify:track:old", Name: "Old Song"}})
+	h.wantView("Playing: Airbag")
+	h.dontWantView("Old Song")
 
 	h.send(playbackToggled{plays: plays, paused: true, name: "Airbag", item: "spotify:track:airbag"})
 	h.wantView("Paused: Airbag")
