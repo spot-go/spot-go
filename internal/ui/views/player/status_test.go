@@ -23,6 +23,7 @@ func (h *harness) settle() {
 	podcasts := m.tabs[podcastsTab].content.(podcastModel)
 	podcasts.playback.since = time.Time{}
 	m.tabs[podcastsTab].content = podcasts
+	m.nowPlaying.commandAt = time.Time{}
 	h.model = m
 }
 

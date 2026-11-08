@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
 	"github.com/spot-go/spot-go/internal/config"
+	"github.com/spot-go/spot-go/internal/media"
 	"github.com/spot-go/spot-go/internal/program"
 	"github.com/spot-go/spot-go/internal/soloist"
 	"github.com/spot-go/spot-go/internal/ui/styles"
@@ -46,8 +47,9 @@ func run(cmd *cobra.Command, args []string) {
 
 	soloist.KillStale()
 	styles.HasDarkBackground = lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
-	p := tea.NewProgram(login.NewModel())
+	p := tea.NewProgram(login.NewModel(media.Publish))
 	program.Instance = p
+	media.Listen(func(c media.Command) { p.Send(c) })
 	_, err := p.Run()
 	soloist.Stop()
 	if err != nil && !errors.Is(err, tea.ErrInterrupted) {

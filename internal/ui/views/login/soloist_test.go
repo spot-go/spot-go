@@ -12,7 +12,7 @@ import (
 )
 
 func soloistModel() Model {
-	m := NewModel()
+	m := NewModel(nil)
 	m.spotifyUser = &libspotify.PrivateUser{User: libspotify.User{DisplayName: "Chico"}}
 	return m
 }

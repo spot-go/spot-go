@@ -15,6 +15,7 @@ A Spotify terminal UI.
   - Linux on x86_64, aarch64 or armv7, with PipeWire or PulseAudio
 
   spot-go downloads Soloist from Spotify on the first run. Soloist has no build for other platforms, such as Intel Macs, so spot-go doesn't run on them.
+- On macOS, the Xcode Command Line Tools (`xcode-select --install`). spot-go uses them to build its support for the keyboard's media keys. Built with `CGO_ENABLED=0`, spot-go runs without them, but the media keys don't reach it.
 
 ## Running
 
@@ -49,6 +50,8 @@ The API key is passed to Soloist on its command line, so other users of the same
 - `r` reloads the songs or episodes of the selected playlist or podcast.
 - `s` changes the order of the playlists (see [Playlist order](#playlist-order)) or podcasts (see [Podcasts](#podcasts)).
 - `space` or `k` pauses what Spotify is playing, or resumes it on the device it was paused on, whether that is spot-go or another device. When Spotify has no active device, it resumes on spot-go.
+
+On macOS, the play/pause, next and previous keys of the keyboard, and the Now Playing controls in Control Center, work too, even when the terminal is in the background. spot-go shows macOS what Spotify is playing, so it takes over these keys while Spotify plays. If another app, such as Music, plays after it, the keys go to that app until Spotify plays again.
 
 Spotify may only list the songs of playlists you own or collaborate on, depending on the mode of the Spotify app. Other playlists still play with `enter`.
 

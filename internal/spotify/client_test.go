@@ -159,10 +159,10 @@ func TestPlayback(t *testing.T) {
 		want   Playback
 		err    bool
 	}{
-		{"playing", http.StatusOK, `{"is_playing":true,"device":{"id":"phone"},"item":{"type":"track","uri":"spotify:track:t","name":"Paranoid"}}`,
-			Playback{Playing: true, Device: "phone", Item: "spotify:track:t", Name: "Paranoid"}, false},
-		{"paused episode", http.StatusOK, `{"is_playing":false,"device":{"id":"phone"},"context":null,"item":{"type":"episode","uri":"spotify:episode:e","name":"E","show":{"uri":"spotify:show:s"}}}`,
-			Playback{Device: "phone", Item: "spotify:episode:e", Name: "E"}, false},
+		{"playing", http.StatusOK, `{"is_playing":true,"progress_ms":60000,"device":{"id":"phone"},"item":{"type":"track","uri":"spotify:track:t","name":"Paranoid","duration_ms":168000,"artists":[{"name":"Black Sabbath"},{"name":"Ozzy"}]}}`,
+			Playback{Playing: true, Device: "phone", Item: "spotify:track:t", Name: "Paranoid", Artist: "Black Sabbath, Ozzy", Progress: time.Minute, Duration: 168 * time.Second}, false},
+		{"paused episode", http.StatusOK, `{"is_playing":false,"device":{"id":"phone"},"context":null,"item":{"type":"episode","uri":"spotify:episode:e","name":"E","show":{"uri":"spotify:show:s","name":"The Daily"}}}`,
+			Playback{Device: "phone", Item: "spotify:episode:e", Name: "E", Artist: "The Daily"}, false},
 		{"no item", http.StatusOK, `{"is_playing":false,"device":{"id":"phone"},"item":null}`, Playback{Device: "phone"}, false},
 		{"no device", http.StatusOK, `{"is_playing":false,"device":null}`, Playback{}, false},
 		{"nothing plays", http.StatusNoContent, ``, Playback{}, false},
@@ -231,13 +231,15 @@ func TestNowPlayingItem(t *testing.T) {
 		body string
 		want NowPlaying
 	}{
-		{"song", `{"is_playing":true,"progress_ms":170000,"context":{"type":"playlist","uri":"spotify:playlist:a"},"item":{"type":"track","uri":"spotify:track:t","name":"Paranoid","duration_ms":168000}}`,
-			NowPlaying{Context: "spotify:playlist:a", Item: "spotify:track:t", Name: "Paranoid", Progress: 170 * time.Second, Duration: 168 * time.Second}},
-		{"episode", `{"is_playing":true,"progress_ms":60000,"context":null,"item":{"type":"episode","uri":"spotify:episode:e","name":"Inside the Final Hours","duration_ms":3600000,"show":{"uri":"spotify:show:s"}}}`,
-			NowPlaying{Context: "spotify:show:s", Item: "spotify:episode:e", Name: "Inside the Final Hours", Progress: time.Minute, Duration: time.Hour}},
+		{"song", `{"is_playing":true,"progress_ms":170000,"context":{"type":"playlist","uri":"spotify:playlist:a"},"item":{"type":"track","uri":"spotify:track:t","name":"Paranoid","duration_ms":168000,"artists":[{"name":"Black Sabbath"}]}}`,
+			NowPlaying{Context: "spotify:playlist:a", Item: "spotify:track:t", Name: "Paranoid", Artist: "Black Sabbath", Progress: 170 * time.Second, Duration: 168 * time.Second}},
+		{"episode", `{"is_playing":true,"progress_ms":60000,"context":null,"item":{"type":"episode","uri":"spotify:episode:e","name":"Inside the Final Hours","duration_ms":3600000,"show":{"uri":"spotify:show:s","name":"The Daily"}}}`,
+			NowPlaying{Context: "spotify:show:s", Item: "spotify:episode:e", Name: "Inside the Final Hours", Artist: "The Daily", Progress: time.Minute, Duration: time.Hour}},
 		{"no item", `{"is_playing":true,"progress_ms":1000,"context":{"type":"show","uri":"spotify:show:s"},"item":null}`,
 			NowPlaying{Context: "spotify:show:s"}},
 		{"paused", `{"is_playing":false,"progress_ms":1000,"context":{"type":"show","uri":"spotify:show:s"},"item":{"type":"episode","uri":"spotify:episode:e","name":"E","duration_ms":1000}}`,
+			NowPlaying{PausedItem: "spotify:episode:e", PausedProgress: time.Second}},
+		{"paused without an item", `{"is_playing":false,"progress_ms":1000,"item":null}`,
 			NowPlaying{}},
 	}
 	for _, tt := range tests {
