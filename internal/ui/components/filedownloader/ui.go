@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/charmbracelet/bubbles/progress"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/progress"
+	tea "charm.land/bubbletea/v2"
 )
 
 const (
@@ -42,7 +42,7 @@ func NewModel(url, dst, name string, install func(file string) error) Model {
 		dstFile:  path.Join(dst, filepath.Base(url)),
 		name:     name,
 		install:  install,
-		progress: progress.New(progress.WithDefaultGradient()),
+		progress: progress.New(progress.WithDefaultBlend(), progress.WithFillCharacters(progress.DefaultFullCharFullBlock, progress.DefaultEmptyCharBlock)),
 	}
 }
 
@@ -53,10 +53,7 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.progress.Width = msg.Width - padding*2 - 4
-		if m.progress.Width > maxWidth {
-			m.progress.Width = maxWidth
-		}
+		m.progress.SetWidth(min(msg.Width-padding*2-4, maxWidth))
 		return m, nil
 
 	case progressMsg:
@@ -79,8 +76,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	// FrameMsg is sent when the progress bar wants to animate itself
 	case progress.FrameMsg:
-		progressModel, cmd := m.progress.Update(msg)
-		m.progress = progressModel.(progress.Model)
+		var cmd tea.Cmd
+		m.progress, cmd = m.progress.Update(msg)
 		return m, cmd
 
 	default:

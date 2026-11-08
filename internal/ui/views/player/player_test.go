@@ -15,10 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/views"
 	libspotify "github.com/zmb3/spotify/v2"
@@ -350,7 +351,7 @@ func (h *harness) view() (view string) {
 			h.t.Fatalf("View panicked: %v", r)
 		}
 	}()
-	return h.model.View()
+	return ansi.Strip(h.model.View().Content)
 }
 
 func (h *harness) player() Model {
@@ -380,28 +381,32 @@ type tallModel struct{}
 
 func (tallModel) Init() tea.Cmd                         { return nil }
 func (t tallModel) Update(tea.Msg) (tea.Model, tea.Cmd) { return t, nil }
-func (tallModel) View() string                          { return strings.Repeat(strings.Repeat("x", 300)+"\n", 100) }
+func (tallModel) View() tea.View {
+	return tea.NewView(strings.Repeat(strings.Repeat("x", 300)+"\n", 100))
+}
 
 func key(k string) tea.Msg {
 	switch k {
 	case "left":
-		return tea.KeyMsg{Type: tea.KeyLeft}
+		return tea.KeyPressMsg{Code: tea.KeyLeft}
 	case "right":
-		return tea.KeyMsg{Type: tea.KeyRight}
+		return tea.KeyPressMsg{Code: tea.KeyRight}
+	case "up":
+		return tea.KeyPressMsg{Code: tea.KeyUp}
 	case "down":
-		return tea.KeyMsg{Type: tea.KeyDown}
+		return tea.KeyPressMsg{Code: tea.KeyDown}
 	case "tab":
-		return tea.KeyMsg{Type: tea.KeyTab}
+		return tea.KeyPressMsg{Code: tea.KeyTab}
 	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}
+		return tea.KeyPressMsg{Code: tea.KeyEnter}
 	case "esc":
-		return tea.KeyMsg{Type: tea.KeyEsc}
+		return tea.KeyPressMsg{Code: tea.KeyEscape}
 	case "ctrl+c":
-		return tea.KeyMsg{Type: tea.KeyCtrlC}
+		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
 	case "ctrl+q":
-		return tea.KeyMsg{Type: tea.KeyCtrlQ}
+		return tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl}
 	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
+	return tea.KeyPressMsg{Code: []rune(k)[0], Text: k}
 }
 
 func keys(ks ...string) []tea.Msg {
@@ -639,7 +644,7 @@ func TestMessagesBeforeFirstResize(t *testing.T) {
 	model, _ = model.Update(key("/"))
 	model, _ = model.Update(spinner.New().Tick())
 
-	if v := model.View(); !strings.Contains(v, tooSmallWindow) {
+	if v := model.View().Content; !strings.Contains(v, tooSmallWindow) {
 		t.Fatalf("view with an unknown window size = %q, want %q", v, tooSmallWindow)
 	}
 }
@@ -745,5 +750,47 @@ func TestFrameReachesTheRightEdge(t *testing.T) {
 				t.Fatalf("%dx24: line %d is %d columns wide, want %d:\n%s", width, i, got, width, v)
 			}
 		}
+	}
+}
+
+func TestEmojiNamesKeepTheFrameAligned(t *testing.T) {
+	api := newFakeAPI()
+	api.songs["p0"] = []string{songJSON("Tchau 👋🏽", "Banda 🧑🏿‍🎤", 100000)}
+	h := newHarnessWith(t, api, 80, 24)
+
+	names := []string{
+		"teste 👋🏻",
+		"👩🏾‍❤️‍👩🏼 casal",
+		"🇧🇷 Brasil",
+		"Melhores caipiras 🎻",
+		"👋🏻 uma playlist com um nome bem comprido 👋🏿",
+	}
+	loaded := make(playlistsLoaded, len(names))
+	for i, name := range names {
+		loaded[i] = libspotify.SimplePlaylist{ID: libspotify.ID(fmt.Sprintf("p%d", i)), Name: name}
+	}
+	h.send(loaded)
+	h.wantView("teste 👋🏻", "Tchau 👋🏽")
+
+	for width := 60; width <= 160; width++ {
+		h.send(tea.WindowSizeMsg{Width: width, Height: 24})
+		v := h.view()
+		for i, line := range strings.Split(v, "\n") {
+			if got := ansi.StringWidth(line); got != width {
+				t.Fatalf("%dx24: line %d is %d columns wide, want %d:\n%s", width, i, got, width, v)
+			}
+		}
+	}
+}
+
+func TestPlayerViewUsesTheAltScreen(t *testing.T) {
+	h := newHarness(t, 120, 40)
+	if !h.model.View().AltScreen {
+		t.Fatal("player view is not on the alt screen")
+	}
+
+	h.send(tea.WindowSizeMsg{Width: 10, Height: 2})
+	if !h.model.View().AltScreen {
+		t.Fatal("too small window view is not on the alt screen")
 	}
 }

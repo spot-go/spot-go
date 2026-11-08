@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/kirsle/configdir"
 	"github.com/spot-go/spot-go/internal/path"
 
-	"golang.org/x/exp/slices"
 	"golang.org/x/oauth2"
 )
 

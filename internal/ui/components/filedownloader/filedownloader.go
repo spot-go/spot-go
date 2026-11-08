@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/spot-go/spot-go/internal/program"
 )
 

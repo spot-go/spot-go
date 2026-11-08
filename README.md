@@ -4,7 +4,7 @@ A Spotify terminal UI.
 
 ## Requirements
 
-- Go 1.20 or newer
+- Go 1.26 or newer
 - A Spotify Premium account
 - A program that plays the audio. spot-go uses [Soloist](https://developer.spotify.com/documentation/soloist), Spotify's own player, on:
   - macOS on Apple Silicon

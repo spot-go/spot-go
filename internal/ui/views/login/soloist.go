@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/spot-go/spot-go/internal/program"
 	"github.com/spot-go/spot-go/internal/soloist"
 	"github.com/spot-go/spot-go/internal/ui/components/filedownloader"

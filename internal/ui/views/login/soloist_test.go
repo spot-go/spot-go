@@ -4,7 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spot-go/spot-go/internal/backend"
 	"github.com/spot-go/spot-go/internal/soloist"
 	"github.com/spot-go/spot-go/internal/ui/components/secretinput"
@@ -28,8 +29,8 @@ func update(t *testing.T, m Model, msg tea.Msg) (Model, tea.Cmd) {
 	return lm, cmd
 }
 
-func runes(s string) tea.KeyMsg {
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+func runes(s string) tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: []rune(s)[0], Text: s}
 }
 
 func isQuit(cmd tea.Cmd) bool {
@@ -51,7 +52,7 @@ func TestSoloistAPIKeyPromptTakesQ(t *testing.T) {
 		t.Fatal(`typing "k" in the API key quit the app`)
 	}
 
-	_, cmd = update(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd = update(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("enter did not submit the API key")
 	}
@@ -59,11 +60,11 @@ func TestSoloistAPIKeyPromptTakesQ(t *testing.T) {
 		t.Fatalf("enter sent %#v, want Submitted(\"qk\")", got)
 	}
 
-	if strings.Contains(m.View(), "qk") {
+	if strings.Contains(m.View().Content, "qk") {
 		t.Fatal("the API key is shown in clear text")
 	}
 
-	_, cmd = update(t, m, tea.KeyMsg{Type: tea.KeyCtrlC})
+	_, cmd = update(t, m, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if !isQuit(cmd) {
 		t.Fatal("ctrl+c did not quit while typing the API key")
 	}
@@ -77,7 +78,7 @@ func TestSoloistInvalidAPIKeyAsksAgain(t *testing.T) {
 	if m.state != stateSoloistAPIKey {
 		t.Fatalf("state = %v, want the API key prompt", m.state)
 	}
-	if view := m.View(); !strings.Contains(view, soloist.ErrInvalidAPIKey.Error()) || !strings.Contains(view, soloist.APIKeyPage) {
+	if view := m.View().Content; !strings.Contains(view, soloist.ErrInvalidAPIKey.Error()) || !strings.Contains(view, soloist.APIKeyPage) {
 		t.Fatalf("API key prompt does not explain the error and where to get a key:\n%s", view)
 	}
 }
@@ -90,11 +91,11 @@ func TestSoloistPairing(t *testing.T) {
 	if m.state != stateSoloistPairing {
 		t.Fatalf("state = %v, want pairing", m.state)
 	}
-	if view := m.View(); !strings.Contains(view, soloist.DeviceName()) {
+	if view := m.View().Content; !strings.Contains(view, soloist.DeviceName()) {
 		t.Fatalf("pairing view does not name the device:\n%s", view)
 	}
 
-	m, cmd := update(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	m, cmd := update(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
 	if isQuit(cmd) {
 		t.Fatal("esc while pairing quit the app")
 	}
@@ -119,7 +120,7 @@ func TestSoloistStartupWithoutSetup(t *testing.T) {
 	if m.state != stateWebAPILogged {
 		t.Fatalf("state = %v, want the welcome screen", m.state)
 	}
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "Welcome Chico") || !strings.Contains(view, "(Soloist)") {
 		t.Fatalf("welcome screen does not name the user and Soloist:\n%s", view)
 	}
@@ -135,7 +136,7 @@ func TestSoloistStartupError(t *testing.T) {
 	if m.state != stateWebAPILogged {
 		t.Fatalf("state = %v, want the welcome screen", m.state)
 	}
-	if view := m.View(); !strings.Contains(view, soloist.ErrExpired.Error()) {
+	if view := m.View().Content; !strings.Contains(view, soloist.ErrExpired.Error()) {
 		t.Fatalf("welcome screen does not show the startup error:\n%s", view)
 	}
 }
@@ -146,5 +147,31 @@ func TestPlaybackErrorsPerPlayer(t *testing.T) {
 	}
 	if soloistModel().playbackErrors() != nil {
 		t.Fatal("Soloist reports spotifyd playback errors")
+	}
+}
+
+func TestLoginViewsUseTheAltScreen(t *testing.T) {
+	cases := map[string]Model{
+		"message":       soloistModel(),
+		"api key input": soloistModel().showSoloistAPIKey(nil),
+	}
+	for name, m := range cases {
+		if !m.View().AltScreen {
+			t.Errorf("%s view is not on the alt screen", name)
+		}
+	}
+}
+
+func TestShortWindowKeepsTheAPIKeyInputVisible(t *testing.T) {
+	m := soloistModel()
+	m.WindowSizeMsg = tea.WindowSizeMsg{Width: 100, Height: 6}
+	m = m.showSoloistAPIKey(nil)
+
+	view := ansi.Strip(m.View().Content)
+	if lines := strings.Count(view, "\n") + 1; lines > 6 {
+		t.Fatalf("view has %d lines, want at most 6:\n%s", lines, view)
+	}
+	if !strings.Contains(view, "Soloist API key") {
+		t.Fatalf("view does not show the API key input:\n%s", view)
 	}
 }

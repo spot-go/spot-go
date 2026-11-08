@@ -8,10 +8,11 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/styles"
 	libspotify "github.com/zmb3/spotify/v2"
@@ -19,6 +20,7 @@ import (
 
 var (
 	border = lipgloss.Border{
+		Left:  " ",
 		Right: "│",
 	}
 	borderStyle = lipgloss.NewStyle().
@@ -27,7 +29,7 @@ var (
 			UnsetBorderTop().
 			UnsetBorderBottom()
 	playingStyle = lipgloss.NewStyle().
-			Foreground(styles.LipglossAdaptiveColorGreenSpotify)
+			Foreground(styles.LipglossColorForegroundGreenSpotify)
 	playbackErrorStyle = lipgloss.NewStyle().
 				Foreground(styles.LipglossColorRed)
 )
@@ -161,7 +163,7 @@ func (p playlistModel) Init() tea.Cmd {
 
 func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m, cmd, handled := p.handleKey(msg); handled {
 			return m, cmd
 		}
@@ -191,13 +193,15 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		d := list.NewDefaultDelegate()
-		d.Styles.SelectedTitle.
-			Foreground(styles.LipglossAdaptiveColorGreenSpotify).
-			BorderForeground(styles.LipglossAdaptiveColorGreenSpotify)
+		d.Styles = list.NewDefaultItemStyles(styles.HasDarkBackground)
+		d.Styles.SelectedTitle = d.Styles.SelectedTitle.
+			Foreground(styles.LipglossColorForegroundGreenSpotify).
+			BorderForeground(styles.LipglossColorForegroundGreenSpotify)
 		d.ShowDescription = false
-		l := list.New(items, d, 0, 0)
-		l.FilterInput.CursorStyle = lipgloss.NewStyle().
-			Foreground(styles.LipglossAdaptiveColorGreenSpotify)
+		l := newList(items, d)
+		filterStyles := l.Styles.Filter
+		filterStyles.Cursor.Color = styles.LipglossColorForegroundGreenSpotify
+		l.FilterInput.SetStyles(filterStyles)
 		l.SetStatusBarItemName("playlist", "playlists")
 		l.SetShowTitle(false)
 		l.SetShowHelp(false)
@@ -249,7 +253,7 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return p, cmd
 
 	case statePlaylistLoaded:
-		if _, isKey := msg.(tea.KeyMsg); isKey && !p.leftFocus {
+		if _, isKey := msg.(tea.KeyPressMsg); isKey && !p.leftFocus {
 			return p, p.updateSongs(msg)
 		}
 		return p.updatePlaylists(msg)
@@ -258,7 +262,17 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return p, nil
 }
 
-func (p playlistModel) handleKey(msg tea.KeyMsg) (playlistModel, tea.Cmd, bool) {
+func newList(items []list.Item, delegate list.ItemDelegate) list.Model {
+	l := list.New(items, delegate, 0, 0)
+	l.Styles = list.DefaultStyles(styles.HasDarkBackground)
+	l.Paginator.ActiveDot = l.Styles.ActivePaginationDot.String()
+	l.Paginator.InactiveDot = l.Styles.InactivePaginationDot.String()
+	l.FilterInput.SetStyles(l.Styles.Filter)
+	l.Help.Styles = help.DefaultStyles(styles.HasDarkBackground)
+	return l
+}
+
+func (p playlistModel) handleKey(msg tea.KeyPressMsg) (playlistModel, tea.Cmd, bool) {
 	if p.capturesInput() {
 		return p, nil, false
 	}
@@ -471,7 +485,7 @@ func songItems(songs []spotify.PlaylistItem) []list.Item {
 }
 
 func (p playlistModel) newSongsList(songs []spotify.PlaylistItem) *list.Model {
-	l := list.New(songItems(songs), songDelegate{focused: !p.leftFocus}, 0, 0)
+	l := newList(songItems(songs), songDelegate{focused: !p.leftFocus})
 	l.SetFilteringEnabled(false)
 	l.SetShowTitle(false)
 	l.SetShowHelp(false)
@@ -556,8 +570,8 @@ func errorText(err error) string {
 	return err.Error()
 }
 
-func (p playlistModel) View() string {
-	return lipgloss.JoinHorizontal(lipgloss.Top, p.leftView(), p.rightView())
+func (p playlistModel) View() tea.View {
+	return tea.NewView(lipgloss.JoinHorizontal(lipgloss.Top, p.leftView(), p.rightView()))
 }
 
 func (p playlistModel) leftWidth() int {
@@ -688,7 +702,7 @@ func (p playlistModel) leftView() string {
 	return borderStyle.
 		Height(p.height).
 		MaxHeight(p.height).
-		Width(width).
+		Width(width + borderStyle.GetHorizontalBorderSize()).
 		AlignHorizontal(p.alignHorizontal).
 		Render(p.msg)
 }
