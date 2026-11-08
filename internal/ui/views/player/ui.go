@@ -32,6 +32,7 @@ type (
 
 		tabs      []tab
 		activeTab int
+		toggle    playbackToggle
 	}
 
 	tab struct {
@@ -138,8 +139,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.activeCapturesInput() {
 				return m.switchTab(m.activeTab + 1)
 			}
+		case "k", "space":
+			if !m.activeCapturesInput() {
+				return m.togglePlayback()
+			}
 		}
 		return m, m.updateTab(m.activeTab, msg)
+
+	case playbackToggled:
+		m = m.playbackToggled(msg)
+		return m, m.broadcast(msg)
+
+	case playbackStarted, playbackFailed, episodePlaybackStarted, episodePlaybackFailed:
+		m.toggle.settled++
+		return m, m.broadcast(msg)
 
 	case tea.WindowSizeMsg:
 		m.WindowSizeMsg = msg

@@ -242,6 +242,12 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return p, nil
 
+	case playbackToggled:
+		if msg.plays == *p.plays {
+			p.playback = p.playback.toggled(msg, time.Now())
+		}
+		return p, nil
+
 	case pollPlayback:
 		return p, p.fetchPlaying()
 

@@ -151,6 +151,80 @@ func TestNowPlayingContext(t *testing.T) {
 	}
 }
 
+func TestPlayback(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		want   Playback
+		err    bool
+	}{
+		{"playing", http.StatusOK, `{"is_playing":true,"device":{"id":"phone"},"item":{"type":"track","uri":"spotify:track:t","name":"Paranoid"}}`,
+			Playback{Playing: true, Device: "phone", Item: "spotify:track:t", Name: "Paranoid"}, false},
+		{"paused episode", http.StatusOK, `{"is_playing":false,"device":{"id":"phone"},"context":null,"item":{"type":"episode","uri":"spotify:episode:e","name":"E","show":{"uri":"spotify:show:s"}}}`,
+			Playback{Device: "phone", Item: "spotify:episode:e", Name: "E"}, false},
+		{"no item", http.StatusOK, `{"is_playing":false,"device":{"id":"phone"},"item":null}`, Playback{Device: "phone"}, false},
+		{"no device", http.StatusOK, `{"is_playing":false,"device":null}`, Playback{}, false},
+		{"nothing plays", http.StatusNoContent, ``, Playback{}, false},
+		{"error", http.StatusUnauthorized, `{"error":{"status":401,"message":"The access token expired"}}`, Playback{}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := testClient(func(r *http.Request) *http.Response {
+				if r.Method != http.MethodGet || r.URL.Path != "/v1/me/player" || r.URL.Query().Get("additional_types") != "episode" {
+					return jsonResponse(r, http.StatusNotFound, `{"error":{"status":404,"message":"not found"}}`)
+				}
+				return jsonResponse(r, tt.status, tt.body)
+			})
+
+			got, err := c.Playback(context.Background())
+
+			if got != tt.want || (err != nil) != tt.err {
+				t.Fatalf("Playback = %+v, %v, want %+v, error %v", got, err, tt.want, tt.err)
+			}
+		})
+	}
+}
+
+func TestResumePlayback(t *testing.T) {
+	type request struct {
+		path, device, body string
+		hasDevice          bool
+	}
+	var got request
+	c := testClient(func(r *http.Request) *http.Response {
+		var b []byte
+		if r.Body != nil {
+			b, _ = io.ReadAll(r.Body)
+		}
+		got = request{
+			path:      r.Method + " " + r.URL.Path,
+			device:    r.URL.Query().Get("device_id"),
+			hasDevice: r.URL.Query().Has("device_id"),
+			body:      strings.TrimSpace(string(b)),
+		}
+		return jsonResponse(r, http.StatusNoContent, ``)
+	})
+
+	for _, tt := range []struct {
+		name string
+		call func() error
+		want request
+	}{
+		{"resume", func() error { return c.ResumePlayback(context.Background(), "d1") }, request{path: "PUT /v1/me/player/play", device: "d1", hasDevice: true, body: "{}"}},
+		{"resume on the active device", func() error { return c.ResumePlayback(context.Background(), "") }, request{path: "PUT /v1/me/player/play", body: "{}"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.call(); err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Fatalf("request = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNowPlayingItem(t *testing.T) {
 	tests := []struct {
 		name string

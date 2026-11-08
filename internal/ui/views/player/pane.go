@@ -27,6 +27,7 @@ type (
 		err      bool
 		item     libspotify.URI
 		starting bool
+		paused   bool
 		since    time.Time
 	}
 )
@@ -70,7 +71,7 @@ func errorText(err error) string {
 }
 
 func (s playbackStatus) follow(playing spotify.NowPlaying, now time.Time) playbackStatus {
-	if s.err || s.starting || now.Sub(s.since) < followGrace || playing.Item == "" || playing.Name == "" || playing.Item == s.item {
+	if s.err || s.starting || now.Sub(s.since) < followGrace || playing.Item == "" || playing.Name == "" || (playing.Item == s.item && !s.paused) {
 		return s
 	}
 	return playbackStatus{seq: s.seq, text: "Playing: " + playing.Name, item: playing.Item}
@@ -215,7 +216,9 @@ func (s paneSize) keyHelp(h help.Styles, target string) string {
 		separator +
 		h.ShortKey.Inline(true).Render("enter") + " " + h.ShortDesc.Inline(true).Render("play") +
 		separator +
-		h.ShortKey.Inline(true).Render("r") + " " + h.ShortDesc.Inline(true).Render("refresh")
+		h.ShortKey.Inline(true).Render("r") + " " + h.ShortDesc.Inline(true).Render("refresh") +
+		separator +
+		h.ShortKey.Inline(true).Render("space") + " " + h.ShortDesc.Inline(true).Render("play/pause")
 	return lipgloss.NewStyle().
 		Width(s.rightWidth()).
 		AlignHorizontal(lipgloss.Center).

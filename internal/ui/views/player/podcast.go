@@ -204,6 +204,12 @@ func (p podcastModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return p, nil
 
+	case playbackToggled:
+		if msg.plays == *p.plays {
+			p.playback = p.playback.toggled(msg, time.Now())
+		}
+		return p, nil
+
 	case playbackPolled:
 		if msg.err != nil {
 			return p, nil

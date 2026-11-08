@@ -43,8 +43,11 @@ type (
 		block          map[string]chan struct{}
 		totals         map[string]int
 		playStatus     int
+		pauseStatus    int
 		songRequests   []string
 		plays          []playRequest
+		pauses         []string
+		device         string
 		recent         []recentPlay
 		playing        string
 		paused         bool
@@ -161,7 +164,10 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		if f.playing == "" {
 			return response(r, http.StatusNoContent, ""), nil
 		}
-		item, context := "null", fmt.Sprintf(`{"type":"playlist","uri":%q}`, f.playing)
+		item, context, device := "null", fmt.Sprintf(`{"type":"playlist","uri":%q}`, f.playing), "null"
+		if f.device != "" {
+			device = fmt.Sprintf(`{"id":%q}`, f.device)
+		}
 		if f.playingItem != "" {
 			item = fmt.Sprintf(`{"uri":%q,"name":%q,"duration_ms":%d}`, f.playingItem, f.playingName, f.durationMs)
 		}
@@ -172,7 +178,7 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 			context = "null"
 			item = fmt.Sprintf(`{"type":"episode","uri":%q,"name":%q,"duration_ms":%d,"show":{"uri":%q}}`, f.playingItem, f.playingName, f.durationMs, f.playing)
 		}
-		return response(r, http.StatusOK, fmt.Sprintf(`{"is_playing":%t,"progress_ms":%d,"context":%s,"item":%s}`, !f.paused, f.progressMs, context, item)), nil
+		return response(r, http.StatusOK, fmt.Sprintf(`{"is_playing":%t,"progress_ms":%d,"context":%s,"device":%s,"item":%s}`, !f.paused, f.progressMs, context, device, item)), nil
 
 	case strings.HasPrefix(path, "playlists/") && strings.HasSuffix(path, "/items"):
 		id := strings.TrimSuffix(strings.TrimPrefix(path, "playlists/"), "/items")
@@ -241,6 +247,15 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		if f.playStatus != 0 {
 			return errorResponse(r, f.playStatus, "Player command failed: Premium required"), nil
 		}
+		f.paused = false
+		return response(r, http.StatusNoContent, ""), nil
+
+	case path == "me/player/pause" && r.Method == http.MethodPut:
+		f.pauses = append(f.pauses, r.URL.Query().Get("device_id"))
+		if f.pauseStatus != 0 {
+			return errorResponse(r, f.pauseStatus, "Player command failed: Restriction violated"), nil
+		}
+		f.paused = true
 		return response(r, http.StatusNoContent, ""), nil
 	}
 
@@ -557,6 +572,8 @@ func key(k string) tea.Msg {
 		return tea.KeyPressMsg{Code: tea.KeyEscape}
 	case "end":
 		return tea.KeyPressMsg{Code: tea.KeyEnd}
+	case "space":
+		return tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
 	case "ctrl+c":
 		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
 	case "ctrl+q":

@@ -48,6 +48,7 @@ The API key is passed to Soloist on its command line, so other users of the same
 - `/` filters the playlists or podcasts. The matches keep the order of the list.
 - `r` reloads the songs or episodes of the selected playlist or podcast.
 - `s` changes the order of the playlists (see [Playlist order](#playlist-order)) or podcasts (see [Podcasts](#podcasts)).
+- `space` or `k` pauses what Spotify is playing, or resumes it on the device it was paused on, whether that is spot-go or another device. When Spotify has no active device, it resumes on spot-go.
 
 Spotify may only list the songs of playlists you own or collaborate on, depending on the mode of the Spotify app. Other playlists still play with `enter`.
 
