@@ -646,11 +646,11 @@ func TestSongsListFollowsTheWindowSize(t *testing.T) {
 
 		p := h.playlists()
 		l := h.songs().list
-		if l.Width() != p.rightWidth() || l.Height() != p.songsHeight() {
-			t.Fatalf("%dx%d: songs list is %dx%d, want %dx%d", size[0], size[1], l.Width(), l.Height(), p.rightWidth(), p.songsHeight())
+		if l.Width() != p.rightWidth() || l.Height() != p.listHeight() {
+			t.Fatalf("%dx%d: songs list is %dx%d, want %dx%d", size[0], size[1], l.Width(), l.Height(), p.rightWidth(), p.listHeight())
 		}
 		h.wantView("enter play")
-		if p.songsHeight() >= 3 && !strings.Contains(v, "Song 1 - Cartola") {
+		if p.listHeight() >= 3 && !strings.Contains(v, "Song 1 - Cartola") {
 			t.Fatalf("%dx%d: the first song row is not shown:\n%s", size[0], size[1], v)
 		}
 	}
@@ -662,8 +662,8 @@ func TestPlaybackStatusIsShownWhenNoSongRowFits(t *testing.T) {
 
 	h.send(tea.WindowSizeMsg{Width: 120, Height: 9})
 
-	if got := h.playlists().songsHeight(); got != 0 {
-		t.Fatalf("songsHeight = %d, want 0 for this test", got)
+	if got := h.playlists().listHeight(); got != 0 {
+		t.Fatalf("listHeight = %d, want 0 for this test", got)
 	}
 	h.wantView("Playing: Rock", "enter play")
 }

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
@@ -83,9 +84,26 @@ type (
 		} `json:"items"`
 	}
 
+	NowPlaying struct {
+		Context  spotify.URI
+		Item     spotify.URI
+		Name     string
+		Progress time.Duration
+		Duration time.Duration
+	}
+
 	playerResponse struct {
-		IsPlaying bool             `json:"is_playing"`
-		Context   *playbackContext `json:"context"`
+		IsPlaying  bool             `json:"is_playing"`
+		ProgressMs int              `json:"progress_ms"`
+		Context    *playbackContext `json:"context"`
+		Item       *struct {
+			URI        spotify.URI `json:"uri"`
+			Name       string      `json:"name"`
+			DurationMs int         `json:"duration_ms"`
+			Show       *struct {
+				URI spotify.URI `json:"uri"`
+			} `json:"show"`
+		} `json:"item"`
 	}
 
 	playbackContext struct {
@@ -183,15 +201,29 @@ func (c Client) RecentlyPlayedPlaylists(ctx context.Context) ([]PlayedPlaylist, 
 	return played, nil
 }
 
-func (c Client) PlayingPlaylist(ctx context.Context) (spotify.URI, error) {
+func (c Client) NowPlaying(ctx context.Context) (NowPlaying, error) {
+	query := url.Values{"additional_types": {"episode"}}
 	var resp playerResponse
-	if err := c.getJSON(ctx, c.baseURL+"me/player", &resp); err != nil {
-		return "", err
+	if err := c.getJSON(ctx, c.baseURL+"me/player?"+query.Encode(), &resp); err != nil {
+		return NowPlaying{}, err
 	}
-	if uri, ok := resp.Context.playlist(); ok && resp.IsPlaying {
-		return uri, nil
+	if !resp.IsPlaying {
+		return NowPlaying{}, nil
 	}
-	return "", nil
+
+	var playing NowPlaying
+	if uri, ok := resp.Context.uriOf("playlist", "show"); ok {
+		playing.Context = uri
+	}
+	if item := resp.Item; item != nil {
+		playing.Item, playing.Name = item.URI, item.Name
+		playing.Progress = time.Duration(resp.ProgressMs) * time.Millisecond
+		playing.Duration = time.Duration(item.DurationMs) * time.Millisecond
+		if playing.Context == "" && item.Show != nil {
+			playing.Context = item.Show.URI
+		}
+	}
+	return playing, nil
 }
 
 func (c Client) PlayPlaylist(ctx context.Context, deviceID spotify.ID, playlist spotify.URI, position int) error {
@@ -283,7 +315,11 @@ func decodeError(resp *http.Response) error {
 }
 
 func (c *playbackContext) playlist() (spotify.URI, bool) {
-	if c == nil || c.Type != "playlist" || c.URI == "" {
+	return c.uriOf("playlist")
+}
+
+func (c *playbackContext) uriOf(types ...string) (spotify.URI, bool) {
+	if c == nil || c.URI == "" || !slices.Contains(types, c.Type) {
 		return "", false
 	}
 	return c.URI, true

@@ -26,7 +26,13 @@ type (
 		Order     Order                    `json:"order,omitempty"`
 		Synced    bool                     `json:"synced,omitempty"`
 		Playlists map[spotify.URI]Playlist `json:"playlists,omitempty"`
+		Podcasts  Podcasts                 `json:"podcasts,omitzero"`
 		revision  int
+	}
+
+	Podcasts struct {
+		Order      Order                     `json:"order,omitempty"`
+		LastPlayed map[spotify.URI]time.Time `json:"lastPlayed,omitempty"`
 	}
 
 	Store struct {
@@ -39,10 +45,11 @@ type (
 var ErrCorrupt = errors.New("corrupt file")
 
 const (
-	OrderRecents      Order = "recents"
-	OrderAlphabetical Order = "alphabetical"
-	OrderCreator      Order = "creator"
-	OrderCustom       Order = "custom"
+	OrderRecents       Order = "recents"
+	OrderAlphabetical  Order = "alphabetical"
+	OrderCreator       Order = "creator"
+	OrderCustom        Order = "custom"
+	OrderRecentlyAdded Order = "recently-added"
 )
 
 func (h *History) SetOrder(o Order) {
@@ -104,9 +111,53 @@ func (h History) Recent(uri spotify.URI) time.Time {
 	return p.AddedAt
 }
 
+func (h *History) SetPodcastOrder(o Order) {
+	if h.Podcasts.Order == o {
+		return
+	}
+	h.Podcasts.Order = o
+	h.revision++
+}
+
+func (h *History) PodcastPlayed(uri spotify.URI, at time.Time) bool {
+	if !at.After(h.Podcasts.LastPlayed[uri]) {
+		return false
+	}
+	if h.Podcasts.LastPlayed == nil {
+		h.Podcasts.LastPlayed = make(map[spotify.URI]time.Time)
+	}
+	h.Podcasts.LastPlayed[uri] = at
+	h.revision++
+	return true
+}
+
+func (h *History) SyncPodcasts(uris []spotify.URI) {
+	present := make(map[spotify.URI]bool, len(uris))
+	for _, uri := range uris {
+		present[uri] = true
+	}
+
+	played := len(h.Podcasts.LastPlayed)
+	maps.DeleteFunc(h.Podcasts.LastPlayed, func(uri spotify.URI, _ time.Time) bool {
+		return !present[uri]
+	})
+	if len(h.Podcasts.LastPlayed) < played {
+		h.revision++
+	}
+}
+
+func (h History) PodcastLastPlayed(uri spotify.URI) time.Time {
+	return h.Podcasts.LastPlayed[uri]
+}
+
 func (h History) Clone() History {
 	h.Playlists = maps.Clone(h.Playlists)
+	h.Podcasts.LastPlayed = maps.Clone(h.Podcasts.LastPlayed)
 	return h
+}
+
+func (p Podcasts) IsZero() bool {
+	return p.Order == "" && len(p.LastPlayed) == 0
 }
 
 func NewStore(path string) *Store {
