@@ -162,7 +162,7 @@ func TestArtistsLoadWhenTheTabOpens(t *testing.T) {
 	if h.artistLoads != 1 {
 		t.Fatalf("artists loaded %d times, want 1", h.artistLoads)
 	}
-	if got, want := api.requestsFor("ar0"), []string{"ar0@0", "ar0@10"}; !reflect.DeepEqual(got, want) {
+	if got, want := api.requestsFor("ar0"), []string{"ar0@0", "ar0@10", "ar0@20"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("album requests = %v, want %v", got, want)
 	}
 }
@@ -186,9 +186,9 @@ func TestAllPagesOfArtistsLoad(t *testing.T) {
 func TestAlbumsOfTheFirstArtistLoad(t *testing.T) {
 	h := newArtistHarness(t, newFakeAPI())
 
-	h.wantView("Radiohead (20 of 34)", "> Album 1 ", "Album        2030", "Album 20", "2011", "20 albums")
-	h.dontWantView("Album 21")
-	if got, want := h.discographyNames(), manyAlbumNames(1, 20); !reflect.DeepEqual(got, want) {
+	h.wantView("Radiohead (30 of 34)", "> Album 1 ", "Album        2030", "Album 29", "2002", "30 albums")
+	h.dontWantView("Album 30")
+	if got, want := h.discographyNames(), manyAlbumNames(1, 30); !reflect.DeepEqual(got, want) {
 		t.Fatalf("albums = %v, want %v", got, want)
 	}
 }
@@ -319,8 +319,8 @@ func TestAlbumsAreLoadedOncePerArtist(t *testing.T) {
 		h.send(key(k))
 	}
 
-	if got := api.requestsFor("ar0"); len(got) != 2 {
-		t.Fatalf("album requests for ar0 = %v, want the first 2 pages", got)
+	if got := api.requestsFor("ar0"); len(got) != 3 {
+		t.Fatalf("album requests for ar0 = %v, want the first 3 pages", got)
 	}
 	if got := api.requestsFor("ar1"); len(got) != 1 {
 		t.Fatalf("album requests for ar1 = %v, want 1", got)
@@ -340,32 +340,54 @@ func TestAlbumRequestForAnotherArtistIsIgnored(t *testing.T) {
 
 func TestAlbumsLoadAsTheCursorNearsTheEnd(t *testing.T) {
 	api := newFakeAPI()
+	api.artistAlbums["ar0"] = manyArtistAlbumsJSON(100)
 	h := newArtistHarness(t, api)
+	h.wantView("Radiohead (30 of 100)", "30 albums")
 
-	h.send(key("tab"))
-	for range 9 {
-		h.send(key("down"))
-	}
-	if got := api.requestsFor("ar0"); len(got) != 2 {
-		t.Fatalf("albums far from the end of the list loaded more pages: %v", got)
-	}
-
-	h.send(key("down"))
-	h.wantView("Radiohead (30 of 34)", "30 albums")
-	if got, want := api.requestsFor("ar0"), []string{"ar0@0", "ar0@10", "ar0@20"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("album requests = %v, want %v", got, want)
-	}
-
-	h.send(key("end"))
-	h.wantView("34 albums", "Album 34", "1997")
-	h.dontWantView("of 34")
-	h.send(keys("end", "up", "down")...)
+	h.send(keys("tab", "down")...)
 	if got, want := api.requestsFor("ar0"), []string{"ar0@0", "ar0@10", "ar0@20", "ar0@30"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("album requests = %v, want %v", got, want)
 	}
-	if got, want := h.discographyNames(), manyAlbumNames(1, 34); !reflect.DeepEqual(got, want) {
+	for range 9 {
+		h.send(key("down"))
+	}
+	if got := api.requestsFor("ar0"); len(got) != 4 {
+		t.Fatalf("albums a full page ahead of the cursor loaded more pages: %v", got)
+	}
+
+	h.send(key("down"))
+	h.wantView("Radiohead (50 of 100)", "50 albums")
+
+	for range 3 {
+		h.send(key("end"))
+	}
+	h.wantView("100 albums", "Album 100", "1931")
+	h.dontWantView("of 100")
+	h.send(keys("up", "down")...)
+	if got := api.requestsFor("ar0"); len(got) != 10 {
+		t.Fatalf("album requests = %v, want the 10 pages once", got)
+	}
+	if got, want := h.discographyNames(), manyAlbumNames(1, 100); !reflect.DeepEqual(got, want) {
 		t.Fatalf("albums = %v, want %v", got, want)
 	}
+}
+
+func TestAlbumsFillTheVisibleRows(t *testing.T) {
+	api := newFakeAPI()
+	api.artistAlbums["ar0"] = manyArtistAlbumsJSON(100)
+	h := newArtistHarness(t, api)
+
+	rows := h.artists().discographies["ar0"].list.Paginator.PerPage
+	if got := len(h.discographyNames()); got < rows {
+		t.Fatalf("albums = %d, want at least the %d visible rows", got, rows)
+	}
+
+	h.send(tea.WindowSizeMsg{Width: 120, Height: 80})
+	rows = h.artists().discographies["ar0"].list.Paginator.PerPage
+	if got := len(h.discographyNames()); got < rows {
+		t.Fatalf("albums after the window grew = %d, want at least the %d visible rows", got, rows)
+	}
+	h.wantView("Album 50")
 }
 
 func TestShortAlbumPagesLoadUntilTheListIsLongEnough(t *testing.T) {
@@ -395,8 +417,8 @@ func TestDuplicateAlbumsAcrossPagesAreDropped(t *testing.T) {
 	}
 
 	names := h.discographyNames()
-	if len(names) != 29 {
-		t.Fatalf("albums = %d, want 29", len(names))
+	if len(names) != 34 {
+		t.Fatalf("albums = %d, want 34", len(names))
 	}
 	seen := map[string]bool{}
 	for _, name := range names {
@@ -429,7 +451,7 @@ func TestAlbumsLoadErrorAndRetry(t *testing.T) {
 
 		api.set(func(f *fakeAPI) { delete(f.songsStatus, "ar0") })
 		h.send(key("r"))
-		h.wantView("Radiohead (20 of 34)", "Album 1")
+		h.wantView("Radiohead (30 of 34)", "Album 1")
 		if got := api.followedArtistRequests(); got != 1 {
 			t.Fatalf("artists were requested %d times, want r to reload only the albums", got)
 		}
@@ -461,6 +483,7 @@ func TestPartialAlbumFailureStopsLoadingMore(t *testing.T) {
 
 func TestRefreshReloadsTheLoadedAlbums(t *testing.T) {
 	api := newFakeAPI()
+	api.artistAlbums["ar0"] = manyArtistAlbumsJSON(100)
 	h := newArtistHarness(t, api)
 	h.send(key("tab"))
 	for range 5 {
@@ -475,16 +498,17 @@ func TestRefreshReloadsTheLoadedAlbums(t *testing.T) {
 	})
 	h.send(key("r"))
 
-	if got, want := api.requestsFor("ar0"), []string{"ar0@0", "ar0@10", "ar0@0", "ar0@10"}; !reflect.DeepEqual(got, want) {
+	pages := []string{"ar0@0", "ar0@10", "ar0@20", "ar0@30"}
+	if got, want := api.requestsFor("ar0"), append(pages, pages...); !reflect.DeepEqual(got, want) {
 		t.Fatalf("album requests = %v, want %v", got, want)
 	}
-	if got := h.discographyNames(); len(got) != 20 || got[0] != "New Album" {
-		t.Fatalf("albums after refreshing = %d starting with %q, want 20 starting with New Album", len(got), got[0])
+	if got := h.discographyNames(); len(got) != 40 || got[0] != "New Album" {
+		t.Fatalf("albums after refreshing = %d starting with %q, want 40 starting with New Album", len(got), got[0])
 	}
 	if got := h.selectedDiscographyAlbum(); got != "Album 6" {
 		t.Fatalf("selected after refreshing = %q, want Album 6", got)
 	}
-	h.wantView("Radiohead (20 of 35)")
+	h.wantView("Radiohead (40 of 101)")
 }
 
 func TestRefreshDropsAlbumsThatShiftBetweenPages(t *testing.T) {
@@ -497,10 +521,10 @@ func TestRefreshDropsAlbumsThatShiftBetweenPages(t *testing.T) {
 	})
 	h.send(first)
 
-	if got, want := api.requestsFor("ar0"), []string{"ar0@0", "ar0@10", "ar0@0", "ar0@10"}; !reflect.DeepEqual(got, want) {
+	if got, want := api.requestsFor("ar0"), []string{"ar0@0", "ar0@10", "ar0@20", "ar0@0", "ar0@10", "ar0@20", "ar0@30"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("album requests = %v, want %v", got, want)
 	}
-	if got, want := h.discographyNames(), manyAlbumNames(1, 19); !reflect.DeepEqual(got, want) {
+	if got, want := h.discographyNames(), manyAlbumNames(1, 34); !reflect.DeepEqual(got, want) {
 		t.Fatalf("albums after refreshing = %v, want %v with Album 10 listed once", got, want)
 	}
 	h.dontWantView("refreshing")
@@ -519,8 +543,8 @@ func TestRefreshKeepsTheAlbumsWhileLoading(t *testing.T) {
 
 	h.run(second)
 	h.dontWantView("refreshing...")
-	if got := len(h.discographyNames()); got != 20 {
-		t.Fatalf("albums = %d, want 20", got)
+	if got := len(h.discographyNames()); got != 30 {
+		t.Fatalf("albums = %d, want 30", got)
 	}
 }
 
@@ -532,8 +556,8 @@ func TestFailedRefreshKeepsTheAlbums(t *testing.T) {
 	h.send(key("r"))
 
 	h.wantView("Radiohead (fail to load: request failed)", "Album 1")
-	if got := len(h.discographyNames()); got != 20 {
-		t.Fatalf("albums = %d, want 20", got)
+	if got := len(h.discographyNames()); got != 30 {
+		t.Fatalf("albums = %d, want 30", got)
 	}
 }
 
@@ -551,8 +575,8 @@ func TestRefreshRestartsAStalledAlbumLoad(t *testing.T) {
 
 	h.send(key("r"))
 
-	if got := len(h.discographyNames()); got != 30 {
-		t.Fatalf("albums = %d, want 30", got)
+	if got := len(h.discographyNames()); got != 34 {
+		t.Fatalf("albums = %d, want 34", got)
 	}
 	if got := h.selectedDiscographyAlbum(); got != "Album 11" {
 		t.Fatalf("selected = %q, want Album 11", got)
@@ -574,8 +598,8 @@ func TestStaleAlbumResultsAreIgnored(t *testing.T) {
 
 	h.run(refresh)
 	h.dontWantView("refreshing", "fail to load", "Old Album")
-	if got := len(h.discographyNames()); got != 20 {
-		t.Fatalf("albums = %d, want 20", got)
+	if got := len(h.discographyNames()); got != 30 {
+		t.Fatalf("albums = %d, want 30", got)
 	}
 }
 
@@ -595,8 +619,8 @@ func TestRefreshingTwiceKeepsTheSelectedAlbum(t *testing.T) {
 	h.wantView("Radiohead (fail to load: API rate limit exceeded)")
 	h.send(key("r"))
 
-	if got := len(h.discographyNames()); got != 30 {
-		t.Fatalf("albums = %d, want 30", got)
+	if got := len(h.discographyNames()); got != 34 {
+		t.Fatalf("albums = %d, want 34", got)
 	}
 	if got := h.selectedDiscographyAlbum(); got != "Album 16" {
 		t.Fatalf("selected after refreshing twice = %q, want Album 16", got)
@@ -605,10 +629,10 @@ func TestRefreshingTwiceKeepsTheSelectedAlbum(t *testing.T) {
 
 func TestDiscographyRowsFillTheWidth(t *testing.T) {
 	albums := []spotify.Album{
-		{ID: "a0", URI: "spotify:album:a0", Name: "A very long album name that never fits in a narrow terminal 🎸", Type: "compilation", Released: time.Date(1997, 5, 21, 0, 0, 0, 0, time.UTC), Precision: "day"},
-		{ID: "a1", URI: "spotify:album:a1", Name: "Creep", Type: "single", Released: time.Date(1992, 1, 1, 0, 0, 0, 0, time.UTC), Precision: "year"},
+		{ID: "a0", URI: "spotify:album:a0", Name: "A very long album name that never fits in a narrow terminal 🎸", Type: "compilation", Released: time.Date(1997, 5, 21, 0, 0, 0, 0, time.UTC)},
+		{ID: "a1", URI: "spotify:album:a1", Name: "Creep", Type: "single", Released: time.Date(1992, 1, 1, 0, 0, 0, 0, time.UTC)},
 		{ID: "a2", URI: "spotify:album:a2", Name: "Mystery", Type: "appears_on_some_very_long_group"},
-		{ID: "a3", URI: "spotify:album:a3", Type: "album", Released: time.Date(2003, 6, 1, 0, 0, 0, 0, time.UTC), Precision: "month"},
+		{ID: "a3", URI: "spotify:album:a3", Type: "album", Released: time.Date(2003, 6, 1, 0, 0, 0, 0, time.UTC)},
 	}
 	types := []string{"Compilation", "Single", "Appears_on", "Album"}
 	for _, focused := range []bool{false, true} {
@@ -729,18 +753,16 @@ func TestDiscographyType(t *testing.T) {
 
 func TestDiscographyYear(t *testing.T) {
 	for _, tt := range []struct {
-		released  time.Time
-		precision string
-		want      string
+		released time.Time
+		want     string
 	}{
-		{time.Date(1997, 5, 21, 0, 0, 0, 0, time.UTC), "day", "1997"},
-		{time.Date(1995, 1, 1, 0, 0, 0, 0, time.UTC), "month", "1995"},
-		{time.Date(1994, 1, 1, 0, 0, 0, 0, time.UTC), "year", "1994"},
-		{time.Date(0, 1, 1, 0, 0, 0, 0, time.UTC), "year", ""},
-		{time.Time{}, "", ""},
+		{time.Date(1997, 5, 21, 0, 0, 0, 0, time.UTC), "1997"},
+		{time.Date(1994, 1, 1, 0, 0, 0, 0, time.UTC), "1994"},
+		{time.Date(0, 1, 1, 0, 0, 0, 0, time.UTC), ""},
+		{time.Time{}, ""},
 	} {
-		if got := discographyYear(spotify.Album{Released: tt.released, Precision: tt.precision}); got != tt.want {
-			t.Errorf("discographyYear(%v, %s) = %q, want %q", tt.released, tt.precision, got, tt.want)
+		if got := discographyYear(spotify.Album{Released: tt.released}); got != tt.want {
+			t.Errorf("discographyYear(%v) = %q, want %q", tt.released, got, tt.want)
 		}
 	}
 }
@@ -1354,7 +1376,7 @@ func TestKeysWhileFilteringArtistsAreTyped(t *testing.T) {
 	if !h.artists().leftFocus {
 		t.Fatal("tab while filtering moved the focus away from the artists")
 	}
-	if got := h.api.requestsFor("ar0"); len(got) != 2 {
+	if got := h.api.requestsFor("ar0"); len(got) != 3 {
 		t.Fatalf("r while filtering refreshed the albums: %v", got)
 	}
 }

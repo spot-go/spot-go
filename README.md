@@ -83,7 +83,7 @@ Reading the podcasts you follow and where you stopped in each episode needs two 
 
 The Artists tab lists the artists you follow and the albums, singles and compilations of the selected artist, in the order Spotify returns them. The Web API returns at most 10 albums per request, so spot-go loads more as you move down the list. `enter` on an artist plays the artist, and Spotify picks the songs. `enter` on an album plays it from the start. The Web API no longer gives the top songs of an artist, so spot-go can't list them.
 
-`s` switches the artists between Recents, Recently added and Alphabetical. The Web API doesn't say when you followed an artist, so, like a playlist, an artist counts as added when it shows up in your library, from the second start on. Recents counts the artists you play in spot-go, including the albums you play from the Artists tab, the artists played from the last 50 songs played on any device, read when the tab opens, and the artists played on any device while spot-go is open.
+`s` switches the artists between Recents, Recently added and Alphabetical. The Web API doesn't say when you followed an artist, so spot-go learns it: after the first time the Artists tab loads, an artist counts as added when it shows up in your library. Recents counts the artists you play in spot-go, including the albums you play from the Artists tab, and the artists played from their artist page on any device: in the last 50 songs, read when the tab opens, and while spot-go is open.
 
 Reading the artists you follow needs a Spotify permission that older versions of spot-go didn't ask for, so after updating spot-go asks you to log in again.
 
@@ -91,7 +91,7 @@ Reading the artists you follow needs a Spotify permission that older versions of
 
 The Albums tab lists the albums you saved and the songs of the selected album. `enter` plays the album from the start, or from the selected song.
 
-`s` switches the albums between Recents, Recently added, Alphabetical and Creator. Recently added is the order you saved the albums in, and Creator sorts them by artist. Recents also counts the albums you play in spot-go, the albums played from the last 50 songs played on any device, read when the tab opens, and the albums played on any device while spot-go is open.
+`s` switches the albums between Recents, Recently added, Alphabetical and Creator. Recently added is the order you saved the albums in, and Creator sorts them by artist. Recents also counts the albums you play in spot-go, from the Albums or the Artists tab, and the albums Spotify played on any device: in the last 50 songs, read when the tab opens, and while spot-go is open.
 
 spot-go saves the artist and album orders and history in `library.json` too.
 

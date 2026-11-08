@@ -188,7 +188,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case artistPlaybackStarted:
 		m.toggle.settled++
-		m = m.publishCommand(msg.item, media.Info{Title: msg.name, Playing: true})
+		m = m.publishCommand("", media.Info{Title: msg.name, Playing: true})
 		return m, m.broadcast(msg)
 
 	case playbackFailed, episodePlaybackFailed, albumPlaybackFailed, artistPlaybackFailed:

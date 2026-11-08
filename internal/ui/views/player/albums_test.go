@@ -1417,3 +1417,18 @@ func TestAlbumSongStartedDuringAToggleKeepsItsStatus(t *testing.T) {
 	h.wantView("Playing: Something")
 	h.dontWantView("Paused")
 }
+
+func TestAlbumPollSentBeforeAPlayKeepsTheStatus(t *testing.T) {
+	h := newAlbumsHarness(t, newFakeAPI())
+	plays := *h.albumTab().plays
+	old := spotify.NowPlaying{Context: "spotify:album:a0", Item: "spotify:track:old", Name: "Old Song"}
+
+	h.send(key("enter"))
+	h.settleAlbums()
+	h.send(playbackPolled{plays: plays, playing: old})
+	h.wantView("Playing: Abbey Road")
+	h.dontWantView("Old Song")
+
+	h.send(playbackPolled{plays: plays + 1, playing: old})
+	h.wantView("Playing: Old Song")
+}

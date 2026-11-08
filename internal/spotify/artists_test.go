@@ -144,8 +144,8 @@ func TestArtistAlbumsPage(t *testing.T) {
 		t.Fatalf("page = next %d, total %d, last %v, want 3, 12, false: Next must count the null items", page.Next, page.Total, page.Last)
 	}
 	want := []Album{
-		{ID: "a1", URI: "spotify:album:a1", Name: "OK Computer", Artists: []string{"Radiohead"}, Type: "album", Released: time.Date(1997, 5, 21, 0, 0, 0, 0, time.UTC), Precision: "day", Tracks: 12},
-		{ID: "a2", URI: "spotify:album:a2", Name: "Creep", Artists: []string{}, Type: "single", Released: time.Date(1992, 1, 1, 0, 0, 0, 0, time.UTC), Precision: "year", Tracks: 2},
+		{ID: "a1", URI: "spotify:album:a1", Name: "OK Computer", Artists: []string{"Radiohead"}, Type: "album", Released: time.Date(1997, 5, 21, 0, 0, 0, 0, time.UTC)},
+		{ID: "a2", URI: "spotify:album:a2", Name: "Creep", Artists: []string{}, Type: "single", Released: time.Date(1992, 1, 1, 0, 0, 0, 0, time.UTC)},
 	}
 	if !reflect.DeepEqual(page.Items, want) {
 		t.Fatalf("items = %+v, want %+v", page.Items, want)

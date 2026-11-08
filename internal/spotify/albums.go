@@ -12,14 +12,12 @@ import (
 
 type (
 	Album struct {
-		ID        spotify.ID
-		URI       spotify.URI
-		Name      string
-		Artists   []string
-		Type      string
-		Released  time.Time
-		Precision string
-		Tracks    int
+		ID       spotify.ID
+		URI      spotify.URI
+		Name     string
+		Artists  []string
+		Type     string
+		Released time.Time
 	}
 
 	SavedAlbum struct {
@@ -41,7 +39,6 @@ type (
 		AlbumType            string      `json:"album_type"`
 		ReleaseDate          string      `json:"release_date"`
 		ReleaseDatePrecision string      `json:"release_date_precision"`
-		TotalTracks          int         `json:"total_tracks"`
 		Artists              []named     `json:"artists"`
 	}
 
@@ -115,19 +112,17 @@ func (c Client) AlbumTracksPage(ctx context.Context, albumID spotify.ID, offset 
 }
 
 func (a albumObject) album() Album {
-	released, precision := parseRelease(a.ReleaseDate, a.ReleaseDatePrecision)
+	released, _ := parseRelease(a.ReleaseDate, a.ReleaseDatePrecision)
 	artists := make([]string, 0, len(a.Artists))
 	for _, artist := range a.Artists {
 		artists = append(artists, artist.Name)
 	}
 	return Album{
-		ID:        a.ID,
-		URI:       a.URI,
-		Name:      a.Name,
-		Artists:   artists,
-		Type:      a.AlbumType,
-		Released:  released,
-		Precision: precision,
-		Tracks:    a.TotalTracks,
+		ID:       a.ID,
+		URI:      a.URI,
+		Name:     a.Name,
+		Artists:  artists,
+		Type:     a.AlbumType,
+		Released: released,
 	}
 }

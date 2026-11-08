@@ -88,7 +88,6 @@ type (
 		name   string
 		artist libspotify.URI
 		uri    libspotify.URI
-		item   libspotify.URI
 	}
 
 	artistPlaybackFailed struct {
@@ -159,6 +158,10 @@ func (a artistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case contentDimension:
 		a.paneSize = paneSize(msg)
 		a.resizeDiscographies()
+		if artist, ok := a.selectedArtist(); ok {
+			return a, a.moreDiscography(artist.id)
+		}
+		return a, nil
 
 	case artistsLoadFailed:
 		a.state = stateArtistsError
@@ -185,7 +188,7 @@ func (a artistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case artistPlaybackStarted:
 		if msg.seq == a.playback.seq {
-			a.playback = playbackStatus{seq: msg.seq, text: "Playing: " + msg.name, item: msg.item, since: time.Now()}
+			a.playback = playbackStatus{seq: msg.seq, text: "Playing: " + msg.name, since: time.Now()}
 		}
 		a.playingURI = msg.uri
 		return a.played(msg.artist, time.Now())
@@ -487,7 +490,7 @@ func (a artistModel) moreDiscography(artistID libspotify.ID) tea.Cmd {
 	if d == nil || d.list == nil || d.loading || d.last || d.err != nil {
 		return nil
 	}
-	if d.list.Index() < len(d.list.Items())-discographyPrefetch {
+	if d.list.Index() < len(d.list.Items())-max(discographyPrefetch, d.list.Paginator.PerPage) {
 		return nil
 	}
 	d.loading = true

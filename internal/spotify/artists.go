@@ -18,7 +18,6 @@ type (
 
 	followedArtistsResponse struct {
 		Artists struct {
-			Total   int    `json:"total"`
 			Next    string `json:"next"`
 			Cursors struct {
 				After string `json:"after"`

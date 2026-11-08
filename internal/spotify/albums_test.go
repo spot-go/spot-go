@@ -87,9 +87,9 @@ func TestAllSavedAlbumsFollowsShortPages(t *testing.T) {
 		}
 	}
 	first := albums[0]
-	if !reflect.DeepEqual(first.Artists, []string{"Artist 0", "Guest"}) || first.Type != "album" || first.Tracks != 12 ||
-		first.Precision != "day" || !first.Released.Equal(time.Date(1997, 5, 21, 0, 0, 0, 0, time.UTC)) {
-		t.Fatalf("albums[0] = %+v, want its artists, type, track count and release date", first)
+	if !reflect.DeepEqual(first.Artists, []string{"Artist 0", "Guest"}) || first.Type != "album" ||
+		!first.Released.Equal(time.Date(1997, 5, 21, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("albums[0] = %+v, want its artists, type and release date", first)
 	}
 }
 
