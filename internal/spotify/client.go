@@ -92,11 +92,21 @@ type (
 		Duration time.Duration
 	}
 
+	Playback struct {
+		Playing bool
+		Device  spotify.ID
+		Item    spotify.URI
+		Name    string
+	}
+
 	playerResponse struct {
 		IsPlaying  bool             `json:"is_playing"`
 		ProgressMs int              `json:"progress_ms"`
 		Context    *playbackContext `json:"context"`
-		Item       *struct {
+		Device     *struct {
+			ID spotify.ID `json:"id"`
+		} `json:"device"`
+		Item *struct {
 			URI        spotify.URI `json:"uri"`
 			Name       string      `json:"name"`
 			DurationMs int         `json:"duration_ms"`
@@ -202,9 +212,8 @@ func (c Client) RecentlyPlayedPlaylists(ctx context.Context) ([]PlayedPlaylist, 
 }
 
 func (c Client) NowPlaying(ctx context.Context) (NowPlaying, error) {
-	query := url.Values{"additional_types": {"episode"}}
-	var resp playerResponse
-	if err := c.getJSON(ctx, c.baseURL+"me/player?"+query.Encode(), &resp); err != nil {
+	resp, err := c.player(ctx)
+	if err != nil {
 		return NowPlaying{}, err
 	}
 	if !resp.IsPlaying {
@@ -224,6 +233,37 @@ func (c Client) NowPlaying(ctx context.Context) (NowPlaying, error) {
 		}
 	}
 	return playing, nil
+}
+
+func (c Client) Playback(ctx context.Context) (Playback, error) {
+	resp, err := c.player(ctx)
+	if err != nil {
+		return Playback{}, err
+	}
+
+	playback := Playback{Playing: resp.IsPlaying}
+	if resp.Device != nil {
+		playback.Device = resp.Device.ID
+	}
+	if resp.Item != nil {
+		playback.Item, playback.Name = resp.Item.URI, resp.Item.Name
+	}
+	return playback, nil
+}
+
+func (c Client) ResumePlayback(ctx context.Context, deviceID spotify.ID) error {
+	opt := &spotify.PlayOptions{}
+	if deviceID != "" {
+		opt.DeviceID = &deviceID
+	}
+	return c.PlayOpt(ctx, opt)
+}
+
+func (c Client) player(ctx context.Context) (playerResponse, error) {
+	query := url.Values{"additional_types": {"episode"}}
+	var resp playerResponse
+	err := c.getJSON(ctx, c.baseURL+"me/player?"+query.Encode(), &resp)
+	return resp, err
 }
 
 func (c Client) PlayPlaylist(ctx context.Context, deviceID spotify.ID, playlist spotify.URI, position int) error {
