@@ -565,43 +565,6 @@ func TestStalePlaybackResultIsIgnored(t *testing.T) {
 	h.dontWantView("Fail to play", "late failure")
 }
 
-func TestNoSoundFromSpotifydReplacesPlaying(t *testing.T) {
-	h := newHarness(t, 120, 40)
-	h.send(key("enter"))
-	h.wantView("Playing: Rock")
-
-	h.send(spotifydPlaybackFailed{errors.New("spotifyd got no audio key from Spotify")})
-
-	h.wantView("No sound: spotifyd got no audio key from Spotify")
-	h.dontWantView("Playing: Rock")
-
-	h.send(keys("down", "enter")...)
-	h.wantView("Playing: Jazz")
-}
-
-func TestPlayerListensForSpotifydErrors(t *testing.T) {
-	errs := make(chan error, 1)
-	errs <- errors.New("spotifyd got no audio key from Spotify")
-	m := newListeningModel(newFakeAPI(), 120, 40, errs)
-	h := &harness{t: t, api: newFakeAPI(), model: m}
-
-	h.run(m.Init())
-
-	h.wantView("No sound: spotifyd got no audio key from Spotify", "Back in Black - AC/DC")
-}
-
-func TestClosedSpotifydErrorsStopTheListener(t *testing.T) {
-	errs := make(chan error)
-	close(errs)
-	m := newListeningModel(newFakeAPI(), 120, 40, errs)
-	h := &harness{t: t, api: newFakeAPI(), model: m}
-
-	h.run(m.Init())
-
-	h.dontWantView("No sound")
-	h.wantView("Back in Black - AC/DC")
-}
-
 func TestUnplayableSongsAreNotSentToSpotify(t *testing.T) {
 	api := newFakeAPI()
 	api.songs["p0"] = []string{

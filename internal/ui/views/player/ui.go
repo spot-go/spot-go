@@ -26,9 +26,8 @@ type (
 		playerContext
 		views.WindowSize
 
-		tabs           []tab
-		activeTab      int
-		playbackErrors <-chan error
+		tabs      []tab
+		activeTab int
 	}
 
 	tab struct {
@@ -40,10 +39,6 @@ type (
 	contentDimension struct {
 		width  int
 		height int
-	}
-
-	spotifydPlaybackFailed struct {
-		err error
 	}
 
 	inputCapturer interface {
@@ -79,7 +74,6 @@ func NewModel(
 	spotifyUser *libspotify.PrivateUser,
 	playerDevice *libspotify.PlayerDevice,
 	historyStore *library.Store,
-	playbackErrors <-chan error,
 ) Model {
 	playerContext := playerContext{
 		ctx:           ctx,
@@ -98,28 +92,14 @@ func NewModel(
 			placeholderTab("Artists"),
 			placeholderTab("Albums"),
 		},
-		activeTab:      playlistsTab,
-		playbackErrors: playbackErrors,
+		activeTab: playlistsTab,
 	}
 	m.broadcast(m.contentDimension())
 	return m
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.tabs[m.activeTab].content.Init(), m.waitForPlaybackError())
-}
-
-func (m Model) waitForPlaybackError() tea.Cmd {
-	if m.playbackErrors == nil {
-		return nil
-	}
-	return func() tea.Msg {
-		err, ok := <-m.playbackErrors
-		if !ok {
-			return nil
-		}
-		return spotifydPlaybackFailed{err}
-	}
+	return m.tabs[m.activeTab].content.Init()
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -142,9 +122,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.WindowSizeMsg = msg
 		return m, m.broadcast(m.contentDimension())
-
-	case spotifydPlaybackFailed:
-		return m, tea.Batch(m.broadcast(msg), m.waitForPlaybackError())
 	}
 
 	return m, m.broadcast(msg)

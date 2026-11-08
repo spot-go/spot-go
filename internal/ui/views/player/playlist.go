@@ -297,10 +297,6 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return p, nil
 
-	case spotifydPlaybackFailed:
-		p.playback = playbackStatus{seq: p.playback.seq, text: "No sound: " + errorText(msg.err), err: true}
-		return p, nil
-
 	case pollPlayback:
 		return p, p.fetchPlaying()
 

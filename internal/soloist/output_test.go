@@ -61,7 +61,7 @@ func TestParseBuild(t *testing.T) {
 		t.Errorf("Expires() = %v, want %v", b.Expires(), want)
 	}
 
-	if _, ok := parseBuild("spotifyd 0.4.2"); ok {
+	if _, ok := parseBuild("other-player 0.4.2"); ok {
 		t.Fatal("parseBuild() accepted another program's version")
 	}
 }

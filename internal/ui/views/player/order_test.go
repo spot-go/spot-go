@@ -20,7 +20,7 @@ import (
 func newStoredHarness(t *testing.T, api *fakeAPI, store *library.Store) *harness {
 	t.Helper()
 
-	m := newStoredModel(api, 120, 40, store, nil)
+	m := newStoredModel(api, 120, 40, store)
 	h := &harness{t: t, api: api, model: m}
 	h.run(m.Init())
 	return h
