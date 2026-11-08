@@ -14,7 +14,7 @@ A Spotify terminal UI.
   - macOS on Apple Silicon
   - Linux on x86_64, aarch64 or armv7, with PipeWire or PulseAudio
 
-  spot-go downloads Soloist from Spotify on the first run. On Intel Macs, use [spotifyd](https://github.com/Spotifyd/spotifyd) 0.4.2 instead (see [spotifyd](#spotifyd)).
+  spot-go downloads Soloist from Spotify on the first run. Soloist has no build for other platforms, such as Intel Macs, so spot-go doesn't run on them.
 
 ## Running
 
@@ -38,17 +38,6 @@ On the first run spot-go:
 Each Soloist build stops working 90 days after it was built. spot-go downloads a newer one when the current build has less than 14 days left.
 
 The API key is passed to Soloist on its command line, so other users of the same computer can see it in `ps`.
-
-## spotifyd
-
-Run `go run . --player spotifyd` to play with spotifyd instead of Soloist:
-
-- macOS (Apple Silicon or Intel): install it with `brew install spotifyd`
-- Linux (x86_64, aarch64 or armv7): spot-go downloads the official 0.4.2 release on the first run
-
-spot-go asks you to log in to spotifyd in the browser. You can instead connect from a Spotify app on the same local network, but that may not work with current Spotify apps.
-
-If the status line shows `No sound: spotifyd got no audio key from Spotify`, Spotify refused to give spotifyd the key that decrypts the audio. This happens on some accounts and is [librespot issue #1649](https://github.com/librespot-org/librespot/issues/1649). spotifyd has no fix for it.
 
 ## Keys
 
@@ -92,9 +81,6 @@ Apps in development mode only work for up to 5 users added to the app's user lis
 
 ## License
 
-spot-go's source code is MIT licensed. spot-go never ships Soloist or spotifyd:
-
-- Soloist is proprietary software from Spotify. spot-go downloads it from Spotify's servers on your computer.
-- spotifyd is GPL-3.0 licensed. spot-go never links it, it only runs the spotifyd binary you installed or that spot-go downloaded from the official release.
+spot-go's source code is MIT licensed. spot-go never ships Soloist: it is proprietary software from Spotify, and spot-go downloads it from Spotify's servers on your computer.
 
 The [project logo](assets/logo.png) is an adaptation of the [Go Gopher](https://go.dev/blog/gopher), originally designed by Renée French, and is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The adaptation was created with AI assistance and adds headphones, a green-and-black treble clef, and a transparent background.

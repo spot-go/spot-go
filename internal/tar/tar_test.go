@@ -59,27 +59,27 @@ func TestExtractFile(t *testing.T) {
 	}{
 		{
 			name:    "root entry",
-			entries: []entry{{"spotifyd", tar.TypeReg, "new binary"}},
+			entries: []entry{{"soloist", tar.TypeReg, "new binary"}},
 			want:    "new binary",
 		},
 		{
 			name:    "dot slash entry",
-			entries: []entry{{"./spotifyd", tar.TypeReg, "new binary"}},
+			entries: []entry{{"./soloist", tar.TypeReg, "new binary"}},
 			want:    "new binary",
 		},
 		{
 			name: "skips other entries",
 			entries: []entry{
 				{"README.md", tar.TypeReg, "readme"},
-				{"spotifyd", tar.TypeDir, ""},
-				{"../spotifyd", tar.TypeReg, "escape"},
-				{"spotifyd", tar.TypeReg, "new binary"},
+				{"soloist", tar.TypeDir, ""},
+				{"../soloist", tar.TypeReg, "escape"},
+				{"soloist", tar.TypeReg, "new binary"},
 			},
 			want: "new binary",
 		},
 		{
 			name:     "replaces a larger file",
-			entries:  []entry{{"spotifyd", tar.TypeReg, "new binary"}},
+			entries:  []entry{{"soloist", tar.TypeReg, "new binary"}},
 			existing: "previous binary that is much longer than the new one",
 			want:     "new binary",
 		},
@@ -89,14 +89,14 @@ func TestExtractFile(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			archive := writeArchive(t, tt.entries...)
 			dir := t.TempDir()
-			dst := filepath.Join(dir, "spotifyd")
+			dst := filepath.Join(dir, "soloist")
 			if tt.existing != "" {
 				if err := os.WriteFile(dst, []byte(tt.existing), 0600); err != nil {
 					t.Fatal(err)
 				}
 			}
 
-			if err := ExtractFile(archive, "spotifyd", dst, 0755); err != nil {
+			if err := ExtractFile(archive, "soloist", dst, 0755); err != nil {
 				t.Fatal(err)
 			}
 
@@ -129,9 +129,9 @@ func TestExtractFile(t *testing.T) {
 
 func TestExtractFileMissingEntry(t *testing.T) {
 	archive := writeArchive(t, entry{"other", tar.TypeReg, "x"})
-	dst := filepath.Join(t.TempDir(), "spotifyd")
+	dst := filepath.Join(t.TempDir(), "soloist")
 
-	err := ExtractFile(archive, "spotifyd", dst, 0755)
+	err := ExtractFile(archive, "soloist", dst, 0755)
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("ExtractFile() = %v, want not found", err)
 	}

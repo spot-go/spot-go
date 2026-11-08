@@ -18,7 +18,7 @@ func writeScript(t *testing.T, body string) string {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	script := filepath.Join(dir, "fake spotifyd")
+	script := filepath.Join(dir, "fake player")
 	if err := os.WriteFile(script, []byte("#!/bin/sh\n"+body), 0755); err != nil {
 		t.Fatal(err)
 	}

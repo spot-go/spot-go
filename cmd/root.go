@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
-	"github.com/spot-go/spot-go/internal/backend"
 	"github.com/spot-go/spot-go/internal/config"
 	"github.com/spot-go/spot-go/internal/program"
+	"github.com/spot-go/spot-go/internal/soloist"
 	"github.com/spot-go/spot-go/internal/ui/styles"
 	"github.com/spot-go/spot-go/internal/ui/views/login"
 )
@@ -23,17 +24,9 @@ var rootCmd = &cobra.Command{
 	Run:   run,
 }
 
-var playerFlag string
-
-func init() {
-	rootCmd.Flags().StringVar(&playerFlag, "player", string(backend.Default()),
-		fmt.Sprintf("program that plays the audio: %s or %s", backend.Soloist, backend.Spotifyd))
-}
-
 func run(cmd *cobra.Command, args []string) {
-	player, err := backend.Parse(playerFlag)
-	if err != nil {
-		fmt.Println("fatal:", err)
+	if !soloist.Supported() {
+		fmt.Printf("fatal: Soloist has no build for %s/%s\n", runtime.GOOS, runtime.GOARCH)
 		os.Exit(1)
 	}
 
@@ -51,12 +44,12 @@ func run(cmd *cobra.Command, args []string) {
 		defer f.Close()
 	}
 
-	backend.KillStale()
+	soloist.KillStale()
 	styles.HasDarkBackground = lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
-	p := tea.NewProgram(login.NewModel(player))
+	p := tea.NewProgram(login.NewModel())
 	program.Instance = p
-	_, err = p.Run()
-	backend.Stop()
+	_, err := p.Run()
+	soloist.Stop()
 	if err != nil && !errors.Is(err, tea.ErrInterrupted) {
 		log.Fatal(err)
 	}
@@ -66,7 +59,7 @@ func loadSettings() error {
 	if err := config.Load(); err != nil {
 		return err
 	}
-	return backend.CreateFolders()
+	return soloist.CreateFolder()
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

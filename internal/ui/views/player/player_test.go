@@ -273,17 +273,13 @@ func newModel(width, height int) Model {
 }
 
 func newModelWith(api *fakeAPI, width, height int) Model {
-	return newListeningModel(api, width, height, nil)
+	return newStoredModel(api, width, height, nil)
 }
 
-func newListeningModel(api *fakeAPI, width, height int, playbackErrors <-chan error) Model {
-	return newStoredModel(api, width, height, nil, playbackErrors)
-}
-
-func newStoredModel(api *fakeAPI, width, height int, store *library.Store, playbackErrors <-chan error) Model {
+func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model {
 	client := spotify.NewClient(&http.Client{Transport: api})
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: width, Height: height}}
-	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store, playbackErrors)
+	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store)
 	playlists := m.tabs[playlistsTab].content.(playlistModel)
 	playlists.after = func(d time.Duration, msg tea.Msg) tea.Cmd {
 		return func() tea.Msg { return timerMsg{d, msg} }

@@ -6,14 +6,13 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/spot-go/spot-go/internal/backend"
 	"github.com/spot-go/spot-go/internal/soloist"
 	"github.com/spot-go/spot-go/internal/ui/components/secretinput"
 	libspotify "github.com/zmb3/spotify/v2"
 )
 
 func soloistModel() Model {
-	m := NewModel(backend.Soloist)
+	m := NewModel()
 	m.spotifyUser = &libspotify.PrivateUser{User: libspotify.User{DisplayName: "Chico"}}
 	return m
 }
@@ -138,15 +137,6 @@ func TestSoloistStartupError(t *testing.T) {
 	}
 	if view := m.View().Content; !strings.Contains(view, soloist.ErrExpired.Error()) {
 		t.Fatalf("welcome screen does not show the startup error:\n%s", view)
-	}
-}
-
-func TestPlaybackErrorsPerPlayer(t *testing.T) {
-	if NewModel(backend.Spotifyd).playbackErrors() == nil {
-		t.Fatal("spotifyd lost its playback errors")
-	}
-	if soloistModel().playbackErrors() != nil {
-		t.Fatal("Soloist reports spotifyd playback errors")
 	}
 }
 
