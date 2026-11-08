@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/spot-go/spot-go/internal/spotify"
+	libspotify "github.com/zmb3/spotify/v2"
 )
 
 func (h *harness) songs() *playlistSongs {
@@ -362,7 +363,7 @@ func TestLongPlaylistNameKeepsTheLoadNote(t *testing.T) {
 	api.rateLimits["p2"] = rateLimit{offset: "50", times: 1, retryAfter: "3600"}
 	h := newHarnessWith(t, api, 80, 24)
 
-	h.send(playlistsLoaded{{ID: "p2", URI: "spotify:playlist:p2", Name: "Samba de raiz para ouvir no domingo de manhã com a família toda reunida"}})
+	h.send(playlistsLoaded{playlists: []libspotify.SimplePlaylist{{ID: "p2", URI: "spotify:playlist:p2", Name: "Samba de raiz para ouvir no domingo de manhã com a família toda reunida"}}})
 
 	h.wantView("Samba de raiz", "… (fail to load: API rate limit exceeded)")
 }
