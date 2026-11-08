@@ -60,7 +60,7 @@ type (
 
 	playlistsLoaded struct {
 		playlists []libspotify.SimplePlaylist
-		recent    []spotify.PlayedPlaylist
+		recent    []spotify.PlayedContext
 	}
 
 	playlistsLoadFailed struct {
@@ -643,7 +643,7 @@ func (p playlistModel) startPlayback(seq int, playlist libspotify.URI, position 
 		ctx, cancel := context.WithTimeout(p.ctx, playbackTimeout)
 		defer cancel()
 
-		if err := p.spotifyClient.PlayPlaylist(ctx, deviceID, playlist, position); err != nil {
+		if err := p.spotifyClient.PlayContext(ctx, deviceID, playlist, position); err != nil {
 			return playbackFailed{seq, err}
 		}
 		return playbackStarted{seq, name, playlist, item}

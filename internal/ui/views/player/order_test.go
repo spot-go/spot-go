@@ -476,3 +476,69 @@ func TestOrderLabelStaysOnTheFirstRow(t *testing.T) {
 		}
 	}
 }
+
+func TestSortAlbums(t *testing.T) {
+	day := func(d int) time.Time { return time.Date(2026, 1, d, 0, 0, 0, 0, time.UTC) }
+	items := []list.Item{
+		albumItem{title: "b", artist: "Zé", uri: "spotify:album:b", addedAt: day(5), index: 0},
+		albumItem{title: "a", artist: "ana", uri: "spotify:album:a", addedAt: day(5), index: 1},
+		albumItem{title: "c", artist: "Ana", uri: "spotify:album:c", addedAt: day(9), index: 2},
+		albumItem{title: "d", artist: "Bia", uri: "spotify:album:d", addedAt: day(1), index: 3},
+	}
+	var history library.History
+	history.AlbumPlayed("spotify:album:d", day(3))
+	history.AlbumPlayed("spotify:album:a", day(7))
+
+	for _, tt := range []struct {
+		order library.Order
+		want  []string
+	}{
+		{library.OrderRecents, []string{"c", "a", "b", "d"}},
+		{library.OrderRecentlyAdded, []string{"c", "b", "a", "d"}},
+		{library.OrderAlphabetical, []string{"a", "b", "c", "d"}},
+		{library.OrderCreator, []string{"a", "c", "d", "b"}},
+		{library.OrderCustom, []string{"c", "a", "b", "d"}},
+	} {
+		var got []string
+		for _, li := range sortAlbums(items, tt.order, history) {
+			got = append(got, li.(albumItem).title)
+		}
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("sortAlbums(%s) = %v, want %v", tt.order, got, tt.want)
+		}
+	}
+}
+
+func TestSortArtists(t *testing.T) {
+	day := func(d int) time.Time { return time.Date(2026, 1, d, 0, 0, 0, 0, time.UTC) }
+	uris := []libspotify.URI{"spotify:artist:b", "spotify:artist:a", "spotify:artist:c", "spotify:artist:d"}
+	items := []list.Item{
+		artistItem{title: "b", uri: uris[0], index: 0},
+		artistItem{title: "á", uri: uris[1], index: 1},
+		artistItem{title: "c", uri: uris[2], index: 2},
+		artistItem{title: "d", uri: uris[3], index: 3},
+	}
+	var history library.History
+	history.SyncArtists(uris[:2], day(1))
+	history.SyncArtists(uris, day(4))
+	history.ArtistPlayed("spotify:artist:a", day(9))
+	history.ArtistPlayed("spotify:artist:b", day(2))
+
+	for _, tt := range []struct {
+		order library.Order
+		want  []string
+	}{
+		{library.OrderRecents, []string{"á", "c", "d", "b"}},
+		{library.OrderRecentlyAdded, []string{"c", "d", "b", "á"}},
+		{library.OrderAlphabetical, []string{"á", "b", "c", "d"}},
+		{library.OrderCreator, []string{"á", "c", "d", "b"}},
+	} {
+		var got []string
+		for _, li := range sortArtists(items, tt.order, history) {
+			got = append(got, li.(artistItem).title)
+		}
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("sortArtists(%s) = %v, want %v", tt.order, got, tt.want)
+		}
+	}
+}

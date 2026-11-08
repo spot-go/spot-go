@@ -53,6 +53,7 @@ var (
 		spotifyauth.ScopeUserReadRecentlyPlayed,
 		spotifyauth.ScopeUserLibraryRead,
 		scopeUserReadPlaybackPosition,
+		spotifyauth.ScopeUserFollowRead,
 	}
 	redirectURI = fmt.Sprintf("http://%s/callback", callbackAddr)
 	auth        = spotifyauth.New(

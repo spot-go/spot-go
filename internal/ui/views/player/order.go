@@ -23,6 +23,17 @@ var (
 		library.OrderRecentlyAdded,
 		library.OrderAlphabetical,
 	}
+	albumOrders = []library.Order{
+		library.OrderRecents,
+		library.OrderRecentlyAdded,
+		library.OrderAlphabetical,
+		library.OrderCreator,
+	}
+	artistOrders = []library.Order{
+		library.OrderRecents,
+		library.OrderRecentlyAdded,
+		library.OrderAlphabetical,
+	}
 	orderLabels = map[library.Order]string{
 		library.OrderRecents:       "Recents",
 		library.OrderRecentlyAdded: "Recently added",
@@ -96,6 +107,65 @@ func sortShows(items []list.Item, order library.Order, history library.History) 
 
 	slices.SortStableFunc(sorted, func(a, b list.Item) int {
 		x, y := a.(showItem), b.(showItem)
+		return cmp.Or(compare(x, y), byIndex(x, y))
+	})
+	return sorted
+}
+
+func sortAlbums(items []list.Item, order library.Order, history library.History) []list.Item {
+	sorted := slices.Clone(items)
+	collator := collate.New(language.Und, collate.IgnoreCase)
+	byIndex := func(a, b albumItem) int { return cmp.Compare(a.index, b.index) }
+	byTitle := func(a, b albumItem) int { return collator.CompareString(a.title, b.title) }
+	recent := func(a albumItem) time.Time {
+		if played := history.AlbumLastPlayed(a.uri); played.After(a.addedAt) {
+			return played
+		}
+		return a.addedAt
+	}
+
+	var compare func(a, b albumItem) int
+	switch validOrder(albumOrders, order) {
+	case library.OrderRecents:
+		compare = func(a, b albumItem) int { return recent(b).Compare(recent(a)) }
+	case library.OrderRecentlyAdded:
+		compare = func(a, b albumItem) int { return b.addedAt.Compare(a.addedAt) }
+	case library.OrderAlphabetical:
+		compare = byTitle
+	default:
+		compare = func(a, b albumItem) int {
+			return cmp.Or(collator.CompareString(a.artist, b.artist), byTitle(a, b))
+		}
+	}
+
+	slices.SortStableFunc(sorted, func(a, b list.Item) int {
+		x, y := a.(albumItem), b.(albumItem)
+		return cmp.Or(compare(x, y), byIndex(x, y))
+	})
+	return sorted
+}
+
+func sortArtists(items []list.Item, order library.Order, history library.History) []list.Item {
+	sorted := slices.Clone(items)
+	collator := collate.New(language.Und, collate.IgnoreCase)
+	byIndex := func(a, b artistItem) int { return cmp.Compare(a.index, b.index) }
+
+	var compare func(a, b artistItem) int
+	switch validOrder(artistOrders, order) {
+	case library.OrderRecents:
+		compare = func(a, b artistItem) int {
+			return history.ArtistRecent(b.uri).Compare(history.ArtistRecent(a.uri))
+		}
+	case library.OrderRecentlyAdded:
+		compare = func(a, b artistItem) int {
+			return history.ArtistAdded(b.uri).Compare(history.ArtistAdded(a.uri))
+		}
+	default:
+		compare = func(a, b artistItem) int { return collator.CompareString(a.title, b.title) }
+	}
+
+	slices.SortStableFunc(sorted, func(a, b list.Item) int {
+		x, y := a.(artistItem), b.(artistItem)
 		return cmp.Or(compare(x, y), byIndex(x, y))
 	})
 	return sorted

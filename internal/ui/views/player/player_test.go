@@ -70,6 +70,14 @@ type (
 		fresh          map[string]string
 		episodeStatus  int
 		episodeReads   []string
+		albums         []string
+		albumsStatus   int
+		albumRequests  int
+		albumTracks    map[string][]string
+		artists        []string
+		artistsStatus  int
+		artistRequests int
+		artistAlbums   map[string][]string
 	}
 
 	recentPlay struct {
@@ -117,8 +125,91 @@ func newFakeAPI() *fakeAPI {
 			"s1": manyEpisodesJSON(120),
 			"s2": {},
 		},
-		fresh: map[string]string{},
+		fresh:  map[string]string{},
+		albums: testSavedAlbumsJSON(),
+		albumTracks: map[string][]string{
+			"a0": {
+				albumTrackJSON("Come Together", "The Beatles", 259000, true),
+				albumTrackJSON("Something", "The Beatles", 182000, true),
+				albumTrackJSON("Her Majesty", "The Beatles", 23000, false),
+			},
+			"a1": {albumTrackJSON("So What", "Miles Davis", 562000, true)},
+			"a2": manyAlbumTracksJSON(120),
+		},
+		artists: testArtistsJSON(),
+		artistAlbums: map[string][]string{
+			"ar0": manyArtistAlbumsJSON(34),
+			"ar1": {
+				albumJSON("al-dummy", "Dummy", "album", "1994-08-22", "day", 11, "Portishead"),
+				albumJSON("al-portishead", "Portishead", "album", "1997", "year", 11, "Portishead"),
+				albumJSON("al-glory", "Glory Box", "single", "1995-01", "month", 3, "Portishead"),
+			},
+			"ar2": {},
+		},
 	}
+}
+
+var (
+	testAlbums = []struct{ id, name, artist, added string }{
+		{"a0", "Abbey Road", "The Beatles", "2026-10-01T10:00:00Z"},
+		{"a1", "Kind of Blue", "Miles Davis", "2026-09-01T10:00:00Z"},
+		{"a2", "Clube da Esquina", "Milton Nascimento", "2025-01-01T10:00:00Z"},
+	}
+	testArtists = []struct{ id, name string }{
+		{"ar0", "Radiohead"},
+		{"ar1", "Portishead"},
+		{"ar2", "Björk"},
+	}
+)
+
+func albumJSON(id, name, albumType, date, precision string, tracks int, artist string) string {
+	return fmt.Sprintf(`{"id":%q,"uri":"spotify:album:%s","name":%q,"album_type":%q,"release_date":%q,"release_date_precision":%q,"total_tracks":%d,"artists":[{"name":%q}]}`,
+		id, id, name, albumType, date, precision, tracks, artist)
+}
+
+func savedAlbumJSON(id, name, artist, added string) string {
+	return fmt.Sprintf(`{"added_at":%q,"album":%s}`, added, albumJSON(id, name, "album", "1969-09-26", "day", 17, artist))
+}
+
+func testSavedAlbumsJSON() []string {
+	albums := make([]string, len(testAlbums))
+	for i, a := range testAlbums {
+		albums[i] = savedAlbumJSON(a.id, a.name, a.artist, a.added)
+	}
+	return albums
+}
+
+func albumTrackJSON(name, artist string, durationMs int, playable bool) string {
+	return fmt.Sprintf(`{"type":"track","name":%q,"uri":"spotify:track:%x","duration_ms":%d,"is_playable":%t,"artists":[{"name":%q}]}`,
+		name, name, durationMs, playable, artist)
+}
+
+func manyAlbumTracksJSON(n int) []string {
+	tracks := make([]string, n)
+	for i := range tracks {
+		tracks[i] = albumTrackJSON(fmt.Sprintf("Track %d", i+1), "Milton Nascimento", 200000, true)
+	}
+	return tracks
+}
+
+func artistJSON(id, name string) string {
+	return fmt.Sprintf(`{"id":%q,"uri":"spotify:artist:%s","name":%q}`, id, id, name)
+}
+
+func testArtistsJSON() []string {
+	artists := make([]string, len(testArtists))
+	for i, a := range testArtists {
+		artists[i] = artistJSON(a.id, a.name)
+	}
+	return artists
+}
+
+func manyArtistAlbumsJSON(n int) []string {
+	albums := make([]string, n)
+	for i := range albums {
+		albums[i] = albumJSON(fmt.Sprintf("al%d", i+1), fmt.Sprintf("Album %d", i+1), "album", fmt.Sprintf("%d", 2030-i), "year", 10, "Radiohead")
+	}
+	return albums
 }
 
 func songJSON(name, artist string, durationMs int) string {
@@ -177,8 +268,8 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 			item = fmt.Sprintf(`{"uri":%q,"name":%q,"duration_ms":%d,"artists":[%s]}`, f.playingItem, f.playingName, f.durationMs, f.artistsJSON())
 		}
 		switch f.playingType {
-		case "show":
-			context = fmt.Sprintf(`{"type":"show","uri":%q}`, f.playing)
+		case "show", "album", "artist":
+			context = fmt.Sprintf(`{"type":%q,"uri":%q}`, f.playingType, f.playing)
 		case "episode":
 			context = "null"
 			item = fmt.Sprintf(`{"type":"episode","uri":%q,"name":%q,"duration_ms":%d,"show":{"uri":%q}}`, f.playingItem, f.playingName, f.durationMs, f.playing)
@@ -244,6 +335,76 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 			}
 		}
 		return errorResponse(r, http.StatusNotFound, "Non existing id"), nil
+
+	case path == "me/albums":
+		f.albumRequests++
+		query := r.URL.Query()
+		if f.albumsStatus != 0 {
+			return errorResponse(r, f.albumsStatus, "request failed"), nil
+		}
+		if query.Get("limit") != "50" || query.Get("market") != "from_token" {
+			return errorResponse(r, http.StatusBadRequest, "missing limit=50 or market=from_token"), nil
+		}
+		offset, _ := strconv.Atoi(query.Get("offset"))
+		page := f.albums[min(offset, len(f.albums)):min(offset+50, len(f.albums))]
+		next := "null"
+		if offset+50 < len(f.albums) {
+			next = fmt.Sprintf(`"https://api.spotify.com/v1/me/albums?offset=%d&limit=50"`, offset+50)
+		}
+		return response(r, http.StatusOK, fmt.Sprintf(`{"items":[%s],"total":%d,"next":%s}`, strings.Join(page, ","), len(f.albums), next)), nil
+
+	case strings.HasPrefix(path, "albums/") && strings.HasSuffix(path, "/tracks"):
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "albums/"), "/tracks")
+		query := r.URL.Query()
+		if resp, err := f.injected(r, id, query.Get("offset")); resp != nil || err != nil {
+			return resp, err
+		}
+		if query.Get("limit") != "50" || query.Get("market") != "from_token" {
+			return errorResponse(r, http.StatusBadRequest, "missing limit=50 or market=from_token"), nil
+		}
+		return f.page(r, id, f.albumTracks[id], query), nil
+
+	case path == "me/following":
+		f.artistRequests++
+		query := r.URL.Query()
+		if f.artistsStatus != 0 {
+			return errorResponse(r, f.artistsStatus, "request failed"), nil
+		}
+		if query.Get("type") != "artist" || query.Get("limit") != "50" {
+			return errorResponse(r, http.StatusBadRequest, "missing type=artist or limit=50"), nil
+		}
+		start := 0
+		if after := query.Get("after"); after != "" {
+			start = -1
+			for i, a := range f.artists {
+				if strings.Contains(a, fmt.Sprintf(`"id":%q`, after)) {
+					start = i + 1
+				}
+			}
+			if start < 0 {
+				return errorResponse(r, http.StatusBadRequest, "unknown cursor "+after), nil
+			}
+		}
+		page := f.artists[min(start, len(f.artists)):min(start+50, len(f.artists))]
+		next, cursor := "null", "null"
+		if start+50 < len(f.artists) {
+			var last struct{ ID string }
+			_ = json.Unmarshal([]byte(page[len(page)-1]), &last)
+			next = fmt.Sprintf(`"https://api.spotify.com/v1/me/following?type=artist&after=%s&limit=50"`, last.ID)
+			cursor = fmt.Sprintf("%q", last.ID)
+		}
+		return response(r, http.StatusOK, fmt.Sprintf(`{"artists":{"items":[%s],"total":%d,"next":%s,"cursors":{"after":%s}}}`, strings.Join(page, ","), len(f.artists), next, cursor)), nil
+
+	case strings.HasPrefix(path, "artists/") && strings.HasSuffix(path, "/albums"):
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "artists/"), "/albums")
+		query := r.URL.Query()
+		if resp, err := f.injected(r, id, query.Get("offset")); resp != nil || err != nil {
+			return resp, err
+		}
+		if query.Get("limit") != "10" || query.Get("market") != "from_token" || query.Get("include_groups") != "album,single,compilation" {
+			return errorResponse(r, http.StatusBadRequest, "missing limit=10, market=from_token or include_groups"), nil
+		}
+		return f.page(r, id, f.artistAlbums[id], query), nil
 
 	case path == "me/player/play" && r.Method == http.MethodPut:
 		var body map[string]any
@@ -399,6 +560,8 @@ type (
 		model         tea.Model
 		playlistLoads int
 		podcastLoads  int
+		albumLoads    int
+		artistLoads   int
 		holdTimers    bool
 		timers        []tea.Msg
 		delays        []time.Duration
@@ -430,6 +593,12 @@ func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model
 	podcasts := m.tabs[podcastsTab].content.(podcastModel)
 	podcasts.after = testAfter
 	m.tabs[podcastsTab].content = podcasts
+	artists := m.tabs[artistsTab].content.(artistModel)
+	artists.after = testAfter
+	m.tabs[artistsTab].content = artists
+	albums := m.tabs[albumsTab].content.(albumModel)
+	albums.after = testAfter
+	m.tabs[albumsTab].content = albums
 	return m
 }
 
@@ -478,6 +647,10 @@ func (h *harness) send(msgs ...tea.Msg) {
 			h.playlistLoads++
 		case showsLoaded:
 			h.podcastLoads++
+		case albumsLoaded:
+			h.albumLoads++
+		case artistsLoaded:
+			h.artistLoads++
 		}
 
 		var cmd tea.Cmd
@@ -563,6 +736,10 @@ func tabSize(content tea.Model) contentDimension {
 	case playlistModel:
 		return contentDimension{width: c.width, height: c.height}
 	case podcastModel:
+		return contentDimension{width: c.width, height: c.height}
+	case artistModel:
+		return contentDimension{width: c.width, height: c.height}
+	case albumModel:
 		return contentDimension{width: c.width, height: c.height}
 	case placeholderModel:
 		return contentDimension{width: c.width, height: c.height}
@@ -670,8 +847,11 @@ func TestTabContentFollowsActiveTab(t *testing.T) {
 	}
 
 	h.send(keys("right", "right")...)
-	if v := h.view(); !strings.Contains(v, "Artists is coming soon") {
-		t.Fatalf("Artists tab shows the wrong content:\n%s", v)
+	if got := h.player().activeTab; got != artistsTab {
+		t.Fatalf("activeTab = %d, want the Artists tab %d", got, artistsTab)
+	}
+	if v := h.view(); strings.Contains(v, "Morning Briefing") || strings.Contains(v, "Rock") {
+		t.Fatalf("Artists tab shows another tab's content:\n%s", v)
 	}
 }
 
