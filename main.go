@@ -1,7 +1,10 @@
 package main
 
-import "github.com/spot-go/spot-go/cmd"
+import (
+	"github.com/spot-go/spot-go/cmd"
+	"github.com/spot-go/spot-go/internal/media"
+)
 
 func main() {
-	cmd.Execute()
+	media.Main(cmd.Execute)
 }

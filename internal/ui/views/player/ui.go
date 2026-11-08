@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/spot-go/spot-go/internal/library"
+	"github.com/spot-go/spot-go/internal/media"
 	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/styles"
 	"github.com/spot-go/spot-go/internal/ui/views"
@@ -30,9 +32,12 @@ type (
 		playerContext
 		views.WindowSize
 
-		tabs      []tab
-		activeTab int
-		toggle    playbackToggle
+		tabs       []tab
+		activeTab  int
+		toggle     playbackToggle
+		skipEvery  time.Duration
+		publish    func(media.Info)
+		nowPlaying nowPlaying
 	}
 
 	tab struct {
@@ -85,6 +90,7 @@ func NewModel(
 	spotifyUser *libspotify.PrivateUser,
 	playerDevice *libspotify.PlayerDevice,
 	historyStore *library.Store,
+	publish func(media.Info),
 ) Model {
 	var (
 		history    library.History
@@ -116,6 +122,8 @@ func NewModel(
 			placeholderTab("Albums"),
 		},
 		activeTab: playlistsTab,
+		skipEvery: skipPollEvery,
+		publish:   publish,
 	}
 	m.broadcast(m.contentDimension())
 	return m
@@ -141,17 +149,44 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "k", "space":
 			if !m.activeCapturesInput() {
-				return m.togglePlayback()
+				return m.changePlayback(toggleChange)
 			}
 		}
 		return m, m.updateTab(m.activeTab, msg)
 
+	case media.Command:
+		if change, ok := mediaChanges[msg]; ok {
+			return m.changePlayback(change)
+		}
+		return m, nil
+
 	case playbackToggled:
 		m = m.playbackToggled(msg)
+		if msg.err == nil && msg.plays == *m.plays {
+			m = m.publishToggled(msg)
+		}
+		broadcast := m.broadcast(msg)
+		m, skip := m.nextSkip()
+		return m, tea.Batch(broadcast, skip)
+
+	case playbackStarted:
+		m.toggle.settled++
+		m = m.publishCommand(msg.item, media.Info{Title: msg.name, Playing: true})
 		return m, m.broadcast(msg)
 
-	case playbackStarted, playbackFailed, episodePlaybackStarted, episodePlaybackFailed:
+	case episodePlaybackStarted:
 		m.toggle.settled++
+		m = m.publishCommand(msg.episode, media.Info{Title: msg.name, Elapsed: msg.from, Playing: true})
+		return m, m.broadcast(msg)
+
+	case playbackFailed, episodePlaybackFailed:
+		m.toggle.settled++
+		return m, m.broadcast(msg)
+
+	case playbackPolled:
+		if msg.err == nil && msg.plays == *m.plays {
+			m = m.publishPolled(msg.playing)
+		}
 		return m, m.broadcast(msg)
 
 	case tea.WindowSizeMsg:

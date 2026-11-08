@@ -12,6 +12,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/spot-go/spot-go/internal/config"
 	"github.com/spot-go/spot-go/internal/library"
+	"github.com/spot-go/spot-go/internal/media"
 	"github.com/spot-go/spot-go/internal/soloist"
 	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/components/filedownloader"
@@ -38,7 +39,8 @@ type (
 		activeModel        tea.Model
 		filedownloader     filedownloader.Model
 
-		player *player.Model
+		player  *player.Model
+		publish func(media.Info)
 	}
 
 	state int
@@ -83,13 +85,14 @@ Press enter to continue`
 Press q to quit.`
 )
 
-func NewModel() Model {
+func NewModel(publish func(media.Info)) Model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	return Model{
 		ctx:     context.Background(),
 		msg:     s.View(),
 		spinner: s,
+		publish: publish,
 	}
 }
 
@@ -208,6 +211,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.spotifyUser,
 			m.playerDevice,
 			library.NewStore(config.LibraryFile),
+			m.publish,
 		)
 		m.player = &mainModel
 		return m, m.player.Init()

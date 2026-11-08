@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/zmb3/spotify/v2"
@@ -85,18 +86,24 @@ type (
 	}
 
 	NowPlaying struct {
-		Context  spotify.URI
-		Item     spotify.URI
-		Name     string
-		Progress time.Duration
-		Duration time.Duration
+		Context        spotify.URI
+		Item           spotify.URI
+		Name           string
+		Artist         string
+		Progress       time.Duration
+		Duration       time.Duration
+		PausedItem     spotify.URI
+		PausedProgress time.Duration
 	}
 
 	Playback struct {
-		Playing bool
-		Device  spotify.ID
-		Item    spotify.URI
-		Name    string
+		Playing  bool
+		Device   spotify.ID
+		Item     spotify.URI
+		Name     string
+		Artist   string
+		Progress time.Duration
+		Duration time.Duration
 	}
 
 	playerResponse struct {
@@ -106,14 +113,18 @@ type (
 		Device     *struct {
 			ID spotify.ID `json:"id"`
 		} `json:"device"`
-		Item *struct {
-			URI        spotify.URI `json:"uri"`
-			Name       string      `json:"name"`
-			DurationMs int         `json:"duration_ms"`
-			Show       *struct {
-				URI spotify.URI `json:"uri"`
-			} `json:"show"`
-		} `json:"item"`
+		Item *playerItem `json:"item"`
+	}
+
+	playerItem struct {
+		URI        spotify.URI `json:"uri"`
+		Name       string      `json:"name"`
+		DurationMs int         `json:"duration_ms"`
+		Artists    []named     `json:"artists"`
+		Show       *struct {
+			URI  spotify.URI `json:"uri"`
+			Name string      `json:"name"`
+		} `json:"show"`
 	}
 
 	playbackContext struct {
@@ -217,7 +228,12 @@ func (c Client) NowPlaying(ctx context.Context) (NowPlaying, error) {
 		return NowPlaying{}, err
 	}
 	if !resp.IsPlaying {
-		return NowPlaying{}, nil
+		var paused NowPlaying
+		if resp.Item != nil {
+			paused.PausedItem = resp.Item.URI
+			paused.PausedProgress = time.Duration(resp.ProgressMs) * time.Millisecond
+		}
+		return paused, nil
 	}
 
 	var playing NowPlaying
@@ -225,7 +241,7 @@ func (c Client) NowPlaying(ctx context.Context) (NowPlaying, error) {
 		playing.Context = uri
 	}
 	if item := resp.Item; item != nil {
-		playing.Item, playing.Name = item.URI, item.Name
+		playing.Item, playing.Name, playing.Artist = item.URI, item.Name, item.artist()
 		playing.Progress = time.Duration(resp.ProgressMs) * time.Millisecond
 		playing.Duration = time.Duration(item.DurationMs) * time.Millisecond
 		if playing.Context == "" && item.Show != nil {
@@ -241,14 +257,26 @@ func (c Client) Playback(ctx context.Context) (Playback, error) {
 		return Playback{}, err
 	}
 
-	playback := Playback{Playing: resp.IsPlaying}
+	playback := Playback{Playing: resp.IsPlaying, Progress: time.Duration(resp.ProgressMs) * time.Millisecond}
 	if resp.Device != nil {
 		playback.Device = resp.Device.ID
 	}
 	if resp.Item != nil {
-		playback.Item, playback.Name = resp.Item.URI, resp.Item.Name
+		playback.Item, playback.Name, playback.Artist = resp.Item.URI, resp.Item.Name, resp.Item.artist()
+		playback.Duration = time.Duration(resp.Item.DurationMs) * time.Millisecond
 	}
 	return playback, nil
+}
+
+func (i playerItem) artist() string {
+	names := make([]string, 0, len(i.Artists))
+	for _, a := range i.Artists {
+		names = append(names, a.Name)
+	}
+	if len(names) == 0 && i.Show != nil {
+		return i.Show.Name
+	}
+	return strings.Join(names, ", ")
 }
 
 func (c Client) ResumePlayback(ctx context.Context, deviceID spotify.ID) error {

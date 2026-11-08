@@ -48,6 +48,11 @@ type (
 		plays          []playRequest
 		pauses         []string
 		device         string
+		skips          []string
+		skipStatus     int
+		nextItem       string
+		nextName       string
+		playingArtist  string
 		recent         []recentPlay
 		playing        string
 		paused         bool
@@ -169,7 +174,7 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 			device = fmt.Sprintf(`{"id":%q}`, f.device)
 		}
 		if f.playingItem != "" {
-			item = fmt.Sprintf(`{"uri":%q,"name":%q,"duration_ms":%d}`, f.playingItem, f.playingName, f.durationMs)
+			item = fmt.Sprintf(`{"uri":%q,"name":%q,"duration_ms":%d,"artists":[%s]}`, f.playingItem, f.playingName, f.durationMs, f.artistsJSON())
 		}
 		switch f.playingType {
 		case "show":
@@ -250,6 +255,17 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		f.paused = false
 		return response(r, http.StatusNoContent, ""), nil
 
+	case (path == "me/player/next" || path == "me/player/previous") && r.Method == http.MethodPost:
+		f.skips = append(f.skips, strings.TrimPrefix(path, "me/player/"))
+		if f.skipStatus != 0 {
+			return errorResponse(r, f.skipStatus, "Player command failed: No active device found"), nil
+		}
+		if path == "me/player/next" && f.nextItem != "" {
+			f.playingItem, f.playingName = f.nextItem, f.nextName
+		}
+		f.progressMs = 0
+		return response(r, http.StatusNoContent, ""), nil
+
 	case path == "me/player/pause" && r.Method == http.MethodPut:
 		f.pauses = append(f.pauses, r.URL.Query().Get("device_id"))
 		if f.pauseStatus != 0 {
@@ -260,6 +276,13 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 
 	return errorResponse(r, http.StatusNotFound, "unexpected request "+r.Method+" "+r.URL.Path), nil
+}
+
+func (f *fakeAPI) artistsJSON() string {
+	if f.playingArtist == "" {
+		return ""
+	}
+	return fmt.Sprintf(`{"name":%q}`, f.playingArtist)
 }
 
 func (f *fakeAPI) injected(r *http.Request, id, offset string) (*http.Response, error) {
@@ -398,7 +421,8 @@ func newModelWith(api *fakeAPI, width, height int) Model {
 func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model {
 	client := spotify.NewClient(&http.Client{Transport: api})
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: width, Height: height}}
-	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store)
+	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store, nil)
+	m.skipEvery = time.Millisecond
 	playlists := m.tabs[playlistsTab].content.(playlistModel)
 	playlists.after = testAfter
 	playlists.pollEvery = 0
