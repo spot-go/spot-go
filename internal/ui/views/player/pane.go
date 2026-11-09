@@ -168,7 +168,7 @@ func leftHelp(h help.Styles, width int) string {
 		Render(text)
 }
 
-func (s paneSize) rightPane(title, note string, body func() string, status playbackStatus, keys string) string {
+func (s paneSize) rightPane(title, note string, body func() string, status playbackStatus, volume volumeLevel, keys string) string {
 	width := s.rightWidth()
 	title = fit(printable(title), width-lipgloss.Width(note)) + note
 	parts := []string{
@@ -185,7 +185,7 @@ func (s paneSize) rightPane(title, note string, body func() string, status playb
 			MaxHeight(height).
 			Render(body()))
 	}
-	parts = append(parts, s.statusLine(status), keys)
+	parts = append(parts, s.statusLine(status, volume), keys)
 
 	return lipgloss.NewStyle().
 		PaddingLeft(rightViewPadding).
@@ -202,12 +202,23 @@ func (s paneSize) notice(text string) string {
 		Render(text)
 }
 
-func (s paneSize) statusLine(status playbackStatus) string {
+func (s paneSize) statusLine(status playbackStatus, volume volumeLevel) string {
 	style := playingStyle
 	if status.err {
 		style = playbackErrorStyle
 	}
-	return style.Render(fit(printable(status.text), s.rightWidth()))
+	width := s.rightWidth()
+	if !volume.shown {
+		return style.Render(fit(printable(status.text), width))
+	}
+	levelStyle := playingStyle
+	if volume.err != nil {
+		levelStyle = playbackErrorStyle
+	}
+	level := fit(printable(volume.text()), width)
+	text := fit(printable(status.text), width-lipgloss.Width(level)-1)
+	gap := strings.Repeat(" ", max(0, width-lipgloss.Width(text)-lipgloss.Width(level)))
+	return style.Render(text) + gap + levelStyle.Render(level)
 }
 
 func (s paneSize) keyHelp(h help.Styles, target string) string {
@@ -219,6 +230,10 @@ func (s paneSize) keyHelp(h help.Styles, target string) string {
 		h.ShortKey.Inline(true).Render("r") + " " + h.ShortDesc.Inline(true).Render("refresh") +
 		separator +
 		h.ShortKey.Inline(true).Render("space") + " " + h.ShortDesc.Inline(true).Render("play/pause")
+	volume := separator + h.ShortKey.Inline(true).Render("+/-") + " " + h.ShortDesc.Inline(true).Render("volume")
+	if lipgloss.Width(text+volume) <= s.rightWidth() {
+		text += volume
+	}
 	return lipgloss.NewStyle().
 		Width(s.rightWidth()).
 		AlignHorizontal(lipgloss.Center).

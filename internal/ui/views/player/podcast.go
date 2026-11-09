@@ -27,6 +27,7 @@ type (
 		list            *list.Model
 		episodes        map[libspotify.ID]*showEpisodes
 		playback        playbackStatus
+		volume          volumeLevel
 		pending         pendingPlay
 		sortPending     bool
 		playingURI      libspotify.URI
@@ -208,6 +209,14 @@ func (p podcastModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.plays == *p.plays {
 			p.playback = p.playback.toggled(msg, time.Now())
 		}
+		return p, nil
+
+	case volumeChanged:
+		p.volume = p.volume.changed(msg)
+		return p, nil
+
+	case volumeHidden:
+		p.volume = p.volume.hidden(msg)
 		return p, nil
 
 	case playbackPolled:
@@ -710,10 +719,10 @@ func (p podcastModel) rightView() string {
 	}
 	keys := p.keyHelp(p.list.Help.Styles, target)
 	if show, ok := p.selectedShow(); ok {
-		return p.rightPane(show.title, episodesProgress(p.episodes[show.id]), p.episodesView, p.playback, keys)
+		return p.rightPane(show.title, episodesProgress(p.episodes[show.id]), p.episodesView, p.playback, p.volume, keys)
 	}
 	if len(p.list.Items()) == 0 {
-		return p.rightPane("", "", func() string { return p.notice(noPodcasts) }, p.playback, keys)
+		return p.rightPane("", "", func() string { return p.notice(noPodcasts) }, p.playback, p.volume, keys)
 	}
 	return ""
 }

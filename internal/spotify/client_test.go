@@ -166,6 +166,14 @@ func TestPlayback(t *testing.T) {
 		{"paused episode", http.StatusOK, `{"is_playing":false,"device":{"id":"phone"},"context":null,"item":{"type":"episode","uri":"spotify:episode:e","name":"E","show":{"uri":"spotify:show:s","name":"The Daily"}}}`,
 			Playback{Device: "phone", Item: "spotify:episode:e", Name: "E", Artist: "The Daily"}, false},
 		{"no item", http.StatusOK, `{"is_playing":false,"device":{"id":"phone"},"item":null}`, Playback{Device: "phone"}, false},
+		{"volume", http.StatusOK, `{"is_playing":true,"device":{"id":"phone","volume_percent":55,"supports_volume":true}}`,
+			Playback{Playing: true, Device: "phone", Volume: 55, SupportsVolume: true}, false},
+		{"volume without supports_volume", http.StatusOK, `{"is_playing":true,"device":{"id":"phone","volume_percent":0}}`,
+			Playback{Playing: true, Device: "phone", SupportsVolume: true}, false},
+		{"volume not supported", http.StatusOK, `{"is_playing":true,"device":{"id":"tv","volume_percent":40,"supports_volume":false}}`,
+			Playback{Playing: true, Device: "tv"}, false},
+		{"unknown volume", http.StatusOK, `{"is_playing":true,"device":{"id":"tv","volume_percent":null,"supports_volume":true}}`,
+			Playback{Playing: true, Device: "tv"}, false},
 		{"no device", http.StatusOK, `{"is_playing":false,"device":null}`, Playback{}, false},
 		{"nothing plays", http.StatusNoContent, ``, Playback{}, false},
 		{"error", http.StatusUnauthorized, `{"error":{"status":401,"message":"The access token expired"}}`, Playback{}, true},
@@ -215,6 +223,41 @@ func TestResumePlayback(t *testing.T) {
 	}{
 		{"resume", func() error { return c.ResumePlayback(context.Background(), "d1") }, request{path: "PUT /v1/me/player/play", device: "d1", hasDevice: true, body: "{}"}},
 		{"resume on the active device", func() error { return c.ResumePlayback(context.Background(), "") }, request{path: "PUT /v1/me/player/play", body: "{}"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.call(); err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Fatalf("request = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSetVolume(t *testing.T) {
+	type request struct {
+		path, device, volume string
+		hasDevice            bool
+	}
+	var got request
+	c := testClient(func(r *http.Request) *http.Response {
+		got = request{
+			path:      r.Method + " " + r.URL.Path,
+			device:    r.URL.Query().Get("device_id"),
+			hasDevice: r.URL.Query().Has("device_id"),
+			volume:    r.URL.Query().Get("volume_percent"),
+		}
+		return jsonResponse(r, http.StatusNoContent, ``)
+	})
+
+	for _, tt := range []struct {
+		name string
+		call func() error
+		want request
+	}{
+		{"on a device", func() error { return c.SetVolume(context.Background(), "d1", 55) }, request{path: "PUT /v1/me/player/volume", device: "d1", hasDevice: true, volume: "55"}},
+		{"on the active device", func() error { return c.SetVolume(context.Background(), "", 0) }, request{path: "PUT /v1/me/player/volume", volume: "0"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := tt.call(); err != nil {

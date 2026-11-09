@@ -48,6 +48,10 @@ type (
 		plays          []playRequest
 		pauses         []string
 		device         string
+		volume         int
+		noVolume       bool
+		volumeStatus   int
+		volumes        []volumeRequest
 		skips          []string
 		skipStatus     int
 		nextItem       string
@@ -96,6 +100,11 @@ type (
 	playRequest struct {
 		deviceID string
 		body     map[string]any
+	}
+
+	volumeRequest struct {
+		deviceID string
+		percent  string
 	}
 )
 
@@ -262,7 +271,7 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 		item, context, device := "null", fmt.Sprintf(`{"type":"playlist","uri":%q}`, f.playing), "null"
 		if f.device != "" {
-			device = fmt.Sprintf(`{"id":%q}`, f.device)
+			device = fmt.Sprintf(`{"id":%q,"volume_percent":%d,"supports_volume":%t}`, f.device, f.volume, !f.noVolume)
 		}
 		if f.playingItem != "" {
 			item = fmt.Sprintf(`{"uri":%q,"name":%q,"duration_ms":%d,"artists":[%s]}`, f.playingItem, f.playingName, f.durationMs, f.artistsJSON())
@@ -427,6 +436,15 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		f.progressMs = 0
 		return response(r, http.StatusNoContent, ""), nil
 
+	case path == "me/player/volume" && r.Method == http.MethodPut:
+		query := r.URL.Query()
+		f.volumes = append(f.volumes, volumeRequest{deviceID: query.Get("device_id"), percent: query.Get("volume_percent")})
+		if f.volumeStatus != 0 {
+			return errorResponse(r, f.volumeStatus, "Player command failed: Cannot control device volume"), nil
+		}
+		f.volume, _ = strconv.Atoi(query.Get("volume_percent"))
+		return response(r, http.StatusNoContent, ""), nil
+
 	case path == "me/player/pause" && r.Method == http.MethodPut:
 		f.pauses = append(f.pauses, r.URL.Query().Get("device_id"))
 		if f.pauseStatus != 0 {
@@ -586,6 +604,7 @@ func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: width, Height: height}}
 	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store, nil)
 	m.skipEvery = time.Millisecond
+	m.after = testAfter
 	playlists := m.tabs[playlistsTab].content.(playlistModel)
 	playlists.after = testAfter
 	playlists.pollEvery = 0

@@ -35,7 +35,9 @@ type (
 		tabs       []tab
 		activeTab  int
 		toggle     playbackToggle
+		volume     volumeControl
 		skipEvery  time.Duration
+		after      func(time.Duration, tea.Msg) tea.Cmd
 		publish    func(media.Info)
 		nowPlaying nowPlaying
 	}
@@ -125,6 +127,7 @@ func NewModel(
 		},
 		activeTab: playlistsTab,
 		skipEvery: skipPollEvery,
+		after:     after,
 		publish:   publish,
 	}
 	m.broadcast(m.contentDimension())
@@ -153,6 +156,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.activeCapturesInput() {
 				return m.changePlayback(toggleChange)
 			}
+		case "+", "=":
+			if !m.activeCapturesInput() {
+				return m.changeVolume(volumeStep)
+			}
+		case "-":
+			if !m.activeCapturesInput() {
+				return m.changeVolume(-volumeStep)
+			}
 		}
 		return m, m.updateTab(m.activeTab, msg)
 
@@ -170,6 +181,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		broadcast := m.broadcast(msg)
 		m, skip := m.nextSkip()
 		return m, tea.Batch(broadcast, skip)
+
+	case volumeChanged:
+		return m.volumeChanged(msg)
 
 	case playbackStarted:
 		m.toggle.settled++

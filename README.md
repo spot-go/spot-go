@@ -50,6 +50,7 @@ The API key is passed to Soloist on its command line, so other users of the same
 - `r` reloads the list on the right.
 - `s` changes the order of the list on the left: playlists (see [Playlist order](#playlist-order)), podcasts (see [Podcasts](#podcasts)), artists (see [Artists](#artists)) or albums (see [Albums](#albums)).
 - `space` or `k` pauses what Spotify is playing, or resumes it on the device it was paused on, whether that is spot-go or another device. When Spotify has no active device, it resumes on spot-go.
+- `+` (or `=`) and `-` raise and lower the Spotify volume by 5% on the device Spotify is playing on, whether that is spot-go or another device. They don't change the volume of the computer. The new volume, or why it couldn't change, shows next to the status for 3 seconds. Some devices, such as some TVs and speakers, don't let Spotify change their volume.
 
 On macOS, the play/pause, next and previous keys of the keyboard, and the Now Playing controls in Control Center, work too, even when the terminal is in the background. spot-go shows macOS what Spotify is playing, so it takes over these keys while Spotify plays. If another app, such as Music, plays after it, the keys go to that app until Spotify plays again.
 
