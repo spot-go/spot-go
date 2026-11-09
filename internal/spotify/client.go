@@ -97,13 +97,15 @@ type (
 	}
 
 	Playback struct {
-		Playing  bool
-		Device   spotify.ID
-		Item     spotify.URI
-		Name     string
-		Artist   string
-		Progress time.Duration
-		Duration time.Duration
+		Playing        bool
+		Device         spotify.ID
+		Item           spotify.URI
+		Name           string
+		Artist         string
+		Progress       time.Duration
+		Duration       time.Duration
+		Volume         int
+		SupportsVolume bool
 	}
 
 	playerResponse struct {
@@ -111,7 +113,9 @@ type (
 		ProgressMs int              `json:"progress_ms"`
 		Context    *playbackContext `json:"context"`
 		Device     *struct {
-			ID spotify.ID `json:"id"`
+			ID             spotify.ID `json:"id"`
+			VolumePercent  *int       `json:"volume_percent"`
+			SupportsVolume *bool      `json:"supports_volume"`
 		} `json:"device"`
 		Item *playerItem `json:"item"`
 	}
@@ -270,8 +274,11 @@ func (c Client) Playback(ctx context.Context) (Playback, error) {
 	}
 
 	playback := Playback{Playing: resp.IsPlaying, Progress: time.Duration(resp.ProgressMs) * time.Millisecond}
-	if resp.Device != nil {
-		playback.Device = resp.Device.ID
+	if d := resp.Device; d != nil {
+		playback.Device = d.ID
+		if d.VolumePercent != nil && (d.SupportsVolume == nil || *d.SupportsVolume) {
+			playback.Volume, playback.SupportsVolume = *d.VolumePercent, true
+		}
 	}
 	if resp.Item != nil {
 		playback.Item, playback.Name, playback.Artist = resp.Item.URI, resp.Item.Name, resp.Item.artist()
@@ -297,6 +304,14 @@ func (c Client) ResumePlayback(ctx context.Context, deviceID spotify.ID) error {
 		opt.DeviceID = &deviceID
 	}
 	return c.PlayOpt(ctx, opt)
+}
+
+func (c Client) SetVolume(ctx context.Context, deviceID spotify.ID, percent int) error {
+	opt := &spotify.PlayOptions{}
+	if deviceID != "" {
+		opt.DeviceID = &deviceID
+	}
+	return c.VolumeOpt(ctx, percent, opt)
 }
 
 func (c Client) player(ctx context.Context) (playerResponse, error) {

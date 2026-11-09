@@ -27,6 +27,7 @@ type (
 		list            *list.Model
 		songs           map[libspotify.ID]*playlistSongs
 		playback        playbackStatus
+		volume          volumeLevel
 		sortPending     bool
 		playingURI      libspotify.URI
 		after           func(time.Duration, tea.Msg) tea.Cmd
@@ -190,6 +191,14 @@ func (a albumModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.plays == *a.plays {
 			a.playback = a.playback.toggled(msg, time.Now())
 		}
+		return a, nil
+
+	case volumeChanged:
+		a.volume = a.volume.changed(msg)
+		return a, nil
+
+	case volumeHidden:
+		a.volume = a.volume.hidden(msg)
 		return a, nil
 
 	case playbackPolled:
@@ -597,10 +606,10 @@ func (a albumModel) rightView() string {
 	}
 	keys := a.keyHelp(a.list.Help.Styles, target)
 	if album, ok := a.selectedAlbum(); ok {
-		return a.rightPane(album.heading(), songsProgress(a.songs[album.id]), a.songsView, a.playback, keys)
+		return a.rightPane(album.heading(), songsProgress(a.songs[album.id]), a.songsView, a.playback, a.volume, keys)
 	}
 	if len(a.list.Items()) == 0 {
-		return a.rightPane("", "", func() string { return a.notice(noSavedAlbums) }, a.playback, keys)
+		return a.rightPane("", "", func() string { return a.notice(noSavedAlbums) }, a.playback, a.volume, keys)
 	}
 	return ""
 }
