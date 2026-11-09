@@ -50,7 +50,7 @@ type (
 		Last  bool
 	}
 
-	PlayedPlaylist struct {
+	PlayedContext struct {
 		URI spotify.URI
 		At  time.Time
 	}
@@ -206,17 +206,29 @@ func (c Client) PlaylistItemsPage(ctx context.Context, playlistID spotify.ID, of
 	return page, nil
 }
 
-func (c Client) RecentlyPlayedPlaylists(ctx context.Context) ([]PlayedPlaylist, error) {
+func (c Client) RecentlyPlayedPlaylists(ctx context.Context) ([]PlayedContext, error) {
+	return c.recentlyPlayed(ctx, "playlist")
+}
+
+func (c Client) RecentlyPlayedAlbums(ctx context.Context) ([]PlayedContext, error) {
+	return c.recentlyPlayed(ctx, "album")
+}
+
+func (c Client) RecentlyPlayedArtists(ctx context.Context) ([]PlayedContext, error) {
+	return c.recentlyPlayed(ctx, "artist")
+}
+
+func (c Client) recentlyPlayed(ctx context.Context, contextType string) ([]PlayedContext, error) {
 	query := url.Values{"limit": {strconv.Itoa(maxItemsPerPage)}}
 	var resp recentlyPlayedResponse
 	if err := c.getJSON(ctx, c.baseURL+"me/player/recently-played?"+query.Encode(), &resp); err != nil {
 		return nil, err
 	}
 
-	var played []PlayedPlaylist
+	var played []PlayedContext
 	for _, item := range resp.Items {
-		if uri, ok := item.Context.playlist(); ok {
-			played = append(played, PlayedPlaylist{URI: uri, At: item.PlayedAt})
+		if uri, ok := item.Context.uriOf(contextType); ok {
+			played = append(played, PlayedContext{URI: uri, At: item.PlayedAt})
 		}
 	}
 	return played, nil
@@ -237,7 +249,7 @@ func (c Client) NowPlaying(ctx context.Context) (NowPlaying, error) {
 	}
 
 	var playing NowPlaying
-	if uri, ok := resp.Context.uriOf("playlist", "show"); ok {
+	if uri, ok := resp.Context.uriOf("playlist", "show", "album", "artist"); ok {
 		playing.Context = uri
 	}
 	if item := resp.Item; item != nil {
@@ -294,10 +306,18 @@ func (c Client) player(ctx context.Context) (playerResponse, error) {
 	return resp, err
 }
 
-func (c Client) PlayPlaylist(ctx context.Context, deviceID spotify.ID, playlist spotify.URI, position int) error {
+func (c Client) PlayContext(ctx context.Context, deviceID spotify.ID, playbackContext spotify.URI, position int) error {
+	return c.play(ctx, deviceID, playbackContext, &spotify.PlaybackOffset{Position: &position})
+}
+
+func (c Client) PlayArtist(ctx context.Context, deviceID spotify.ID, artist spotify.URI) error {
+	return c.play(ctx, deviceID, artist, nil)
+}
+
+func (c Client) play(ctx context.Context, deviceID spotify.ID, playbackContext spotify.URI, offset *spotify.PlaybackOffset) error {
 	opt := &spotify.PlayOptions{
-		PlaybackContext: &playlist,
-		PlaybackOffset:  &spotify.PlaybackOffset{Position: &position},
+		PlaybackContext: &playbackContext,
+		PlaybackOffset:  offset,
 	}
 	if deviceID != "" {
 		opt.DeviceID = &deviceID
@@ -380,10 +400,6 @@ func decodeError(resp *http.Response) error {
 	}
 	e.E.Status = resp.StatusCode
 	return e.E
-}
-
-func (c *playbackContext) playlist() (spotify.URI, bool) {
-	return c.uriOf("playlist")
 }
 
 func (c *playbackContext) uriOf(types ...string) (spotify.URI, bool) {

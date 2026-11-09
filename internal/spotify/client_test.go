@@ -99,7 +99,7 @@ func TestRecentlyPlayedPlaylists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := []PlayedPlaylist{
+	want := []PlayedContext{
 		{URI: "spotify:playlist:a", At: time.Date(2026, 11, 7, 10, 0, 0, 123000000, time.UTC)},
 		{URI: "spotify:playlist:c", At: time.Date(2026, 11, 7, 6, 0, 0, 0, time.UTC)},
 	}
@@ -123,7 +123,9 @@ func TestNowPlayingContext(t *testing.T) {
 	}{
 		{"playlist", http.StatusOK, `{"is_playing":true,"context":{"type":"playlist","uri":"spotify:playlist:a"}}`, "spotify:playlist:a", false},
 		{"paused", http.StatusOK, `{"is_playing":false,"context":{"type":"playlist","uri":"spotify:playlist:a"}}`, "", false},
-		{"album", http.StatusOK, `{"is_playing":true,"context":{"type":"album","uri":"spotify:album:a"},"item":{"type":"track","name":"Song"}}`, "", false},
+		{"album", http.StatusOK, `{"is_playing":true,"context":{"type":"album","uri":"spotify:album:a"},"item":{"type":"track","name":"Song"}}`, "spotify:album:a", false},
+		{"artist", http.StatusOK, `{"is_playing":true,"context":{"type":"artist","uri":"spotify:artist:a"},"item":{"type":"track","name":"Song"}}`, "spotify:artist:a", false},
+		{"liked songs", http.StatusOK, `{"is_playing":true,"context":{"type":"collection","uri":"spotify:user:u:collection"},"item":{"type":"track","name":"Song"}}`, "", false},
 		{"no context", http.StatusOK, `{"is_playing":true,"context":null}`, "", false},
 		{"nothing plays", http.StatusNoContent, ``, "", false},
 		{"error", http.StatusUnauthorized, `{"error":{"status":401,"message":"The access token expired"}}`, "", true},

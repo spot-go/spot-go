@@ -64,6 +64,8 @@ type (
 const (
 	playlistsTab     = 1
 	podcastsTab      = 2
+	artistsTab       = 3
+	albumsTab        = 4
 	minContentHeight = 4
 	tooSmallWindow   = "The terminal window is too small. Please make it bigger."
 )
@@ -118,8 +120,8 @@ func NewModel(
 			placeholderTab("Search"),
 			{name: "Playlists", content: newPlaylistModel(playerContext, historyErr), initialized: true},
 			{name: "Podcasts", content: newPodcastModel(playerContext, historyErr)},
-			placeholderTab("Artists"),
-			placeholderTab("Albums"),
+			{name: "Artists", content: newArtistModel(playerContext, historyErr)},
+			{name: "Albums", content: newAlbumModel(playerContext, historyErr)},
 		},
 		activeTab: playlistsTab,
 		skipEvery: skipPollEvery,
@@ -179,7 +181,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.publishCommand(msg.episode, media.Info{Title: msg.name, Elapsed: msg.from, Playing: true})
 		return m, m.broadcast(msg)
 
-	case playbackFailed, episodePlaybackFailed:
+	case albumPlaybackStarted:
+		m.toggle.settled++
+		m = m.publishCommand(msg.item, media.Info{Title: msg.name, Playing: true})
+		return m, m.broadcast(msg)
+
+	case artistPlaybackStarted:
+		m.toggle.settled++
+		m = m.publishCommand("", media.Info{Title: msg.name, Playing: true})
+		return m, m.broadcast(msg)
+
+	case playbackFailed, episodePlaybackFailed, albumPlaybackFailed, artistPlaybackFailed:
 		m.toggle.settled++
 		return m, m.broadcast(msg)
 

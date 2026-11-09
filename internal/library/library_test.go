@@ -226,7 +226,7 @@ func TestSyncLeavesThePodcastsAlone(t *testing.T) {
 	h.Sync([]spotify.URI{"a"}, day2)
 	h.Sync(nil, day3)
 
-	want := Podcasts{Order: OrderRecentlyAdded, LastPlayed: map[spotify.URI]time.Time{"show": day1}}
+	want := Saved{Order: OrderRecentlyAdded, LastPlayed: map[spotify.URI]time.Time{"show": day1}}
 	if !reflect.DeepEqual(h.Podcasts, want) {
 		t.Fatalf("podcasts after a playlist sync = %+v, want %+v", h.Podcasts, want)
 	}
@@ -303,7 +303,7 @@ func TestOldLibraryFileLoadsWithoutPodcasts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(h.Podcasts, Podcasts{}) {
+	if !reflect.DeepEqual(h.Podcasts, Saved{}) {
 		t.Fatalf("podcasts of an old file = %+v, want none", h.Podcasts)
 	}
 	if h.Order != OrderCreator || !h.Playlists["a"].LastPlayed.Equal(day1) {
@@ -389,5 +389,147 @@ func TestBrokenFilesAreReportedAsCorrupt(t *testing.T) {
 	}
 	if _, err := NewStore(t.TempDir()).Load(); err == nil || errors.Is(err, ErrCorrupt) {
 		t.Fatalf("reading a folder = %v, want a read error that is not ErrCorrupt", err)
+	}
+}
+
+func TestAlbumHistory(t *testing.T) {
+	var h History
+	h.SetAlbumOrder(OrderCreator)
+	if !h.AlbumPlayed("a", day2) || !h.AlbumPlayed("b", day1) {
+		t.Fatal("first plays of the albums were not recorded")
+	}
+	if h.AlbumPlayed("a", day1) {
+		t.Fatal("an older play replaced a newer one")
+	}
+	h.SyncAlbums([]spotify.URI{"a"})
+
+	if got := h.AlbumLastPlayed("a"); !got.Equal(day2) {
+		t.Fatalf("last played a = %v, want %v", got, day2)
+	}
+	if got := h.AlbumLastPlayed("b"); !got.IsZero() {
+		t.Fatalf("b left the library but is still played at %v", got)
+	}
+	want := Saved{Order: OrderCreator, LastPlayed: map[spotify.URI]time.Time{"a": day2}}
+	if !reflect.DeepEqual(h.Albums, want) {
+		t.Fatalf("albums = %+v, want %+v", h.Albums, want)
+	}
+	if !h.Podcasts.IsZero() || h.Order != "" {
+		t.Fatalf("albums changed the podcasts or playlists: %+v", h)
+	}
+}
+
+func TestArtistsLearnWhenTheyWereFollowed(t *testing.T) {
+	var h History
+	h.SyncArtists([]spotify.URI{"a"}, day1)
+	h.SyncArtists([]spotify.URI{"a", "b"}, day2)
+
+	if got := h.ArtistAdded("a"); !got.IsZero() {
+		t.Fatalf("a added at %v on the first sync, want unknown", got)
+	}
+	if got := h.ArtistAdded("b"); !got.Equal(day2) {
+		t.Fatalf("b added at %v, want %v", got, day2)
+	}
+	if !h.ArtistPlayed("a", day3) || h.ArtistPlayed("unknown", day3) {
+		t.Fatal("plays were recorded for the wrong artists")
+	}
+	if got := h.ArtistRecent("a"); !got.Equal(day3) {
+		t.Fatalf("recent a = %v, want %v", got, day3)
+	}
+	if got := h.ArtistRecent("b"); !got.Equal(day2) {
+		t.Fatalf("recent b = %v, want %v", got, day2)
+	}
+
+	h.SyncArtists([]spotify.URI{"b"}, day3)
+	if _, ok := h.Artists.Followed["a"]; ok {
+		t.Fatal("a is still in the history after it was unfollowed")
+	}
+	if h.Synced || h.Playlists != nil {
+		t.Fatalf("artists changed the playlists: %+v", h)
+	}
+}
+
+func TestArtistAndAlbumOrdersAreSavedOnlyWhenTheyChange(t *testing.T) {
+	store := NewStore(filepath.Join(t.TempDir(), "library.json"))
+	var h History
+	h.SetAlbumOrder(OrderAlphabetical)
+	h.SetArtistOrder(OrderRecentlyAdded)
+	if !saveWrites(t, store, h) {
+		t.Fatal("the new orders were not saved")
+	}
+
+	h.SetAlbumOrder(OrderAlphabetical)
+	h.SetArtistOrder(OrderRecentlyAdded)
+	if saveWrites(t, store, h) {
+		t.Fatal("the same orders were saved again")
+	}
+}
+
+func TestCloneCopiesTheAlbumAndArtistHistory(t *testing.T) {
+	var h History
+	h.SyncArtists([]spotify.URI{"a"}, day1)
+	h.AlbumPlayed("x", day1)
+	c := h.Clone()
+	h.AlbumPlayed("x", day2)
+	h.ArtistPlayed("a", day2)
+
+	if got := c.AlbumLastPlayed("x"); !got.Equal(day1) {
+		t.Fatalf("clone changed with the original: last played x = %v, want %v", got, day1)
+	}
+	if got := c.ArtistRecent("a"); !got.IsZero() {
+		t.Fatalf("clone changed with the original: recent a = %v", got)
+	}
+}
+
+func TestAlbumsAndArtistsRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "library.json")
+	store := NewStore(path)
+
+	var h History
+	h.SetAlbumOrder(OrderCreator)
+	h.AlbumPlayed("spotify:album:a", day1)
+	h.SetArtistOrder(OrderAlphabetical)
+	h.SyncArtists([]spotify.URI{"spotify:artist:a"}, day1)
+	h.SyncArtists([]spotify.URI{"spotify:artist:a", "spotify:artist:b"}, day2)
+	h.ArtistPlayed("spotify:artist:a", day3)
+	if err := store.Save(h.Clone()); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := NewStore(path).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded.revision = h.revision
+	if !reflect.DeepEqual(loaded, h) {
+		t.Fatalf("loaded = %+v, want %+v", loaded, h)
+	}
+}
+
+func TestOldLibraryFileLoadsWithoutAlbumsAndArtists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "library.json")
+	old := `{"order":"creator","synced":true,"podcasts":{"order":"alphabetical"}}`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewStore(path)
+	h, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.Albums.IsZero() || !h.Artists.IsZero() {
+		t.Fatalf("old file loaded albums %+v and artists %+v, want none", h.Albums, h.Artists)
+	}
+
+	h.SetOrder(OrderAlphabetical)
+	if err := store.Save(h.Clone()); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(b, []byte(`"albums"`)) || bytes.Contains(b, []byte(`"artists"`)) {
+		t.Fatalf("saved %s, want no albums or artists sections", b)
 	}
 }
