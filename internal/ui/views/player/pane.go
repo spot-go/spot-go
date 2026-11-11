@@ -19,7 +19,7 @@ type paneSize struct {
 }
 
 const (
-	rightViewChrome     = 4
+	rightViewChrome     = 6
 	rightViewPadding    = 1
 	minListStatusHeight = 4
 	leftHelpIndent      = 6
@@ -157,14 +157,17 @@ func (s paneSize) rightPane(title, note string, body func() string, status playb
 			Render(fit(title, width)),
 		"",
 	}
+	line := s.statusLine(status, volume)
 	if height := s.listHeight(); height > 0 {
 		parts = append(parts, lipgloss.NewStyle().
 			Width(width).
 			Height(height).
 			MaxHeight(height).
-			Render(body()))
+			Render(body()), "", line, "")
+	} else {
+		parts = append(parts, line)
 	}
-	parts = append(parts, s.statusLine(status, volume), keys)
+	parts = append(parts, keys)
 
 	return lipgloss.NewStyle().
 		PaddingLeft(rightViewPadding).
