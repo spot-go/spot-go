@@ -768,7 +768,7 @@ func TestEnterPlaysTheSelectedEpisode(t *testing.T) {
 	h.send(keys("tab", "down", "enter")...)
 
 	h.wantEpisodePlay(0, "spotify:show:s0", "Inside the Final Hours", 1740000)
-	h.wantView("Playing: Inside the Final Hours from 29:00")
+	h.wantView("⏸ Inside the Final Hours — Morning Briefing", "29:00 / 1:00:00")
 	if got, want := api.reads(), []string{episodeID("Inside the Final Hours")}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("episode reads = %v, want %v", got, want)
 	}
@@ -782,7 +782,7 @@ func TestEnterResumesFromTheLatestPosition(t *testing.T) {
 	h.send(keys("tab", "down", "enter")...)
 
 	h.wantEpisodePlay(0, "spotify:show:s0", "Inside the Final Hours", 2400000)
-	h.wantView("Playing: Inside the Final Hours from 40:00")
+	h.wantView("⏸ Inside the Final Hours — Morning Briefing", "40:00 / 1:00:00")
 }
 
 func TestEpisodeFinishedElsewherePlaysFromTheStart(t *testing.T) {
@@ -803,7 +803,7 @@ func TestEnterUsesTheListedPositionWhenTheEpisodeReadIsEmpty(t *testing.T) {
 	h.send(keys("tab", "down", "enter")...)
 
 	h.wantEpisodePlay(0, "spotify:show:s0", "Inside the Final Hours", 1740000)
-	h.wantView("Playing: Inside the Final Hours from 29:00")
+	h.wantView("⏸ Inside the Final Hours — Morning Briefing", "29:00 / 1:00:00")
 }
 
 func TestEnterUsesTheListedPositionWhenTheEpisodeCantBeRead(t *testing.T) {
@@ -822,8 +822,7 @@ func TestFinishedEpisodePlaysFromTheStart(t *testing.T) {
 	h.send(keys("tab", "enter")...)
 
 	h.wantEpisodePlay(0, "spotify:show:s0", "How the Vote Count Works", 0)
-	h.wantView("Playing: How the Vote Count Works")
-	h.dontWantView("from 0:00")
+	h.wantView("⏸ How the Vote Count Works — Morning Briefing", "0:00 / 52:14")
 }
 
 func TestEnterOnAPodcastPlaysTheNewestEpisode(t *testing.T) {
@@ -964,7 +963,7 @@ func TestStaleEpisodePlaybackResultIsIgnored(t *testing.T) {
 	h.send(episodePlaybackFailed{seq: 0, err: errors.New("old failure")})
 	h.send(episodePlaybackStarted{seq: 0, show: "spotify:show:s0", name: "Old Episode"})
 
-	h.wantView("Playing: How the Vote Count Works")
+	h.wantView("⏸ How the Vote Count Works")
 	h.dontWantView("old failure", "Old Episode")
 }
 
@@ -973,7 +972,7 @@ func TestEachTabKeepsItsOwnPlaybackStatus(t *testing.T) {
 
 	h.send(key("enter"))
 	h.send(playbackStarted{seq: h.podcasts().playback.seq, name: "Rock", uri: "spotify:playlist:p0"})
-	h.wantView("Playing: How the Vote Count Works")
+	h.wantView("⏸ How the Vote Count Works")
 
 	h.send(key("left"))
 	h.dontWantView("How the Vote Count Works")

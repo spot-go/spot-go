@@ -38,7 +38,7 @@ func (s songItem) label() string {
 	if len(s.Artists) == 0 {
 		return printable(s.Name)
 	}
-	return printable(s.Name + " - " + strings.Join(s.Artists, ", "))
+	return printable(s.Name + " - " + s.Artist())
 }
 
 func (d songDelegate) Height() int                         { return 1 }

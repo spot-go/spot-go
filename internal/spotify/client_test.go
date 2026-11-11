@@ -277,11 +277,11 @@ func TestNowPlayingItem(t *testing.T) {
 		want NowPlaying
 	}{
 		{"song", `{"is_playing":true,"progress_ms":170000,"context":{"type":"playlist","uri":"spotify:playlist:a"},"item":{"type":"track","uri":"spotify:track:t","name":"Paranoid","duration_ms":168000,"artists":[{"name":"Black Sabbath"}]}}`,
-			NowPlaying{Context: "spotify:playlist:a", Item: "spotify:track:t", Name: "Paranoid", Artist: "Black Sabbath", Progress: 170 * time.Second, Duration: 168 * time.Second}},
+			NowPlaying{Playing: true, Context: "spotify:playlist:a", Item: "spotify:track:t", Name: "Paranoid", Artist: "Black Sabbath", Progress: 170 * time.Second, Duration: 168 * time.Second}},
 		{"episode", `{"is_playing":true,"progress_ms":60000,"context":null,"item":{"type":"episode","uri":"spotify:episode:e","name":"Inside the Final Hours","duration_ms":3600000,"show":{"uri":"spotify:show:s","name":"The Daily"}}}`,
-			NowPlaying{Context: "spotify:show:s", Item: "spotify:episode:e", Name: "Inside the Final Hours", Artist: "The Daily", Progress: time.Minute, Duration: time.Hour}},
+			NowPlaying{Playing: true, Context: "spotify:show:s", Item: "spotify:episode:e", Name: "Inside the Final Hours", Artist: "The Daily", Progress: time.Minute, Duration: time.Hour}},
 		{"no item", `{"is_playing":true,"progress_ms":1000,"context":{"type":"show","uri":"spotify:show:s"},"item":null}`,
-			NowPlaying{Context: "spotify:show:s"}},
+			NowPlaying{Playing: true, Context: "spotify:show:s"}},
 		{"paused", `{"is_playing":false,"progress_ms":1000,"context":{"type":"show","uri":"spotify:show:s"},"item":{"type":"episode","uri":"spotify:episode:e","name":"E","duration_ms":1000}}`,
 			NowPlaying{PausedItem: "spotify:episode:e", PausedProgress: time.Second}},
 		{"paused without an item", `{"is_playing":false,"progress_ms":1000,"item":null}`,

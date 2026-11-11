@@ -144,6 +144,9 @@ func skipPlayback(ctx context.Context, client *spotify.Client, next bool, every 
 		if err != nil {
 			break
 		}
+		if state.Item == "" {
+			continue
+		}
 		after = state
 		if state.Item != before.Item || state.Progress < before.Progress {
 			break
@@ -214,21 +217,6 @@ func (m Model) playbackToggled(msg playbackToggled) Model {
 	return m
 }
 
-func (s playbackStatus) toggled(msg playbackToggled, now time.Time) playbackStatus {
-	switch {
-	case msg.err != nil && msg.skip:
-		return playbackStatus{seq: s.seq, text: "Fail to skip: " + errorText(msg.err), err: true}
-	case msg.err != nil:
-		return playbackStatus{seq: s.seq, text: "Fail to play/pause: " + errorText(msg.err), err: true}
-	case msg.paused:
-		return playbackStatus{seq: s.seq, text: withName("Paused", msg.name), item: msg.item, paused: true, since: now}
-	}
-	return playbackStatus{seq: s.seq, text: withName("Playing", msg.name), item: msg.item, since: now}
-}
-
-func withName(text, name string) string {
-	if name == "" {
-		return text
-	}
-	return text + ": " + name
+func (t playbackToggled) info() media.Info {
+	return media.Info{Title: t.name, Artist: t.artist, Duration: t.duration, Elapsed: t.progress, Playing: !t.paused}
 }

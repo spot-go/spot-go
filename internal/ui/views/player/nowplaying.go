@@ -12,9 +12,7 @@ import (
 
 type (
 	nowPlaying struct {
-		info      media.Info
-		item      libspotify.URI
-		at        time.Time
+		track
 		commandAt time.Time
 	}
 
@@ -27,24 +25,13 @@ type (
 
 const startSlack = time.Second
 
-func (n nowPlaying) elapsed(now time.Time) time.Duration {
-	elapsed := n.info.Elapsed
-	if n.info.Playing {
-		elapsed += now.Sub(n.at)
-	}
-	if n.info.Duration > 0 {
-		elapsed = min(elapsed, n.info.Duration)
-	}
-	return elapsed
-}
-
 func (n nowPlaying) stillPlaying(playing spotify.NowPlaying, now time.Time) bool {
 	return n.item != "" && playing.Item == n.item && playing.Progress+startSlack >= n.elapsed(now)
 }
 
 func (m Model) publishNowPlaying(item libspotify.URI, info media.Info, now time.Time) Model {
 	info.ID = string(item)
-	m.nowPlaying.info, m.nowPlaying.item, m.nowPlaying.at = info, item, now
+	m.nowPlaying.track = track{item: item, info: info, at: now}
 	if m.publish != nil {
 		m.publish(info)
 	}
@@ -58,7 +45,8 @@ func (m Model) publishCommand(item libspotify.URI, info media.Info) Model {
 }
 
 func (m Model) publishToggled(msg playbackToggled) Model {
-	return m.publishCommand(msg.item, media.Info{Title: msg.name, Artist: msg.artist, Duration: msg.duration, Elapsed: msg.progress, Playing: !msg.paused})
+	toggled := m.nowPlaying.track.toggled(msg, time.Now())
+	return m.publishCommand(toggled.item, toggled.info)
 }
 
 func (m Model) publishPolled(playing spotify.NowPlaying) Model {
@@ -69,15 +57,14 @@ func (m Model) publishPolled(playing spotify.NowPlaying) Model {
 	if playing.Item != "" {
 		return m.publishNowPlaying(playing.Item, playingInfo(playing), now)
 	}
-	if !m.nowPlaying.info.Playing {
+	if playing.Playing {
 		return m
 	}
-	info := m.nowPlaying.info
-	info.Elapsed, info.Playing = m.nowPlaying.elapsed(now), false
-	if playing.PausedItem != "" && playing.PausedItem == m.nowPlaying.item {
-		info.Elapsed = playing.PausedProgress
+	paused, ok := m.nowPlaying.track.paused(playing, now)
+	if !ok {
+		return m
 	}
-	return m.publishNowPlaying(m.nowPlaying.item, info, now)
+	return m.publishNowPlaying(paused.item, paused.info, now)
 }
 
 func playingInfo(playing spotify.NowPlaying) media.Info {

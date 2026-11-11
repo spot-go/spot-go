@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/spot-go/spot-go/internal/library"
+	"github.com/spot-go/spot-go/internal/media"
 	"github.com/spot-go/spot-go/internal/spotify"
 	libspotify "github.com/zmb3/spotify/v2"
 )
@@ -91,11 +92,13 @@ type (
 	}
 
 	episodePlaybackStarted struct {
-		seq     int
-		show    libspotify.URI
-		episode libspotify.URI
-		name    string
-		from    time.Duration
+		seq      int
+		show     libspotify.URI
+		episode  libspotify.URI
+		name     string
+		showName string
+		from     time.Duration
+		duration time.Duration
 	}
 
 	episodePlaybackFailed struct {
@@ -190,11 +193,7 @@ func (p podcastModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case episodePlaybackStarted:
 		if msg.seq == p.playback.seq {
-			text := "Playing: " + msg.name
-			if msg.from > 0 {
-				text += " from " + formatDuration(msg.from)
-			}
-			p.playback = playbackStatus{seq: msg.seq, text: text, item: msg.episode, since: time.Now()}
+			p.playback = playingStatus(msg.seq, msg.episode, msg.info(), time.Now())
 		}
 		p.playingURI = msg.show
 		return p.played(msg.show, time.Now())
@@ -220,7 +219,7 @@ func (p podcastModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return p, nil
 
 	case playbackConfirmed:
-		p.playback = p.playback.followNow(msg.playing)
+		p.playback = p.playback.followNow(msg.playing, time.Now())
 		return p, nil
 
 	case playbackPolled:
@@ -359,6 +358,10 @@ func (p podcastModel) updateEpisodes(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (p podcastModel) capturesInput() bool {
 	return p.list != nil && p.list.FilterState() == list.Filtering
+}
+
+func (p podcastModel) status() playbackStatus {
+	return p.playback
 }
 
 func (p podcastModel) selectedShow() (showItem, bool) {
@@ -675,10 +678,10 @@ func (p podcastModel) playEpisode(show showItem, ep spotify.Episode) (podcastMod
 
 	*p.plays++
 	p.playback = playbackStatus{seq: p.playback.seq + 1, text: "Starting " + ep.Name + "...", starting: true}
-	return p, p.startEpisode(p.playback.seq, show.uri, ep)
+	return p, p.startEpisode(p.playback.seq, show, ep)
 }
 
-func (p podcastModel) startEpisode(seq int, show libspotify.URI, ep spotify.Episode) tea.Cmd {
+func (p podcastModel) startEpisode(seq int, show showItem, ep spotify.Episode) tea.Cmd {
 	var deviceID libspotify.ID
 	if p.playerDevice != nil {
 		deviceID = p.playerDevice.ID
@@ -701,11 +704,15 @@ func (p podcastModel) startEpisode(seq int, show libspotify.URI, ep spotify.Epis
 		if ep.InProgress() {
 			from = ep.Resume
 		}
-		if err := p.spotifyClient.PlayEpisode(ctx, deviceID, show, ep.URI, from); err != nil {
+		if err := p.spotifyClient.PlayEpisode(ctx, deviceID, show.uri, ep.URI, from); err != nil {
 			return episodePlaybackFailed{seq, err}
 		}
-		return episodePlaybackStarted{seq: seq, show: show, episode: ep.URI, name: ep.Name, from: from}
+		return episodePlaybackStarted{seq: seq, show: show.uri, episode: ep.URI, name: ep.Name, showName: show.title, from: from, duration: ep.Duration}
 	}
+}
+
+func (msg episodePlaybackStarted) info() media.Info {
+	return media.Info{Title: msg.name, Artist: msg.showName, Duration: msg.duration, Elapsed: msg.from, Playing: true}
 }
 
 func (p podcastModel) View() tea.View {

@@ -619,6 +619,7 @@ func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model
 	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store, nil)
 	m.confirmEvery = time.Millisecond
 	m.startPolls = 0
+	m.progressEvery = 0
 	m.after = testAfter
 	playlists := m.tabs[playlistsTab].content.(playlistModel)
 	playlists.after = testAfter

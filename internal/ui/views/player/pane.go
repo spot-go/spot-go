@@ -10,27 +10,13 @@ import (
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/styles"
-	libspotify "github.com/zmb3/spotify/v2"
 )
 
-type (
-	paneSize struct {
-		width  int
-		height int
-	}
-
-	playbackStatus struct {
-		seq      int
-		text     string
-		err      bool
-		item     libspotify.URI
-		starting bool
-		paused   bool
-		since    time.Time
-	}
-)
+type paneSize struct {
+	width  int
+	height int
+}
 
 const (
 	rightViewChrome     = 4
@@ -68,20 +54,6 @@ func errorText(err error) string {
 		err = urlErr.Err
 	}
 	return err.Error()
-}
-
-func (s playbackStatus) follow(playing spotify.NowPlaying, now time.Time) playbackStatus {
-	if now.Sub(s.since) < followGrace {
-		return s
-	}
-	return s.followNow(playing)
-}
-
-func (s playbackStatus) followNow(playing spotify.NowPlaying) playbackStatus {
-	if s.err || s.starting || playing.Item == "" || playing.Name == "" || (playing.Item == s.item && !s.paused) {
-		return s
-	}
-	return playbackStatus{seq: s.seq, text: "Playing: " + playing.Name, item: playing.Item, since: s.since}
 }
 
 func newList(items []list.Item, delegate list.ItemDelegate) list.Model {
@@ -210,22 +182,18 @@ func (s paneSize) notice(text string) string {
 }
 
 func (s paneSize) statusLine(status playbackStatus, volume volumeLevel) string {
-	style := playingStyle
-	if status.err {
-		style = playbackErrorStyle
-	}
-	width := s.rightWidth()
+	width, now := s.rightWidth(), time.Now()
 	if !volume.shown {
-		return style.Render(fit(printable(status.text), width))
+		return status.view(width, now)
 	}
 	levelStyle := playingStyle
 	if volume.err != nil {
 		levelStyle = playbackErrorStyle
 	}
 	level := fit(printable(volume.text()), width)
-	text := fit(printable(status.text), width-lipgloss.Width(level)-1)
+	text := status.view(width-lipgloss.Width(level)-1, now)
 	gap := strings.Repeat(" ", max(0, width-lipgloss.Width(text)-lipgloss.Width(level)))
-	return style.Render(text) + gap + levelStyle.Render(level)
+	return text + gap + levelStyle.Render(level)
 }
 
 func (s paneSize) keyHelp(h help.Styles, target string) string {

@@ -196,7 +196,7 @@ func TestAllPagesOfSongsLoad(t *testing.T) {
 	h.songs().list.Select(60)
 	h.send(keys("tab", "enter")...)
 	h.wantPlay(0, "spotify:playlist:p2", 61)
-	h.wantView("Playing: Song 62", "62  Song 62 - Cartola")
+	h.wantView("⏸ Song 62", "62  Song 62 - Cartola")
 }
 
 func TestForbiddenPlaylistExplainsWhy(t *testing.T) {
@@ -516,7 +516,7 @@ func TestEnterPlaysTheSelectedSong(t *testing.T) {
 	h.send(keys("tab", "down", "enter")...)
 
 	h.wantPlay(0, "spotify:playlist:p0", 1)
-	h.wantView("Playing: Paranoid")
+	h.wantView("⏸ Paranoid")
 	if got := h.selected(); got != "Rock" {
 		t.Fatalf("keys on the songs moved the playlist cursor to %q", got)
 	}
@@ -528,7 +528,7 @@ func TestEnterOnAPlaylistPlaysItFromTheStart(t *testing.T) {
 	h.send(keys("down", "enter")...)
 
 	h.wantPlay(0, "spotify:playlist:p1", 0)
-	h.wantView("Playing: Jazz")
+	h.wantView("⏸ Jazz")
 }
 
 func TestEnterWhileFilteringDoesNotPlay(t *testing.T) {
@@ -561,7 +561,7 @@ func TestStalePlaybackResultIsIgnored(t *testing.T) {
 	h.send(playbackStarted{seq: 1, name: "Back in Black"})
 	h.send(playbackFailed{seq: 1, err: errors.New("late failure")})
 
-	h.wantView("Playing: Paranoid")
+	h.wantView("⏸ Paranoid")
 	h.dontWantView("Fail to play", "late failure")
 }
 
@@ -608,7 +608,7 @@ func TestSongNamesInAnyScriptAreShown(t *testing.T) {
 	h.wantView("残酷な天使のテーゼ - 高橋洋子", "Dynamite - 방탄소년단", "Người Lạ Ơi - Karik", "שלום - عمرو دياب", "Love ❤ you - Band👨👩👧")
 
 	h.send(keys("tab", "enter")...)
-	h.wantView("Playing: 残酷な天使のテーゼ")
+	h.wantView("⏸ 残酷な天使のテーゼ")
 }
 
 func TestTabMovesTheKeysToTheSongs(t *testing.T) {
@@ -665,7 +665,7 @@ func TestPlaybackStatusIsShownWhenNoSongRowFits(t *testing.T) {
 	if got := h.playlists().listHeight(); got != 0 {
 		t.Fatalf("listHeight = %d, want 0 for this test", got)
 	}
-	h.wantView("Playing: Rock", "enter play")
+	h.wantView("⏸ Rock", "enter play")
 }
 
 func TestSongsThatFitAreOnOnePage(t *testing.T) {
