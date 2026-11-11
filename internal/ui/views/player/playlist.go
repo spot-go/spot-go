@@ -126,7 +126,7 @@ const (
 	songsLoadDelay        = 150 * time.Millisecond
 	songsPageTimeout      = 45 * time.Second
 	playbackTimeout       = 15 * time.Second
-	playbackPollInterval  = 30 * time.Second
+	playbackPollInterval  = 5 * time.Second
 	recentlyPlayedTimeout = 3 * time.Second
 	pollSlack             = time.Second
 )
