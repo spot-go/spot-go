@@ -18,14 +18,15 @@ func useTempFolder(t *testing.T) string {
 		t.Fatal(err)
 	}
 
-	oldFolder, oldBinary, oldKey, oldData := Folder, binaryFile, apiKeyFile, dataDir
+	oldFolder, oldBinary, oldKey, oldVolume, oldData := Folder, binaryFile, apiKeyFile, volumeFile, dataDir
 	Folder = dir
 	binaryFile = filepath.Join(dir, "soloist")
 	apiKeyFile = filepath.Join(dir, "api-key")
+	volumeFile = filepath.Join(dir, "volume")
 	dataDir = filepath.Join(dir, "data")
 	t.Cleanup(func() {
 		Stop()
-		Folder, binaryFile, apiKeyFile, dataDir = oldFolder, oldBinary, oldKey, oldData
+		Folder, binaryFile, apiKeyFile, volumeFile, dataDir = oldFolder, oldBinary, oldKey, oldVolume, oldData
 	})
 	return dir
 }

@@ -36,6 +36,7 @@ type (
 		activeTab     int
 		toggle        playbackToggle
 		volume        volumeControl
+		volumeSaver   *volumeSaver
 		confirmEvery  time.Duration
 		startPolls    int
 		progressEvery time.Duration
@@ -98,6 +99,7 @@ func NewModel(
 	playerDevice *libspotify.PlayerDevice,
 	historyStore *library.Store,
 	publish func(media.Info),
+	saveVolume func(int) error,
 ) Model {
 	var (
 		history    library.History
@@ -129,6 +131,7 @@ func NewModel(
 			{name: "Albums", content: newAlbumModel(playerContext, historyErr)},
 		},
 		activeTab:     playlistsTab,
+		volumeSaver:   newVolumeSaver(saveVolume),
 		confirmEvery:  confirmPollEvery,
 		startPolls:    confirmPolls,
 		progressEvery: progressInterval,
@@ -240,7 +243,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		if msg.err == nil && msg.plays == *m.plays {
 			m = m.publishPolled(msg.playing)
 		}
-		return m, m.broadcast(msg)
+		return m, tea.Batch(m.broadcast(msg), m.rememberPolledVolume(msg))
 
 	case tea.WindowSizeMsg:
 		m.WindowSizeMsg = msg

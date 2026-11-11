@@ -616,7 +616,7 @@ func newModelWith(api *fakeAPI, width, height int) Model {
 func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model {
 	client := spotify.NewClient(&http.Client{Transport: api})
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: width, Height: height}}
-	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store, nil)
+	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store, nil, nil)
 	m.confirmEvery = time.Millisecond
 	m.startPolls = 0
 	m.progressEvery = 0

@@ -95,6 +95,9 @@ type (
 		Duration       time.Duration
 		PausedItem     spotify.URI
 		PausedProgress time.Duration
+		Device         spotify.ID
+		Volume         int
+		SupportsVolume bool
 	}
 
 	Playback struct {
@@ -244,8 +247,9 @@ func (c Client) NowPlaying(ctx context.Context) (NowPlaying, error) {
 	if err != nil {
 		return NowPlaying{}, err
 	}
+	device, volume, supportsVolume := resp.deviceVolume()
 	if !resp.IsPlaying {
-		var paused NowPlaying
+		paused := NowPlaying{Device: device, Volume: volume, SupportsVolume: supportsVolume}
 		if resp.Item != nil {
 			paused.PausedItem = resp.Item.URI
 			paused.PausedProgress = time.Duration(resp.ProgressMs) * time.Millisecond
@@ -253,7 +257,7 @@ func (c Client) NowPlaying(ctx context.Context) (NowPlaying, error) {
 		return paused, nil
 	}
 
-	playing := NowPlaying{Playing: true}
+	playing := NowPlaying{Playing: true, Device: device, Volume: volume, SupportsVolume: supportsVolume}
 	if uri, ok := resp.Context.uriOf("playlist", "show", "album", "artist"); ok {
 		playing.Context = uri
 	}
@@ -275,17 +279,23 @@ func (c Client) Playback(ctx context.Context) (Playback, error) {
 	}
 
 	playback := Playback{Playing: resp.IsPlaying, Progress: time.Duration(resp.ProgressMs) * time.Millisecond}
-	if d := resp.Device; d != nil {
-		playback.Device = d.ID
-		if d.VolumePercent != nil && (d.SupportsVolume == nil || *d.SupportsVolume) {
-			playback.Volume, playback.SupportsVolume = *d.VolumePercent, true
-		}
-	}
+	playback.Device, playback.Volume, playback.SupportsVolume = resp.deviceVolume()
 	if resp.Item != nil {
 		playback.Item, playback.Name, playback.Artist = resp.Item.URI, resp.Item.Name, resp.Item.artist()
 		playback.Duration = time.Duration(resp.Item.DurationMs) * time.Millisecond
 	}
 	return playback, nil
+}
+
+func (r playerResponse) deviceVolume() (spotify.ID, int, bool) {
+	d := r.Device
+	if d == nil {
+		return "", 0, false
+	}
+	if d.VolumePercent == nil || d.SupportsVolume != nil && !*d.SupportsVolume {
+		return d.ID, 0, false
+	}
+	return d.ID, *d.VolumePercent, true
 }
 
 func (i playerItem) artist() string {

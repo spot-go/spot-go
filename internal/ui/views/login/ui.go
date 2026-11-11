@@ -212,6 +212,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.playerDevice,
 			library.NewStore(config.LibraryFile),
 			m.publish,
+			soloist.SaveVolume,
 		)
 		m.player = &mainModel
 		return m, m.player.Init()
