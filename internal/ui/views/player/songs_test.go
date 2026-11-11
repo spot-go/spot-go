@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spot-go/spot-go/internal/spotify"
 	libspotify "github.com/zmb3/spotify/v2"
 )
@@ -670,7 +671,7 @@ func TestPlaybackStatusIsShownWhenNoSongRowFits(t *testing.T) {
 
 func TestSongsThatFitAreOnOnePage(t *testing.T) {
 	api := newFakeAPI()
-	api.songs["p0"] = manySongsJSON(13)
+	api.songs["p0"] = manySongsJSON(11)
 	h := newHarnessWith(t, api, 120, 24)
 
 	l := h.songs().list
@@ -680,7 +681,21 @@ func TestSongsThatFitAreOnOnePage(t *testing.T) {
 	if l.Paginator.TotalPages != 1 {
 		t.Fatalf("pages = %d, want 1 for %d songs in a list %d rows tall", l.Paginator.TotalPages, len(l.Items()), l.Height())
 	}
-	h.wantView("13  Song 13 - Cartola")
+	h.wantView("11  Song 11 - Cartola")
+}
+
+func TestBlankLinesSeparateTheStatus(t *testing.T) {
+	api := newFakeAPI()
+	api.songs["p0"] = manySongsJSON(40)
+	h := newHarnessWith(t, api, 120, 24)
+	h.send(key("enter"))
+
+	lines := strings.Split(ansi.Strip(h.playlists().rightView()), "\n")
+	bottom := lines[len(lines)-5:]
+	if !strings.Contains(bottom[0], "Song ") || strings.TrimSpace(bottom[1]) != "" || !strings.Contains(bottom[2], "⏸ Rock") ||
+		strings.TrimSpace(bottom[3]) != "" || !strings.Contains(bottom[4], "enter play") {
+		t.Fatalf("bottom of the right pane = %q, want a song, a blank line, the status, a blank line and the keys", bottom)
+	}
 }
 
 func TestFit(t *testing.T) {
