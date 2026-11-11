@@ -219,6 +219,10 @@ func (p podcastModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		p.volume = p.volume.hidden(msg)
 		return p, nil
 
+	case playbackConfirmed:
+		p.playback = p.playback.followNow(msg.playing)
+		return p, nil
+
 	case playbackPolled:
 		if msg.err != nil {
 			return p, nil

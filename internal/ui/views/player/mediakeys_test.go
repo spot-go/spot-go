@@ -134,7 +134,7 @@ func TestSkipWaitsAWhileForTheNewSong(t *testing.T) {
 	h.send(media.NextTrack)
 
 	h.wantSkips("next")
-	h.wantPlayerReads(1 + skipPolls)
+	h.wantPlayerReads(1 + confirmPolls)
 	h.wantView("Playing: So What")
 }
 

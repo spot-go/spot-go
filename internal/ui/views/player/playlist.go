@@ -257,6 +257,10 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		p.volume = p.volume.hidden(msg)
 		return p, nil
 
+	case playbackConfirmed:
+		p.playback = p.playback.followNow(msg.playing)
+		return p, nil
+
 	case pollPlayback:
 		return p, p.fetchPlaying()
 

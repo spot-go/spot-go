@@ -45,8 +45,8 @@ const (
 )
 
 const (
-	skipPollEvery = 250 * time.Millisecond
-	skipPolls     = 8
+	confirmPollEvery = 250 * time.Millisecond
+	confirmPolls     = 8
 )
 
 var mediaChanges = map[media.Command]playbackChange{
@@ -78,14 +78,14 @@ func (m Model) changePlayback(change playbackChange) (Model, tea.Cmd) {
 	if m.playerDevice != nil {
 		fallback = m.playerDevice.ID
 	}
-	ctx, client, skipEvery := m.ctx, m.spotifyClient, m.skipEvery
+	ctx, client, confirmEvery := m.ctx, m.spotifyClient, m.confirmEvery
 
 	return m, func() tea.Msg {
 		ctx, cancel := context.WithTimeout(ctx, playbackTimeout)
 		defer cancel()
 
 		if change == nextChange || change == previousChange {
-			return skipPlayback(ctx, client, change == nextChange, skipEvery, plays, settled)
+			return skipPlayback(ctx, client, change == nextChange, confirmEvery, plays, settled)
 		}
 
 		state := spotify.Playback{Playing: !known.paused, Device: known.device, Item: known.item, Name: known.name, Artist: known.artist, Progress: progress, Duration: known.duration}
@@ -136,7 +136,7 @@ func skipPlayback(ctx context.Context, client *spotify.Client, next bool, every 
 	}
 
 	after := before
-	for range skipPolls {
+	for range confirmPolls {
 		if wait(ctx, every) != nil {
 			break
 		}

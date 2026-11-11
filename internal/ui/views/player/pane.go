@@ -71,10 +71,17 @@ func errorText(err error) string {
 }
 
 func (s playbackStatus) follow(playing spotify.NowPlaying, now time.Time) playbackStatus {
-	if s.err || s.starting || now.Sub(s.since) < followGrace || playing.Item == "" || playing.Name == "" || (playing.Item == s.item && !s.paused) {
+	if now.Sub(s.since) < followGrace {
 		return s
 	}
-	return playbackStatus{seq: s.seq, text: "Playing: " + playing.Name, item: playing.Item}
+	return s.followNow(playing)
+}
+
+func (s playbackStatus) followNow(playing spotify.NowPlaying) playbackStatus {
+	if s.err || s.starting || playing.Item == "" || playing.Name == "" || (playing.Item == s.item && !s.paused) {
+		return s
+	}
+	return playbackStatus{seq: s.seq, text: "Playing: " + playing.Name, item: playing.Item, since: s.since}
 }
 
 func newList(items []list.Item, delegate list.ItemDelegate) list.Model {
