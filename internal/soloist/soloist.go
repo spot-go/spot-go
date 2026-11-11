@@ -27,6 +27,7 @@ var (
 	Folder     = filepath.Join(config.Path, "soloist")
 	binaryFile = filepath.Join(Folder, "soloist")
 	apiKeyFile = filepath.Join(Folder, "api-key")
+	volumeFile = filepath.Join(Folder, "volume")
 	dataDir    = filepath.Join(Folder, "data")
 
 	ErrNoAPIKey      = errors.New("no Soloist API key")
@@ -167,13 +168,17 @@ func stalePattern(dir string) string {
 }
 
 func daemonArgs(key string) []string {
-	return []string{
+	args := []string{
 		"--device-name", DeviceName(),
 		"--api-key", key,
 		"--data-dir", dataDir,
 		"--cache-dir", cacheDir(),
 		"--cache-size", strconv.Itoa(cacheSizeMB),
 	}
+	if percent, ok := savedVolume(); ok {
+		args = append(args, "--initial-volume", strconv.Itoa(percent))
+	}
+	return args
 }
 
 func cacheDir() string {

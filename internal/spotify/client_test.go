@@ -196,6 +196,40 @@ func TestPlayback(t *testing.T) {
 	}
 }
 
+func TestNowPlayingDeviceVolume(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want NowPlaying
+	}{
+		{"playing", `{"is_playing":true,"device":{"id":"spot-go","volume_percent":55,"supports_volume":true}}`,
+			NowPlaying{Playing: true, Device: "spot-go", Volume: 55, SupportsVolume: true}},
+		{"paused", `{"is_playing":false,"device":{"id":"spot-go","volume_percent":30,"supports_volume":true}}`,
+			NowPlaying{Device: "spot-go", Volume: 30, SupportsVolume: true}},
+		{"volume without supports_volume", `{"is_playing":true,"device":{"id":"phone","volume_percent":0}}`,
+			NowPlaying{Playing: true, Device: "phone", SupportsVolume: true}},
+		{"volume not supported", `{"is_playing":true,"device":{"id":"tv","volume_percent":40,"supports_volume":false}}`,
+			NowPlaying{Playing: true, Device: "tv"}},
+		{"unknown volume", `{"is_playing":false,"device":{"id":"tv","volume_percent":null,"supports_volume":true}}`,
+			NowPlaying{Device: "tv"}},
+		{"no device", `{"is_playing":true,"device":null}`,
+			NowPlaying{Playing: true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := testClient(func(r *http.Request) *http.Response {
+				return jsonResponse(r, http.StatusOK, tt.body)
+			})
+
+			got, err := c.NowPlaying(context.Background())
+
+			if err != nil || got != tt.want {
+				t.Fatalf("NowPlaying = %+v, %v, want %+v", got, err, tt.want)
+			}
+		})
+	}
+}
+
 func TestResumePlayback(t *testing.T) {
 	type request struct {
 		path, device, body string

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -38,12 +39,19 @@ type (
 		err     error
 		shown   bool
 	}
+
+	volumeSaver struct {
+		mu      sync.Mutex
+		percent int
+		save    func(int) error
+	}
 )
 
 const (
 	volumeStep     = 5
 	maxVolume      = 100
 	volumeShownFor = 3 * time.Second
+	unsavedVolume  = -1
 )
 
 var (
@@ -110,6 +118,9 @@ func (m Model) volumeChanged(msg volumeChanged) (Model, tea.Cmd) {
 		m.volume.known, m.volume.at = msg, time.Now()
 	}
 	cmds := []tea.Cmd{m.broadcast(msg), m.after(volumeShownFor, volumeHidden{seq: msg.seq})}
+	if msg.err == nil {
+		cmds = append(cmds, m.rememberVolume(msg.device, msg.percent))
+	}
 
 	if pending := m.volume.pending; len(pending) > 0 {
 		m.volume.pending = nil
@@ -118,6 +129,52 @@ func (m Model) volumeChanged(msg volumeChanged) (Model, tea.Cmd) {
 		cmds = append(cmds, next)
 	}
 	return m, tea.Batch(cmds...)
+}
+
+func (m Model) rememberPolledVolume(msg playbackPolled) tea.Cmd {
+	changingHere := m.volume.busy || !m.volume.at.IsZero() && time.Since(m.volume.at) < followGrace
+	if msg.err != nil || !msg.playing.SupportsVolume || changingHere {
+		return nil
+	}
+	return m.rememberVolume(msg.playing.Device, msg.playing.Volume)
+}
+
+func (m Model) rememberVolume(device libspotify.ID, percent int) tea.Cmd {
+	if m.playerDevice == nil || device != m.playerDevice.ID {
+		return nil
+	}
+	return m.volumeSaver.remember(percent)
+}
+
+func newVolumeSaver(save func(int) error) *volumeSaver {
+	if save == nil {
+		return nil
+	}
+	return &volumeSaver{percent: unsavedVolume, save: save}
+}
+
+func (s *volumeSaver) remember(percent int) tea.Cmd {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if percent == s.percent {
+		return nil
+	}
+	s.percent = percent
+	return s.write
+}
+
+func (s *volumeSaver) write() tea.Msg {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.percent != unsavedVolume && s.save(s.percent) != nil {
+		s.percent = unsavedVolume
+	}
+	return nil
 }
 
 func (v volumeLevel) changed(msg volumeChanged) volumeLevel {

@@ -1,10 +1,12 @@
 package player
 
 import (
+	"errors"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -439,4 +441,162 @@ func TestKeyHelpLeavesOutVolumeWhenItDoesNotFit(t *testing.T) {
 	h.send(key("tab"))
 	h.wantView("tab playlists • enter play • r refresh • space play/pause")
 	h.dontWantView("+/-")
+}
+
+type fakeVolumeFile struct {
+	mu     sync.Mutex
+	writes []int
+	err    error
+}
+
+func (f *fakeVolumeFile) save(percent int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.writes = append(f.writes, percent)
+	return f.err
+}
+
+func (f *fakeVolumeFile) fail(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.err = err
+}
+
+func (f *fakeVolumeFile) wantWrites(t *testing.T, want ...int) {
+	t.Helper()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if !slices.Equal(f.writes, want) {
+		t.Fatalf("saved volumes = %v, want %v", f.writes, want)
+	}
+}
+
+func playingHereAt(volume int) *fakeAPI {
+	api := playingOnPhoneAt(volume)
+	api.device = testDeviceID
+	return api
+}
+
+func (h *harness) saveVolumes() *fakeVolumeFile {
+	file := &fakeVolumeFile{}
+	m := h.player()
+	m.volumeSaver = newVolumeSaver(file.save)
+	h.model = m
+	return file
+}
+
+func TestVolumeKeysSaveTheVolumeOfThisDevice(t *testing.T) {
+	h := newHarnessWith(t, playingHereAt(50), 120, 40)
+	h.holdTimers = true
+	file := h.saveVolumes()
+
+	h.send(key("+"))
+	h.send(key("+"))
+	h.send(key("-"))
+
+	h.wantVolumes(testDeviceID, "55", "60", "55")
+	file.wantWrites(t, 55, 60, 55)
+}
+
+func TestVolumeKeysOnAnotherDeviceDoNotSaveTheVolume(t *testing.T) {
+	h := newHarnessWith(t, playingOnPhoneAt(50), 120, 40)
+	h.holdTimers = true
+	file := h.saveVolumes()
+
+	h.send(key("+"))
+
+	h.wantVolumes("phone", "55")
+	file.wantWrites(t)
+}
+
+func TestFailedVolumeChangeIsNotSaved(t *testing.T) {
+	api := playingHereAt(50)
+	api.volumeStatus = http.StatusForbidden
+	h := newHarnessWith(t, api, 120, 40)
+	h.holdTimers = true
+	file := h.saveVolumes()
+
+	h.send(key("+"))
+
+	h.wantView("Fail to change the volume")
+	file.wantWrites(t)
+}
+
+func TestPolledVolumeOfThisDeviceIsSavedWhenItChanges(t *testing.T) {
+	h := newHarnessWith(t, playingHereAt(30), 120, 40)
+	file := h.saveVolumes()
+
+	h.send(pollPlayback{})
+	h.send(pollPlayback{})
+	h.api.set(func(f *fakeAPI) { f.volume = 45 })
+	h.send(pollPlayback{})
+
+	file.wantWrites(t, 30, 45)
+}
+
+func TestPolledVolumeOfAnotherDeviceIsNotSaved(t *testing.T) {
+	h := newHarnessWith(t, playingOnPhoneAt(30), 120, 40)
+	file := h.saveVolumes()
+
+	h.send(pollPlayback{})
+
+	file.wantWrites(t)
+}
+
+func TestPolledVolumeOfADeviceWithoutVolumeControlIsNotSaved(t *testing.T) {
+	api := playingHereAt(30)
+	api.noVolume = true
+	h := newHarnessWith(t, api, 120, 40)
+	file := h.saveVolumes()
+
+	h.send(pollPlayback{})
+
+	file.wantWrites(t)
+}
+
+func TestPolledVolumeRightAfterAVolumeKeyIsNotSaved(t *testing.T) {
+	h := newHarnessWith(t, playingHereAt(50), 120, 40)
+	h.holdTimers = true
+	file := h.saveVolumes()
+
+	h.send(key("+"))
+	h.api.set(func(f *fakeAPI) { f.volume = 50 })
+	h.send(pollPlayback{})
+	file.wantWrites(t, 55)
+
+	h.forgetVolume()
+	h.send(pollPlayback{})
+	file.wantWrites(t, 55, 50)
+}
+
+func TestFailedVolumeSaveIsTriedAgainOnTheNextPoll(t *testing.T) {
+	h := newHarnessWith(t, playingHereAt(30), 120, 40)
+	file := h.saveVolumes()
+	file.fail(errors.New("disk full"))
+
+	h.send(pollPlayback{})
+	h.send(pollPlayback{})
+	file.fail(nil)
+	h.send(pollPlayback{})
+	h.send(pollPlayback{})
+
+	file.wantWrites(t, 30, 30, 30)
+}
+
+func TestVolumeSaverWritesTheLatestVolumeInAnyOrder(t *testing.T) {
+	file := &fakeVolumeFile{}
+	s := newVolumeSaver(file.save)
+
+	first := s.remember(55)
+	second := s.remember(60)
+	if again := s.remember(60); again != nil {
+		t.Fatal("remembering the same volume again wants another write")
+	}
+	second()
+	first()
+
+	file.wantWrites(t, 60, 60)
 }
