@@ -126,7 +126,7 @@ const (
 	songsLoadDelay        = 150 * time.Millisecond
 	songsPageTimeout      = 45 * time.Second
 	playbackTimeout       = 15 * time.Second
-	playbackPollInterval  = 30 * time.Second
+	playbackPollInterval  = 5 * time.Second
 	recentlyPlayedTimeout = 3 * time.Second
 	pollSlack             = time.Second
 )
@@ -255,6 +255,10 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case volumeHidden:
 		p.volume = p.volume.hidden(msg)
+		return p, nil
+
+	case playbackConfirmed:
+		p.playback = p.playback.followNow(msg.playing)
 		return p, nil
 
 	case pollPlayback:

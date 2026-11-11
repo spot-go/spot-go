@@ -214,6 +214,10 @@ func (a artistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.volume = a.volume.hidden(msg)
 		return a, nil
 
+	case playbackConfirmed:
+		a.playback = a.playback.followNow(msg.playing)
+		return a, nil
+
 	case playbackPolled:
 		if msg.err != nil {
 			return a, nil

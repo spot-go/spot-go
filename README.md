@@ -65,7 +65,7 @@ Spotify may only list the songs of playlists you own or collaborate on, dependin
 Custom order is the order the Spotify Web API returns the playlists in. The Web API doesn't give the Recents order of the Spotify app, so spot-go builds its own: the most recently played or added playlists come first. spot-go learns what you played from:
 
 - the last 50 songs played on any device, read when spot-go starts
-- what plays on any device while spot-go is open, checked every 30 seconds and when the current song or episode ends
+- what plays on any device while spot-go is open, checked every 5 seconds and when the current song or episode ends
 - the playlists you play in spot-go
 
 From the second start on, a playlist counts as added when it shows up in your library, so a playlist you follow on your phone moves to the top. On the first start spot-go doesn't know when your playlists were added, so only what you played counts. Playlists spot-go never saw played or added come last, in Custom order.

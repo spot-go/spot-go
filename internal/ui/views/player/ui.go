@@ -32,14 +32,15 @@ type (
 		playerContext
 		views.WindowSize
 
-		tabs       []tab
-		activeTab  int
-		toggle     playbackToggle
-		volume     volumeControl
-		skipEvery  time.Duration
-		after      func(time.Duration, tea.Msg) tea.Cmd
-		publish    func(media.Info)
-		nowPlaying nowPlaying
+		tabs         []tab
+		activeTab    int
+		toggle       playbackToggle
+		volume       volumeControl
+		confirmEvery time.Duration
+		startPolls   int
+		after        func(time.Duration, tea.Msg) tea.Cmd
+		publish      func(media.Info)
+		nowPlaying   nowPlaying
 	}
 
 	tab struct {
@@ -125,10 +126,11 @@ func NewModel(
 			{name: "Artists", content: newArtistModel(playerContext, historyErr)},
 			{name: "Albums", content: newAlbumModel(playerContext, historyErr)},
 		},
-		activeTab: playlistsTab,
-		skipEvery: skipPollEvery,
-		after:     after,
-		publish:   publish,
+		activeTab:    playlistsTab,
+		confirmEvery: confirmPollEvery,
+		startPolls:   confirmPolls,
+		after:        after,
+		publish:      publish,
 	}
 	m.broadcast(m.contentDimension())
 	return m
@@ -186,24 +188,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.volumeChanged(msg)
 
 	case playbackStarted:
-		m.toggle.settled++
-		m = m.publishCommand(msg.item, media.Info{Title: msg.name, Playing: true})
-		return m, m.broadcast(msg)
+		return m.playbackStarted(msg, msg.uri, msg.item, media.Info{Title: msg.name, Playing: true})
 
 	case episodePlaybackStarted:
-		m.toggle.settled++
-		m = m.publishCommand(msg.episode, media.Info{Title: msg.name, Elapsed: msg.from, Playing: true})
-		return m, m.broadcast(msg)
+		return m.playbackStarted(msg, msg.show, msg.episode, media.Info{Title: msg.name, Elapsed: msg.from, Playing: true})
 
 	case albumPlaybackStarted:
-		m.toggle.settled++
-		m = m.publishCommand(msg.item, media.Info{Title: msg.name, Playing: true})
-		return m, m.broadcast(msg)
+		return m.playbackStarted(msg, msg.uri, msg.item, media.Info{Title: msg.name, Playing: true})
 
 	case artistPlaybackStarted:
-		m.toggle.settled++
-		m = m.publishCommand("", media.Info{Title: msg.name, Playing: true})
-		return m, m.broadcast(msg)
+		return m.playbackStarted(msg, msg.uri, "", media.Info{Title: msg.name, Playing: true})
+
+	case playbackConfirmed:
+		return m.playbackConfirmed(msg)
 
 	case playbackFailed, episodePlaybackFailed, albumPlaybackFailed, artistPlaybackFailed:
 		m.toggle.settled++

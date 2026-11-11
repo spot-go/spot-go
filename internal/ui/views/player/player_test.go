@@ -82,6 +82,9 @@ type (
 		artistsStatus  int
 		artistRequests int
 		artistAlbums   map[string][]string
+		onPlay         func(*fakeAPI)
+		playLag        int
+		started        func(*fakeAPI)
 	}
 
 	recentPlay struct {
@@ -263,6 +266,14 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 
 	case path == "me/player" && r.Method == http.MethodGet:
 		f.playerRequests++
+		if f.started != nil {
+			if f.playLag > 0 {
+				f.playLag--
+			} else {
+				f.started(f)
+				f.started = nil
+			}
+		}
 		if f.playerStatus != 0 {
 			return errorResponse(r, f.playerStatus, http.StatusText(f.playerStatus)), nil
 		}
@@ -421,6 +432,9 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		f.plays = append(f.plays, playRequest{deviceID: r.URL.Query().Get("device_id"), body: body})
 		if f.playStatus != 0 {
 			return errorResponse(r, f.playStatus, "Player command failed: Premium required"), nil
+		}
+		if len(body) > 0 {
+			f.started = f.onPlay
 		}
 		f.paused = false
 		return response(r, http.StatusNoContent, ""), nil
@@ -603,7 +617,8 @@ func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model
 	client := spotify.NewClient(&http.Client{Transport: api})
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: width, Height: height}}
 	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store, nil)
-	m.skipEvery = time.Millisecond
+	m.confirmEvery = time.Millisecond
+	m.startPolls = 0
 	m.after = testAfter
 	playlists := m.tabs[playlistsTab].content.(playlistModel)
 	playlists.after = testAfter
