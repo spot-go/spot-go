@@ -69,7 +69,7 @@ func TestSpacePausesWhatPlays(t *testing.T) {
 
 	h.wantPauses("")
 	h.wantPlays(0)
-	h.wantView("Paused: So What")
+	h.wantView("▶ So What")
 }
 
 func TestKResumesWhatIsPaused(t *testing.T) {
@@ -81,7 +81,7 @@ func TestKResumesWhatIsPaused(t *testing.T) {
 
 	h.wantPauses()
 	h.wantResume(0, "")
-	h.wantView("Playing: So What")
+	h.wantView("⏸ So What")
 }
 
 func TestResumeWithNothingPlayingUsesSpotGo(t *testing.T) {
@@ -93,7 +93,7 @@ func TestResumeWithNothingPlayingUsesSpotGo(t *testing.T) {
 	if got := h.selected(); got != "Jazz" {
 		t.Fatalf("selected = %q, want Jazz: k moved the cursor", got)
 	}
-	h.wantView("Playing")
+	h.wantView("⏸")
 }
 
 func TestPressRightAfterAToggleUsesTheKnownState(t *testing.T) {
@@ -105,7 +105,7 @@ func TestPressRightAfterAToggleUsesTheKnownState(t *testing.T) {
 	h.wantPlayerReads(1)
 	h.wantPauses("")
 	h.wantResume(0, "")
-	h.wantView("Playing: So What")
+	h.wantView("⏸ So What")
 }
 
 func TestPressLaterReadsTheStateAgain(t *testing.T) {
@@ -130,7 +130,7 @@ func TestPlayAfterAToggleReadsTheStateAgain(t *testing.T) {
 
 	h.wantPlayerReads(2)
 	h.wantPauses("", "")
-	h.wantView("Paused: So What")
+	h.wantView("▶ So What")
 }
 
 func TestPressWhileTogglingIsIgnored(t *testing.T) {
@@ -172,9 +172,9 @@ func TestPlayPauseWorksOnEveryTab(t *testing.T) {
 	h.wantPauses("")
 
 	h.send(keys("right", "right")...)
-	h.wantView("Paused: So What")
+	h.wantView("▶ So What")
 	h.send(key("left"))
-	h.wantView("Paused: So What")
+	h.wantView("▶ So What")
 }
 
 func TestToggleErrorsAreShown(t *testing.T) {
@@ -188,7 +188,7 @@ func TestToggleErrorsAreShown(t *testing.T) {
 	api.set(func(f *fakeAPI) { f.pauseStatus = 0 })
 	h.send(key("space"))
 	h.wantPlayerReads(2)
-	h.wantView("Paused: So What")
+	h.wantView("▶ So What")
 }
 
 func TestToggleReadErrorsAreShown(t *testing.T) {
@@ -211,20 +211,20 @@ func TestPlayStartedDuringAToggleKeepsItsStatus(t *testing.T) {
 	h.send(key("enter"))
 	h.run(toggle)
 
-	h.wantView("Playing: Rock")
-	h.dontWantView("Paused")
+	h.wantView("⏸ Rock")
+	h.dontWantView("▶")
 }
 
 func TestPausedStatusFollowsAResumeElsewhere(t *testing.T) {
 	h := newHarnessWith(t, playingOnPhone(), 120, 40)
 	h.send(key("space"))
-	h.wantView("Paused: So What")
+	h.wantView("▶ So What")
 
 	h.api.set(func(f *fakeAPI) { f.paused = false })
 	h.settle()
 	h.send(pollPlayback{})
 
-	h.wantView("Playing: So What")
+	h.wantView("⏸ So What")
 }
 
 func TestKeyHelpShowsPlayPause(t *testing.T) {
@@ -263,7 +263,7 @@ func TestPollRightAfterAPauseKeepsPaused(t *testing.T) {
 	h.api.set(func(f *fakeAPI) { f.paused = false })
 	h.send(pollPlayback{})
 
-	h.wantView("Paused: So What")
+	h.wantView("▶ So What")
 }
 
 func TestResumeErrorsAreShown(t *testing.T) {
@@ -274,12 +274,12 @@ func TestResumeErrorsAreShown(t *testing.T) {
 
 	h.send(key("k"))
 	h.wantView("Fail to play/pause: Player command failed: Premium required")
-	h.dontWantView("Playing: So What")
+	h.dontWantView("⏸ So What")
 
 	api.set(func(f *fakeAPI) { f.playStatus = 0 })
 	h.send(key("k"))
 	h.wantPlayerReads(2)
-	h.wantView("Playing: So What")
+	h.wantView("⏸ So What")
 }
 
 func TestEpisodeStartedDuringAToggleKeepsItsStatus(t *testing.T) {
@@ -291,6 +291,6 @@ func TestEpisodeStartedDuringAToggleKeepsItsStatus(t *testing.T) {
 	h.send(key("enter"))
 	h.run(toggle)
 
-	h.wantView("Playing: Inside the Final Hours")
-	h.dontWantView("Paused")
+	h.wantView("⏸ Inside the Final Hours")
+	h.dontWantView("▶")
 }

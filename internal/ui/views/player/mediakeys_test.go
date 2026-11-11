@@ -54,7 +54,7 @@ func TestMediaPlayPauseKeyPauses(t *testing.T) {
 	h.send(media.TogglePlayPause)
 
 	h.wantPauses("")
-	h.wantView("Paused: So What")
+	h.wantView("▶ So What")
 }
 
 func TestMediaPauseWhilePausedSendsNothing(t *testing.T) {
@@ -66,7 +66,7 @@ func TestMediaPauseWhilePausedSendsNothing(t *testing.T) {
 
 	h.wantPauses()
 	h.wantPlays(0)
-	h.wantView("Paused: So What")
+	h.wantView("▶ So What")
 }
 
 func TestMediaPlayResumesOnlyWhenPaused(t *testing.T) {
@@ -75,7 +75,7 @@ func TestMediaPlayResumesOnlyWhenPaused(t *testing.T) {
 	h.send(media.Play)
 	h.wantPlays(0)
 	h.wantPauses()
-	h.wantView("Playing: So What")
+	h.wantView("⏸ So What")
 
 	h.api.set(func(f *fakeAPI) { f.paused = true })
 	h.forgetToggle()
@@ -113,7 +113,7 @@ func TestNextTrackSkips(t *testing.T) {
 
 	h.wantSkips("next")
 	h.wantPlayerReads(2)
-	h.wantView("Playing: Freddie Freeloader")
+	h.wantView("⏸ Freddie Freeloader")
 }
 
 func TestPreviousTrackStopsWaitingWhenTheSongRestarts(t *testing.T) {
@@ -125,7 +125,7 @@ func TestPreviousTrackStopsWaitingWhenTheSongRestarts(t *testing.T) {
 
 	h.wantSkips("previous")
 	h.wantPlayerReads(2)
-	h.wantView("Playing: So What")
+	h.wantView("⏸ So What")
 }
 
 func TestSkipWaitsAWhileForTheNewSong(t *testing.T) {
@@ -135,7 +135,7 @@ func TestSkipWaitsAWhileForTheNewSong(t *testing.T) {
 
 	h.wantSkips("next")
 	h.wantPlayerReads(1 + confirmPolls)
-	h.wantView("Playing: So What")
+	h.wantView("⏸ So What")
 }
 
 func TestSkipErrorsAreShown(t *testing.T) {
@@ -161,7 +161,7 @@ func TestPlayPauseRightAfterASkipUsesTheNewSong(t *testing.T) {
 
 	h.wantPlayerReads(2)
 	h.wantPauses("")
-	h.wantView("Paused: Freddie Freeloader")
+	h.wantView("▶ Freddie Freeloader")
 }
 
 func TestNowPlayingFollowsPolls(t *testing.T) {
@@ -213,7 +213,7 @@ func TestNowPlayingShowsTheEpisodePosition(t *testing.T) {
 
 	h.send(keys("tab", "down", "enter")...)
 
-	if got, want := lastInfo(t, published), (media.Info{ID: string(episodeURI("Inside the Final Hours")), Title: "Inside the Final Hours", Elapsed: 29 * time.Minute, Playing: true}); got != want {
+	if got, want := lastInfo(t, published), (media.Info{ID: string(episodeURI("Inside the Final Hours")), Title: "Inside the Final Hours", Artist: "Morning Briefing", Duration: time.Hour, Elapsed: 29 * time.Minute, Playing: true}); got != want {
 		t.Fatalf("now playing = %+v, want %+v", got, want)
 	}
 }

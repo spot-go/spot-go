@@ -49,7 +49,7 @@ func TestPlayShowsTheSongSpotifyStarts(t *testing.T) {
 	h.send(key("enter"))
 
 	wantInfo(t, published, backInBlack)
-	h.wantView("Playing: Back in Black")
+	h.wantView("⏸ Back in Black")
 	h.wantPlayerReads(1)
 }
 
@@ -63,7 +63,7 @@ func TestPlayWaitsForSpotifyToShowIt(t *testing.T) {
 	h.send(key("enter"))
 
 	wantInfo(t, published, backInBlack)
-	h.wantView("Playing: Back in Black")
+	h.wantView("⏸ Back in Black")
 	h.wantPlayerReads(3)
 }
 
@@ -75,7 +75,7 @@ func TestPlayStopsWaitingWhenSpotifyDoesNotShowIt(t *testing.T) {
 	h.send(key("enter"))
 
 	wantInfo(t, published, media.Info{Title: "Rock", Playing: true})
-	h.wantView("Playing: Rock")
+	h.wantView("⏸ Rock")
 	h.wantPlayerReads(confirmPolls)
 }
 
@@ -89,7 +89,7 @@ func TestPlayStopsWaitingWhenSpotifyFails(t *testing.T) {
 	h.send(key("enter"))
 
 	wantInfo(t, published, media.Info{Title: "Rock", Playing: true})
-	h.wantView("Playing: Rock")
+	h.wantView("⏸ Rock")
 	h.wantPlayerReads(1)
 }
 
@@ -104,7 +104,7 @@ func TestPlayIgnoresTheSongPlayingBeforeIt(t *testing.T) {
 	h.send(key("enter"))
 
 	wantInfo(t, published, media.Info{Title: "Rock", Playing: true})
-	h.wantView("Playing: Rock")
+	h.wantView("⏸ Rock")
 	h.wantPlayerReads(confirmPolls)
 }
 
@@ -122,7 +122,7 @@ func TestSongPlayWaitsForThatSong(t *testing.T) {
 	h.send(keys("tab", "down", "enter")...)
 
 	wantInfo(t, published, media.Info{ID: albumTrackURI("Paranoid"), Title: "Paranoid", Artist: "Black Sabbath", Duration: 168 * time.Second, Playing: true})
-	h.wantView("Playing: Paranoid")
+	h.wantView("⏸ Paranoid")
 	h.wantPlayerReads(2)
 }
 
@@ -139,7 +139,7 @@ func TestEpisodePlayShowsItsLength(t *testing.T) {
 	h.send(keys("tab", "down", "enter")...)
 
 	wantInfo(t, published, media.Info{ID: episodeURI("Inside the Final Hours"), Title: "Inside the Final Hours", Duration: time.Hour, Elapsed: 29 * time.Minute, Playing: true})
-	h.wantView("Playing: Inside the Final Hours from 29:00")
+	h.wantView("⏸ Inside the Final Hours — Morning Briefing", "29:00 / 1:00:00")
 }
 
 func TestAlbumPlayShowsTheSongSpotifyStarts(t *testing.T) {
@@ -155,7 +155,7 @@ func TestAlbumPlayShowsTheSongSpotifyStarts(t *testing.T) {
 	h.send(key("enter"))
 
 	wantInfo(t, published, media.Info{ID: albumTrackURI("Come Together"), Title: "Come Together", Artist: "The Beatles", Duration: 259 * time.Second, Playing: true})
-	h.wantView("Playing: Come Together")
+	h.wantView("⏸ Come Together")
 }
 
 func TestArtistPlayShowsTheSongSpotifyStarts(t *testing.T) {
@@ -171,7 +171,7 @@ func TestArtistPlayShowsTheSongSpotifyStarts(t *testing.T) {
 	h.send(key("enter"))
 
 	wantInfo(t, published, media.Info{ID: albumTrackURI("Creep"), Title: "Creep", Artist: "Radiohead", Duration: 238 * time.Second, Playing: true})
-	h.wantView("Playing: Creep")
+	h.wantView("⏸ Creep")
 }
 
 func TestPollRightAfterAConfirmedPlayKeepsIt(t *testing.T) {
@@ -186,7 +186,7 @@ func TestPollRightAfterAConfirmedPlayKeepsIt(t *testing.T) {
 	h.send(pollPlayback{})
 
 	wantInfo(t, published, backInBlack)
-	h.wantView("Playing: Back in Black")
+	h.wantView("⏸ Back in Black")
 
 	h.settle()
 	h.send(pollPlayback{})
@@ -194,7 +194,7 @@ func TestPollRightAfterAConfirmedPlayKeepsIt(t *testing.T) {
 	if got := lastInfo(t, published); got.Title != "So What" {
 		t.Fatalf("now playing = %+v, want So What", got)
 	}
-	h.wantView("Playing: So What")
+	h.wantView("⏸ So What")
 }
 
 func TestToggleRightAfterAPlayDropsItsConfirmation(t *testing.T) {
@@ -214,7 +214,7 @@ func TestToggleRightAfterAPlayDropsItsConfirmation(t *testing.T) {
 	if got := lastInfo(t, published); got.Playing || got.Title != "Back in Black" {
 		t.Fatalf("now playing = %+v, want Back in Black paused", got)
 	}
-	h.wantView("Paused: Back in Black")
+	h.wantView("▶ Back in Black")
 }
 
 func TestNewerPlayDropsTheConfirmation(t *testing.T) {
@@ -232,7 +232,7 @@ func TestNewerPlayDropsTheConfirmation(t *testing.T) {
 	h.send(confirmed...)
 
 	wantInfo(t, published, media.Info{Title: "Jazz", Playing: true})
-	h.wantView("Playing: Jazz")
+	h.wantView("⏸ Jazz")
 }
 
 func TestPlayIgnoresTheSongThatJustStartedBeforeIt(t *testing.T) {
@@ -248,7 +248,7 @@ func TestPlayIgnoresTheSongThatJustStartedBeforeIt(t *testing.T) {
 	h.send(key("enter"))
 
 	wantInfo(t, published, backInBlack)
-	h.wantView("Playing: Back in Black")
+	h.wantView("⏸ Back in Black")
 	h.wantPlayerReads(3)
 }
 
@@ -281,7 +281,7 @@ func TestPlayWaitsForTheSongWhileTheContextLoads(t *testing.T) {
 	h.send(key("enter"))
 
 	wantInfo(t, published, media.Info{Title: "Rock", Playing: true})
-	h.wantView("Playing: Rock")
+	h.wantView("⏸ Rock")
 	h.wantPlayerReads(confirmPolls)
 }
 
@@ -296,6 +296,6 @@ func TestPlayIgnoresTheSongThatJustStartedWithoutNowPlaying(t *testing.T) {
 	api.set(func(f *fakeAPI) { f.onPlay, f.playLag = backInBlackPlays, 1 })
 	h.send(key("enter"))
 
-	h.wantView("Playing: Back in Black")
+	h.wantView("⏸ Back in Black")
 	h.wantPlayerReads(3)
 }

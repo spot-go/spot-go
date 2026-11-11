@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/spot-go/spot-go/internal/library"
+	"github.com/spot-go/spot-go/internal/media"
 	"github.com/spot-go/spot-go/internal/spotify"
 	libspotify "github.com/zmb3/spotify/v2"
 )
@@ -70,10 +71,12 @@ type (
 	}
 
 	albumPlaybackStarted struct {
-		seq  int
-		name string
-		uri  libspotify.URI
-		item libspotify.URI
+		seq      int
+		name     string
+		artist   string
+		duration time.Duration
+		uri      libspotify.URI
+		item     libspotify.URI
 	}
 
 	albumPlaybackFailed struct {
@@ -169,7 +172,7 @@ func (a albumModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case albumPlaybackStarted:
 		if msg.seq == a.playback.seq {
-			a.playback = playbackStatus{seq: msg.seq, text: "Playing: " + msg.name, item: msg.item, since: time.Now()}
+			a.playback = playingStatus(msg.seq, msg.item, msg.info(), time.Now())
 		}
 		a.playingURI = msg.uri
 		return a.played(msg.uri, time.Now())
@@ -202,7 +205,7 @@ func (a albumModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case playbackConfirmed:
-		a.playback = a.playback.followNow(msg.playing)
+		a.playback = a.playback.followNow(msg.playing, time.Now())
 		return a, nil
 
 	case playbackPolled:
@@ -347,6 +350,10 @@ func (a albumModel) updateSongs(msg tea.Msg) tea.Cmd {
 
 func (a albumModel) capturesInput() bool {
 	return a.list != nil && a.list.FilterState() == list.Filtering
+}
+
+func (a albumModel) status() playbackStatus {
+	return a.playback
 }
 
 func (a albumModel) selectedAlbum() (albumItem, bool) {
@@ -562,23 +569,25 @@ func (a albumModel) play() (albumModel, tea.Cmd) {
 		return a, nil
 	}
 
-	position, name, item := 0, album.title, libspotify.URI("")
+	position, started := 0, albumPlaybackStarted{name: album.title, uri: album.uri}
 	if !a.leftFocus {
 		if song, ok := a.selectedSong(); ok {
 			if !song.Playable {
 				a.playback = playbackStatus{seq: a.playback.seq + 1, text: unplayableReason(song), err: true}
 				return a, nil
 			}
-			position, name, item = song.Position, song.Name, song.URI
+			position = song.Position
+			started.name, started.artist, started.duration, started.item = song.Name, song.Artist(), song.Duration, song.URI
 		}
 	}
 
 	*a.plays++
-	a.playback = playbackStatus{seq: a.playback.seq + 1, text: "Starting " + name + "...", starting: true}
-	return a, a.startPlayback(a.playback.seq, album.uri, position, name, item)
+	a.playback = playbackStatus{seq: a.playback.seq + 1, text: "Starting " + started.name + "...", starting: true}
+	started.seq = a.playback.seq
+	return a, a.startPlayback(started, position)
 }
 
-func (a albumModel) startPlayback(seq int, album libspotify.URI, position int, name string, item libspotify.URI) tea.Cmd {
+func (a albumModel) startPlayback(started albumPlaybackStarted, position int) tea.Cmd {
 	var deviceID libspotify.ID
 	if a.playerDevice != nil {
 		deviceID = a.playerDevice.ID
@@ -588,11 +597,15 @@ func (a albumModel) startPlayback(seq int, album libspotify.URI, position int, n
 		ctx, cancel := context.WithTimeout(a.ctx, playbackTimeout)
 		defer cancel()
 
-		if err := a.spotifyClient.PlayContext(ctx, deviceID, album, position); err != nil {
-			return albumPlaybackFailed{seq, err}
+		if err := a.spotifyClient.PlayContext(ctx, deviceID, started.uri, position); err != nil {
+			return albumPlaybackFailed{started.seq, err}
 		}
-		return albumPlaybackStarted{seq: seq, name: name, uri: album, item: item}
+		return started
 	}
+}
+
+func (msg albumPlaybackStarted) info() media.Info {
+	return media.Info{Title: msg.name, Artist: msg.artist, Duration: msg.duration, Playing: true}
 }
 
 func (a albumModel) View() tea.View {

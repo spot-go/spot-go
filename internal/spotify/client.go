@@ -86,6 +86,7 @@ type (
 	}
 
 	NowPlaying struct {
+		Playing        bool
 		Context        spotify.URI
 		Item           spotify.URI
 		Name           string
@@ -252,7 +253,7 @@ func (c Client) NowPlaying(ctx context.Context) (NowPlaying, error) {
 		return paused, nil
 	}
 
-	var playing NowPlaying
+	playing := NowPlaying{Playing: true}
 	if uri, ok := resp.Context.uriOf("playlist", "show", "album", "artist"); ok {
 		playing.Context = uri
 	}
@@ -422,6 +423,10 @@ func (c *playbackContext) uriOf(types ...string) (spotify.URI, bool) {
 		return "", false
 	}
 	return c.URI, true
+}
+
+func (i PlaylistItem) Artist() string {
+	return strings.Join(i.Artists, ", ")
 }
 
 func (p playable) playlistItem(position int, isLocal bool) PlaylistItem {

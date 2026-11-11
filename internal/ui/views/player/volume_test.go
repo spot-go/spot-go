@@ -204,7 +204,7 @@ func TestVolumeShowsNextToThePlaybackStatus(t *testing.T) {
 	h.send(key("+"))
 
 	line := h.statusLine()
-	if !strings.Contains(line, "Paused: So What") || !strings.HasSuffix(strings.TrimRight(line, " │"), "Volume: 55%") {
+	if !strings.Contains(line, "▶ So What") || !strings.HasSuffix(strings.TrimRight(line, " │"), "Volume: 55%") {
 		t.Fatalf("status line = %q, want the paused song with the volume at the end", line)
 	}
 }
@@ -337,7 +337,7 @@ func TestVolumeErrorKeepsThePlaybackStatus(t *testing.T) {
 
 	h.holdTimers = false
 	h.send()
-	h.wantView("Paused: So What")
+	h.wantView("▶ So What")
 	h.dontWantView("Fail to change the volume")
 }
 

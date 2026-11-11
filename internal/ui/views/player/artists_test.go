@@ -911,7 +911,7 @@ func TestEnterOnAnArtistPlaysTheArtist(t *testing.T) {
 
 	h.wantArtistPlay(0, "spotify:artist:ar0")
 	h.wantPlays(1)
-	h.wantView("Playing: Radiohead")
+	h.wantView("⏸ Radiohead")
 	if got := *h.artists().plays; got != 1 {
 		t.Fatalf("plays = %d, want 1", got)
 	}
@@ -925,7 +925,7 @@ func TestEnterOnADiscographyAlbumPlaysItFromTheStart(t *testing.T) {
 
 	h.wantPlay(0, "spotify:album:al-glory", 0)
 	h.wantPlays(1)
-	h.wantView("Playing: Glory Box")
+	h.wantView("⏸ Glory Box")
 }
 
 func TestEnterOnTheAlbumsBeforeTheyLoadPlaysTheArtist(t *testing.T) {
@@ -935,7 +935,7 @@ func TestEnterOnTheAlbumsBeforeTheyLoadPlaysTheArtist(t *testing.T) {
 	h.send(keys("down", "tab", "enter")...)
 
 	h.wantArtistPlay(0, "spotify:artist:ar1")
-	h.wantView("Playing: Portishead")
+	h.wantView("⏸ Portishead")
 }
 
 func TestEnterOnAnArtistWithoutAlbumsPlaysTheArtist(t *testing.T) {
@@ -944,7 +944,7 @@ func TestEnterOnAnArtistWithoutAlbumsPlaysTheArtist(t *testing.T) {
 	h.send(keys("down", "down", "tab", "enter")...)
 
 	h.wantArtistPlay(0, "spotify:artist:ar2")
-	h.wantView("Playing: Björk")
+	h.wantView("⏸ Björk")
 }
 
 func TestArtistPlayShowsWhatItStarts(t *testing.T) {
@@ -986,7 +986,7 @@ func TestStaleArtistPlaybackResultIsIgnored(t *testing.T) {
 	h.send(artistPlaybackFailed{seq: 0, err: errors.New("old failure")})
 	h.send(artistPlaybackStarted{seq: 0, name: "Old Album", artist: "spotify:artist:ar0", uri: "spotify:album:old"})
 
-	h.wantView("Playing: Album 1")
+	h.wantView("⏸ Album 1")
 	h.dontWantView("old failure", "Old Album")
 }
 
@@ -999,7 +999,7 @@ func TestArtistsTabKeepsItsOwnPlaybackStatus(t *testing.T) {
 	h.send(episodePlaybackStarted{seq: seq, name: "News", show: "spotify:show:s0"})
 	h.send(playbackFailed{seq: seq, err: errors.New("playlist failure")})
 	h.send(episodePlaybackFailed{seq: seq, err: errors.New("episode failure")})
-	h.wantView("Playing: Radiohead")
+	h.wantView("⏸ Radiohead")
 
 	h.send(key("left"))
 	h.dontWantView("Radiohead")
@@ -1013,17 +1013,17 @@ func TestArtistStatusFollowsWhatSpotifyPicks(t *testing.T) {
 
 	plays := *h.artists().plays
 	h.send(playbackPolled{plays: plays, playing: spotify.NowPlaying{Context: "spotify:artist:ar0", Item: "spotify:track:airbag", Name: "Airbag"}})
-	h.wantView("Playing: Airbag")
+	h.wantView("⏸ Airbag")
 
 	h.send(playbackPolled{plays: plays - 1, playing: spotify.NowPlaying{Context: "spotify:artist:ar0", Item: "spotify:track:old", Name: "Old Song"}})
-	h.wantView("Playing: Airbag")
+	h.wantView("⏸ Airbag")
 	h.dontWantView("Old Song")
 
 	h.send(playbackToggled{plays: plays, paused: true, name: "Airbag", item: "spotify:track:airbag"})
-	h.wantView("Paused: Airbag")
+	h.wantView("▶ Airbag")
 
 	h.send(playbackToggled{plays: plays - 1, name: "Old Song"})
-	h.wantView("Paused: Airbag")
+	h.wantView("▶ Airbag")
 	h.dontWantView("Old Song")
 }
 
@@ -1116,7 +1116,7 @@ func TestPlayingAnAlbumMovesItsArtistToTheTop(t *testing.T) {
 
 	h.wantPlay(0, "spotify:album:al-dummy", 0)
 	h.wantArtists("Recents", "Portishead", "Radiohead", "Björk")
-	h.wantView("Playing: Dummy")
+	h.wantView("⏸ Dummy")
 	if got := h.artists().history.ArtistRecent("spotify:artist:ar1"); got.IsZero() {
 		t.Fatal("playing an album of the artist did not record the artist")
 	}

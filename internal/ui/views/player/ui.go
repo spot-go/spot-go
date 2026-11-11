@@ -32,15 +32,17 @@ type (
 		playerContext
 		views.WindowSize
 
-		tabs         []tab
-		activeTab    int
-		toggle       playbackToggle
-		volume       volumeControl
-		confirmEvery time.Duration
-		startPolls   int
-		after        func(time.Duration, tea.Msg) tea.Cmd
-		publish      func(media.Info)
-		nowPlaying   nowPlaying
+		tabs          []tab
+		activeTab     int
+		toggle        playbackToggle
+		volume        volumeControl
+		confirmEvery  time.Duration
+		startPolls    int
+		progressEvery time.Duration
+		ticking       bool
+		after         func(time.Duration, tea.Msg) tea.Cmd
+		publish       func(media.Info)
+		nowPlaying    nowPlaying
 	}
 
 	tab struct {
@@ -126,11 +128,12 @@ func NewModel(
 			{name: "Artists", content: newArtistModel(playerContext, historyErr)},
 			{name: "Albums", content: newAlbumModel(playerContext, historyErr)},
 		},
-		activeTab:    playlistsTab,
-		confirmEvery: confirmPollEvery,
-		startPolls:   confirmPolls,
-		after:        after,
-		publish:      publish,
+		activeTab:     playlistsTab,
+		confirmEvery:  confirmPollEvery,
+		startPolls:    confirmPolls,
+		progressEvery: progressInterval,
+		after:         after,
+		publish:       publish,
 	}
 	m.broadcast(m.contentDimension())
 	return m
@@ -141,7 +144,34 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if _, ok := msg.(progressTicked); ok {
+		m.ticking = false
+	}
+	m, cmd := m.update(msg)
+	return m.tickProgress(cmd)
+}
+
+func (m Model) tickProgress(cmd tea.Cmd) (Model, tea.Cmd) {
+	if m.ticking || m.progressEvery <= 0 {
+		return m, cmd
+	}
+	shower, ok := m.tabs[m.activeTab].content.(playbackShower)
+	if !ok {
+		return m, cmd
+	}
+	delay, ok := shower.status().nextTick(time.Now(), m.progressEvery)
+	if !ok {
+		return m, cmd
+	}
+	m.ticking = true
+	return m, tea.Batch(cmd, m.after(delay, progressTicked{}))
+}
+
+func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case progressTicked:
+		return m, nil
+
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "ctrl+q", "ctrl+c":
@@ -188,16 +218,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.volumeChanged(msg)
 
 	case playbackStarted:
-		return m.playbackStarted(msg, msg.uri, msg.item, media.Info{Title: msg.name, Playing: true})
+		return m.playbackStarted(msg, msg.uri, msg.item, msg.info())
 
 	case episodePlaybackStarted:
-		return m.playbackStarted(msg, msg.show, msg.episode, media.Info{Title: msg.name, Elapsed: msg.from, Playing: true})
+		return m.playbackStarted(msg, msg.show, msg.episode, msg.info())
 
 	case albumPlaybackStarted:
-		return m.playbackStarted(msg, msg.uri, msg.item, media.Info{Title: msg.name, Playing: true})
+		return m.playbackStarted(msg, msg.uri, msg.item, msg.info())
 
 	case artistPlaybackStarted:
-		return m.playbackStarted(msg, msg.uri, "", media.Info{Title: msg.name, Playing: true})
+		return m.playbackStarted(msg, msg.uri, "", msg.info())
 
 	case playbackConfirmed:
 		return m.playbackConfirmed(msg)
@@ -226,7 +256,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, m.broadcast(msg)
 }
 
-func (m Model) switchTab(i int) (tea.Model, tea.Cmd) {
+func (m Model) switchTab(i int) (Model, tea.Cmd) {
 	i = max(0, min(i, len(m.tabs)-1))
 	if i == m.activeTab {
 		return m, nil

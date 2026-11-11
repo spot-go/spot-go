@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/spot-go/spot-go/internal/library"
+	"github.com/spot-go/spot-go/internal/media"
 	"github.com/spot-go/spot-go/internal/spotify"
 	libspotify "github.com/zmb3/spotify/v2"
 )
@@ -189,7 +190,7 @@ func (a artistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case artistPlaybackStarted:
 		if msg.seq == a.playback.seq {
-			a.playback = playbackStatus{seq: msg.seq, text: "Playing: " + msg.name, since: time.Now()}
+			a.playback = playingStatus(msg.seq, "", msg.info(), time.Now())
 		}
 		a.playingURI = msg.uri
 		return a.played(msg.artist, time.Now())
@@ -215,7 +216,7 @@ func (a artistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case playbackConfirmed:
-		a.playback = a.playback.followNow(msg.playing)
+		a.playback = a.playback.followNow(msg.playing, time.Now())
 		return a, nil
 
 	case playbackPolled:
@@ -361,6 +362,10 @@ func (a artistModel) updateDiscography(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (a artistModel) capturesInput() bool {
 	return a.list != nil && a.list.FilterState() == list.Filtering
+}
+
+func (a artistModel) status() playbackStatus {
+	return a.playback
 }
 
 func (a artistModel) selectedArtist() (artistItem, bool) {
@@ -599,6 +604,10 @@ func (a artistModel) play() (artistModel, tea.Cmd) {
 	*a.plays++
 	a.playback = playbackStatus{seq: a.playback.seq + 1, text: "Starting " + name + "...", starting: true}
 	return a, a.startPlayback(a.playback.seq, name, artist.uri, album)
+}
+
+func (msg artistPlaybackStarted) info() media.Info {
+	return media.Info{Title: msg.name, Playing: true}
 }
 
 func (a artistModel) startPlayback(seq int, name string, artist, album libspotify.URI) tea.Cmd {

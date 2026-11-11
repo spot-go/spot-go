@@ -364,7 +364,7 @@ func TestAllPagesOfAlbumSongsLoad(t *testing.T) {
 	h.albumSongs().list.Select(60)
 	h.send(keys("tab", "enter")...)
 	h.wantPlay(0, "spotify:album:a2", 61)
-	h.wantView("Playing: Track 62", "62  Track 62 - Milton Nascimento")
+	h.wantView("⏸ Track 62", "62  Track 62 - Milton Nascimento")
 }
 
 func TestAlbumSongsShowWhileLaterPagesLoad(t *testing.T) {
@@ -391,7 +391,7 @@ func TestEmptyAlbumShowsANotice(t *testing.T) {
 
 	h.send(keys("tab", "enter")...)
 	h.wantPlay(0, "spotify:album:a1", 0)
-	h.wantView("Playing: Kind of Blue")
+	h.wantView("⏸ Kind of Blue")
 }
 
 func TestAlbumSongsLoadErrorAndRetry(t *testing.T) {
@@ -695,7 +695,7 @@ func TestEnterOnASavedAlbumPlaysItFromTheStart(t *testing.T) {
 
 	h.wantPlay(0, "spotify:album:a1", 0)
 	h.wantPlays(1)
-	h.wantView("Playing: Kind of Blue")
+	h.wantView("⏸ Kind of Blue")
 }
 
 func TestPlayingAnAlbumSaysWhatItStarts(t *testing.T) {
@@ -711,7 +711,7 @@ func TestPlayingAnAlbumSaysWhatItStarts(t *testing.T) {
 	if cmd == nil || a.playback.text != "Starting Something..." || !a.playback.starting {
 		t.Fatalf("play on the songs = %+v", a.playback)
 	}
-	if got, want := cmd(), (albumPlaybackStarted{seq: a.playback.seq, name: "Something", uri: "spotify:album:a0", item: libspotify.URI(albumTrackURI("Something"))}); got != want {
+	if got, want := cmd(), (albumPlaybackStarted{seq: a.playback.seq, name: "Something", artist: "The Beatles", duration: 182 * time.Second, uri: "spotify:album:a0", item: libspotify.URI(albumTrackURI("Something"))}); got != want {
 		t.Fatalf("result = %#v, want %#v", got, want)
 	}
 }
@@ -722,7 +722,7 @@ func TestEnterPlaysTheAlbumFromTheSelectedSong(t *testing.T) {
 	h.send(keys("tab", "down", "enter")...)
 
 	h.wantPlay(0, "spotify:album:a0", 1)
-	h.wantView("Playing: Something")
+	h.wantView("⏸ Something")
 	if got := h.selectedSavedAlbum(); got != "Abbey Road" {
 		t.Fatalf("keys on the songs moved the album cursor to %q", got)
 	}
@@ -736,7 +736,7 @@ func TestEnterBeforeTheAlbumSongsLoadPlaysTheAlbum(t *testing.T) {
 	h.send(keys("down", "tab", "enter")...)
 
 	h.wantPlay(0, "spotify:album:a1", 0)
-	h.wantView("Playing: Kind of Blue")
+	h.wantView("⏸ Kind of Blue")
 	if got := api.requestsFor("a1"); len(got) != 0 {
 		t.Fatalf("song requests for a1 = %v, want none before the delay", got)
 	}
@@ -752,7 +752,7 @@ func TestUnplayableAlbumSongIsNotSentToSpotify(t *testing.T) {
 
 	h.send(keys("tab", "enter")...)
 	h.wantPlay(0, "spotify:album:a0", 0)
-	h.wantView("Playing: Abbey Road")
+	h.wantView("⏸ Abbey Road")
 }
 
 func TestAlbumPlaybackErrorIsShown(t *testing.T) {
@@ -775,7 +775,7 @@ func TestAlbumPlaybackErrorStaysWhileOtherSongsPlay(t *testing.T) {
 	h.send(pollPlayback{})
 
 	h.wantView("Fail to play", "Premium required")
-	h.dontWantView("Playing: So What")
+	h.dontWantView("⏸ So What")
 }
 
 func TestStaleAlbumPlaybackResultIsIgnored(t *testing.T) {
@@ -785,8 +785,8 @@ func TestStaleAlbumPlaybackResultIsIgnored(t *testing.T) {
 	h.send(albumPlaybackStarted{seq: 1, name: "Come Together", uri: "spotify:album:a0"})
 	h.send(albumPlaybackFailed{seq: 1, err: errors.New("late failure")})
 
-	h.wantView("Playing: Something")
-	h.dontWantView("Fail to play", "late failure", "Playing: Come Together")
+	h.wantView("⏸ Something")
+	h.dontWantView("Fail to play", "late failure", "⏸ Come Together")
 }
 
 func TestAlbumsTabKeepsItsOwnPlaybackStatus(t *testing.T) {
@@ -798,7 +798,7 @@ func TestAlbumsTabKeepsItsOwnPlaybackStatus(t *testing.T) {
 	h.send(episodePlaybackStarted{seq: seq, name: "Trailer", show: "spotify:show:s0"})
 	h.send(playbackFailed{seq: seq, err: errors.New("playlist failure")})
 	h.send(episodePlaybackFailed{seq: seq, err: errors.New("episode failure")})
-	h.wantView("Playing: Abbey Road")
+	h.wantView("⏸ Abbey Road")
 	h.dontWantView("Rock", "Trailer", "failure")
 
 	h.send(keys("left", "left", "left")...)
@@ -1028,7 +1028,7 @@ func TestAlbumsStartedFromTheArtistsTabAreRecorded(t *testing.T) {
 	h.send(artistPlaybackStarted{seq: seq, name: "Kind of Blue", artist: "spotify:artist:ar0", uri: "spotify:album:a1"})
 
 	h.wantSavedAlbums("Recents", "Kind of Blue", "Abbey Road", "Clube da Esquina")
-	h.wantView("Playing: Abbey Road")
+	h.wantView("⏸ Abbey Road")
 	played := h.albumTab().history.AlbumLastPlayed("spotify:album:a1")
 	if played.IsZero() {
 		t.Fatal("the album started from the artists tab was not recorded")
@@ -1048,7 +1048,7 @@ func TestArtistsStartedFromTheArtistsTabAreNotAlbums(t *testing.T) {
 	h.send(artistPlaybackFailed{seq: seq, err: errors.New("artist failure")})
 
 	h.wantSavedAlbums("Recents", "Abbey Road", "Kind of Blue", "Clube da Esquina")
-	h.wantView("Playing: Abbey Road")
+	h.wantView("⏸ Abbey Road")
 	h.dontWantView("Radiohead", "failure")
 	if got := h.albumTab().history.AlbumLastPlayed("spotify:artist:ar0"); !got.IsZero() {
 		t.Fatalf("the artist was recorded as an album at %v", got)
@@ -1358,13 +1358,13 @@ func TestStatusFollowsTheNextAlbumSong(t *testing.T) {
 	api := newFakeAPI()
 	h := newAlbumsHarness(t, api)
 	h.send(key("enter"))
-	h.wantView("Playing: Abbey Road")
+	h.wantView("⏸ Abbey Road")
 
 	api.playsElsewhere("spotify:album:a0", "album", albumTrackURI("Something"), "Something")
 	h.settleAlbums()
 	h.send(pollPlayback{})
 
-	h.wantView("Playing: Something")
+	h.wantView("⏸ Something")
 }
 
 func TestStatusKeepsTheAlbumSongItStarted(t *testing.T) {
@@ -1376,7 +1376,7 @@ func TestStatusKeepsTheAlbumSongItStarted(t *testing.T) {
 	h.settleAlbums()
 	h.send(pollPlayback{})
 
-	h.wantView("Playing: Something")
+	h.wantView("⏸ Something")
 	h.dontWantView("Remastered")
 }
 
@@ -1390,7 +1390,7 @@ func TestNowPlayingShowsWhatTheAlbumsTabStarts(t *testing.T) {
 	}
 
 	h.send(keys("tab", "down", "enter")...)
-	if got, want := lastInfo(t, published), (media.Info{ID: albumTrackURI("Something"), Title: "Something", Playing: true}); got != want {
+	if got, want := lastInfo(t, published), (media.Info{ID: albumTrackURI("Something"), Title: "Something", Artist: "The Beatles", Duration: 182 * time.Second, Playing: true}); got != want {
 		t.Fatalf("now playing = %+v, want %+v", got, want)
 	}
 }
@@ -1402,7 +1402,7 @@ func TestSpacePausesFromTheAlbumsTab(t *testing.T) {
 
 	h.wantPauses("")
 	h.wantPlays(0)
-	h.wantView("Paused: So What")
+	h.wantView("▶ So What")
 }
 
 func TestAlbumSongStartedDuringAToggleKeepsItsStatus(t *testing.T) {
@@ -1414,8 +1414,8 @@ func TestAlbumSongStartedDuringAToggleKeepsItsStatus(t *testing.T) {
 	h.send(key("enter"))
 	h.run(toggle)
 
-	h.wantView("Playing: Something")
-	h.dontWantView("Paused")
+	h.wantView("⏸ Something")
+	h.dontWantView("▶")
 }
 
 func TestAlbumPollSentBeforeAPlayKeepsTheStatus(t *testing.T) {
@@ -1426,9 +1426,9 @@ func TestAlbumPollSentBeforeAPlayKeepsTheStatus(t *testing.T) {
 	h.send(key("enter"))
 	h.settleAlbums()
 	h.send(playbackPolled{plays: plays, playing: old})
-	h.wantView("Playing: Abbey Road")
+	h.wantView("⏸ Abbey Road")
 	h.dontWantView("Old Song")
 
 	h.send(playbackPolled{plays: plays + 1, playing: old})
-	h.wantView("Playing: Old Song")
+	h.wantView("⏸ Old Song")
 }
