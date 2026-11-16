@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -33,6 +34,9 @@ func (f *fakeAPI) search(r *http.Request) *http.Response {
 	var parts []string
 	for kind := range strings.SplitSeq(query.Get("type"), ",") {
 		all := f.searchItems[kind]
+		if byQuery, ok := f.searchByQuery[query.Get("q")]; ok {
+			all = byQuery[kind]
+		}
 		page := all[min(offset, len(all)):min(offset+10, len(all))]
 		parts = append(parts, fmt.Sprintf(`%q:{"items":[%s],"total":%d}`, searchResponseKeys[kind], strings.Join(page, ","), len(all)))
 	}
@@ -66,6 +70,18 @@ func (h *harness) searchFor(query string) {
 	h.t.Helper()
 
 	h.send(key("/"))
+	for _, r := range query {
+		h.send(key(string(r)))
+	}
+	h.send(key("enter"))
+}
+
+// searchAgain opens the search, clears the last query with ctrl+u and
+// searches for query.
+func (h *harness) searchAgain(query string) {
+	h.t.Helper()
+
+	h.send(key("/"), tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	for _, r := range query {
 		h.send(key(string(r)))
 	}
@@ -203,12 +219,16 @@ func TestSearchPlaysEachKind(t *testing.T) {
 func TestSearchLoadsMoreAsYouMoveDown(t *testing.T) {
 	api := searchAPI()
 	api.searchItems["track"] = manyAlbumTracksJSON(25)
-	h := newHarnessWith(t, api, 120, 40)
+	h := newHarnessWith(t, api, 120, 14)
 	h.send(key("left"))
 	h.searchFor("milton")
 
 	if got := len(h.searchResultNames()); got != 10 {
 		t.Fatalf("songs = %d, want the first 10", got)
+	}
+	h.send(key("end"))
+	if got := len(h.searchResultNames()); got != 20 {
+		t.Fatalf("songs = %d, want the next page at the end", got)
 	}
 	h.send(key("end"))
 
@@ -224,6 +244,18 @@ func TestSearchLoadsMoreAsYouMoveDown(t *testing.T) {
 	}
 	if want := []string{"10", "20"}; !reflect.DeepEqual(offsets, want) {
 		t.Fatalf("offsets = %v, want %v", offsets, want)
+	}
+}
+
+func TestSearchFillsTheListRightAway(t *testing.T) {
+	api := searchAPI()
+	api.searchItems["track"] = manyAlbumTracksJSON(25)
+	h := newHarnessWith(t, api, 120, 40)
+	h.send(key("left"))
+	h.searchFor("milton")
+
+	if got := len(h.searchResultNames()); got != 25 {
+		t.Fatalf("songs = %d, want all 25 to fill the list without a key", got)
 	}
 }
 
@@ -288,133 +320,6 @@ func TestSearchDoesNotPlayResultsOfAnEarlierSearch(t *testing.T) {
 	h.dontWantView("Come Together")
 }
 
-func TestSearchSortsAlbumsByYearNewestFirst(t *testing.T) {
-	api := searchAPI()
-	api.searchItems["album"] = []string{
-		albumJSON("a-dummy", "Dummy", "album", "1994-08-22", "day", 11, "Portishead"),
-		albumJSON("a-third", "Third", "album", "2008-04-28", "day", 11, "Portishead"),
-		albumJSON("a-nodate", "No Date", "album", "", "", 1, "Portishead"),
-		albumJSON("a-roseland", "Roseland NYC Live", "album", "2008", "year", 11, "Portishead"),
-		albumJSON("a-glory", "Glory Box", "single", "1995-01", "month", 3, "Portishead"),
-	}
-	h := newHarnessWith(t, api, 120, 40)
-	h.send(key("left"))
-	h.searchFor("portishead")
-
-	h.selectSearchCategory("Albums")
-
-	want := []string{"Third", "Roseland NYC Live", "Glory Box", "Dummy", "No Date"}
-	if got := h.searchResultNames(); !reflect.DeepEqual(got, want) {
-		t.Fatalf("albums = %v, want %v", got, want)
-	}
-	h.selectSearchCategory("Songs")
-	if got, want := h.searchResultNames(), []string{"Come Together", "Her Majesty"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("songs = %v, want Spotify's order %v", got, want)
-	}
-}
-
-func TestSearchKeepsTheSelectedAlbumWhenMoreLoad(t *testing.T) {
-	api := searchAPI()
-	var albums []string
-	for i := range 20 {
-		year := 1990 + i
-		if i >= 10 {
-			year = 2000 + i
-		}
-		albums = append(albums, albumJSON(fmt.Sprintf("al%d", i), fmt.Sprintf("Album %d", year), "album", strconv.Itoa(year), "year", 10, "Radiohead"))
-	}
-	api.searchItems["album"] = albums
-	h := newHarnessWith(t, api, 120, 14)
-	h.send(key("left"))
-	h.searchFor("radiohead")
-	h.selectSearchCategory("Albums")
-	if got := len(h.searchResultNames()); got != 10 {
-		t.Fatalf("albums = %d, want the first 10 before moving down", got)
-	}
-
-	for range 6 {
-		h.send(key("down"))
-	}
-
-	names := h.searchResultNames()
-	if len(names) != 20 {
-		t.Fatalf("albums = %d, want 20 after moving down", len(names))
-	}
-	for i := 1; i < len(names); i++ {
-		if names[i-1] < names[i] {
-			t.Fatalf("albums = %v, want newest first", names)
-		}
-	}
-	selected, _ := h.searchTab().selectedItem()
-	if selected.name != "Album 1993" {
-		t.Fatalf("selected = %q, want the album selected before the page loaded", selected.name)
-	}
-}
-
-func TestSearchSortsAlbumsOfTheSameYearInSpotifysOrderAcrossPages(t *testing.T) {
-	api := searchAPI()
-	type album struct {
-		name, date string
-	}
-	// Spotify's relevance order. Within a year, earlier dates come first,
-	// so sorting by full date instead of year would fail.
-	var spotifyOrder []album
-	for i := range 20 {
-		year := []int{1997, 2003, 1997, 2016, 2003}[i%5]
-		month := 1 + i/2
-		spotifyOrder = append(spotifyOrder, album{fmt.Sprintf("Album %02d", i), fmt.Sprintf("%d-%02d-01", year, month)})
-	}
-	spotifyOrder = append(spotifyOrder, album{"Undated", ""})
-	api.searchItems["album"] = nil
-	for _, a := range spotifyOrder {
-		precision := "day"
-		if a.date == "" {
-			precision = ""
-		}
-		api.searchItems["album"] = append(api.searchItems["album"], albumJSON("id-"+a.name, a.name, "album", a.date, precision, 10, "Radiohead"))
-	}
-	h := newHarnessWith(t, api, 120, 40)
-	h.send(key("left"))
-	h.searchFor("radiohead")
-
-	h.selectSearchCategory("Albums")
-
-	var want []string
-	for _, year := range []string{"2016", "2003", "1997", ""} {
-		for _, a := range spotifyOrder {
-			if strings.HasPrefix(a.date, year) && (year != "" || a.date == "") {
-				want = append(want, a.name)
-			}
-		}
-	}
-	if got := h.searchResultNames(); !reflect.DeepEqual(got, want) {
-		t.Fatalf("albums =\n%v\nwant\n%v", got, want)
-	}
-}
-
-func TestSearchAlbumsLoadOnePagePerKeyAtTheOldest(t *testing.T) {
-	api := searchAPI()
-	albums := []string{albumJSON("al-oldest", "Oldest", "album", "1950", "year", 10, "Various")}
-	for i := range 300 {
-		albums = append(albums, albumJSON(fmt.Sprintf("al%d", i), fmt.Sprintf("Album %d", i), "album", strconv.Itoa(2000+i%20), "year", 10, "Various"))
-	}
-	api.searchItems["album"] = albums
-	h := newHarnessWith(t, api, 120, 40)
-	h.send(key("left"))
-	h.searchFor("various")
-	h.selectSearchCategory("Albums")
-	searches := len(h.api.searches)
-
-	h.send(key("end"))
-
-	if got := len(h.api.searches) - searches; got > 1 {
-		t.Fatalf("end made %d searches, want at most 1: newer albums load above the oldest, so loading must not chain", got)
-	}
-	if selected, _ := h.searchTab().selectedItem(); selected.name != "Oldest" {
-		t.Fatalf("selected = %q, want the oldest album", selected.name)
-	}
-}
-
 func TestSearchShowsEachResultOnce(t *testing.T) {
 	api := searchAPI()
 	api.searchItems["track"] = []string{
@@ -431,33 +336,81 @@ func TestSearchShowsEachResultOnce(t *testing.T) {
 	}
 }
 
-func TestSearchAlbumsStartAtTheNewest(t *testing.T) {
+func radioheadAndTimBernardesAPI() *fakeAPI {
 	api := searchAPI()
-	var albums []string
-	for i := range 40 {
-		// Each page holds newer albums than the one before.
-		year := 1980 + i
-		albums = append(albums, albumJSON(fmt.Sprintf("al%d", i), fmt.Sprintf("Album %d", year), "album", strconv.Itoa(year), "year", 10, "Radiohead"))
+	radiohead := []string{
+		albumJSON("rh-okc", "OK Computer", "album", "1997-05-21", "day", 12, "Radiohead"),
+		albumJSON("rh-kida", "Kid A", "album", "2000-10-02", "day", 10, "Radiohead"),
+		albumJSON("rh-rainbows", "In Rainbows", "album", "2007-12-28", "day", 10, "Radiohead"),
+		albumJSON("rh-moon", "A Moon Shaped Pool", "album", "2016-05-08", "day", 11, "Radiohead"),
+		albumJSON("rh-bends", "The Bends", "album", "1995-03-13", "day", 12, "Radiohead"),
+		albumJSON("rh-pablo", "Pablo Honey", "album", "1993-02-22", "day", 12, "Radiohead"),
+		albumJSON("rh-hail", "Hail to the Thief", "album", "2003-06-09", "day", 14, "Radiohead"),
+		albumJSON("rh-amnesiac", "Amnesiac", "album", "2001-06-05", "day", 11, "Radiohead"),
+		albumJSON("rh-limbs", "The King of Limbs", "album", "2011-02-18", "day", 8, "Radiohead"),
+		albumJSON("rh-mnesia", "KID A MNESIA", "album", "2021-11-05", "day", 34, "Radiohead"),
 	}
-	api.searchItems["album"] = albums
+	// Spotify keeps returning albums past the relevant ones, loosely related
+	// or not at all, and many are newer than the relevant ones.
+	for i := range 30 {
+		radiohead = append(radiohead, albumJSON(fmt.Sprintf("other%d", i), fmt.Sprintf("Lo-Fi Beats Vol. %d", i), "album", strconv.Itoa(2022+i%4), "year", 20, "Chill Study Crew"))
+	}
+	api.searchByQuery = map[string]map[string][]string{
+		"radiohead": {
+			"track":  {albumTrackJSON("Creep", "Radiohead", 238000, true)},
+			"artist": {artistJSON("ar-rh", "Radiohead")},
+			"album":  radiohead,
+		},
+		"tim bernardes": {
+			"album": {
+				albumJSON("tb-recomecar", "Recomeçar", "album", "2017-07-28", "day", 11, "Tim Bernardes"),
+				albumJSON("tb-mil", "Mil Coisas Invisíveis", "album", "2022-06-10", "day", 15, "Tim Bernardes"),
+			},
+			"artist": {artistJSON("ar-tb", "Tim Bernardes")},
+			"track":  {albumTrackJSON("Recomeçar", "Tim Bernardes", 300000, true)},
+		},
+	}
+	return api
+}
+
+func TestSearchListsAlbumsInSpotifysOrder(t *testing.T) {
+	api := radioheadAndTimBernardesAPI()
 	h := newHarnessWith(t, api, 120, 40)
 	h.send(key("left"))
 	h.searchFor("radiohead")
 
-	// Go to Albums on the left, as a person does, and tab to its results.
+	// Chico's steps: go to Albums, search again from Albums, then go to
+	// Artists and back.
 	h.send(keys("tab", "down", "down")...)
-	if got := searchCategories[h.searchTab().category].name; got != "Albums" {
-		t.Fatalf("category = %q, want Albums", got)
-	}
 	h.send(key("tab"))
+	h.wantSearchAlbumsInOrder(api.searchByQuery["radiohead"]["album"])
 
-	names := h.searchResultNames()
-	if len(names) <= 10 {
-		t.Fatalf("albums = %d, want more pages loaded to fill the list", len(names))
+	h.searchAgain("tim bernardes")
+	h.wantSearchAlbumsInOrder(api.searchByQuery["tim bernardes"]["album"])
+
+	h.send(key("tab"), key("up"), key("down"), key("tab"))
+	h.wantSearchAlbumsInOrder(api.searchByQuery["tim bernardes"]["album"])
+}
+
+// wantSearchAlbumsInOrder checks that the Albums results start with the
+// albums of spotify, in its order, with the first one selected.
+func (h *harness) wantSearchAlbumsInOrder(spotify []string) {
+	h.t.Helper()
+
+	if got := searchCategories[h.searchTab().category].name; got != "Albums" {
+		h.t.Fatalf("category = %q, want Albums", got)
 	}
-	selected, _ := h.searchTab().selectedItem()
-	if selected.name != names[0] || h.searchTab().selectedResults().list.Index() != 0 {
-		t.Fatalf("selected = %q at %d, want the first album %q", selected.name, h.searchTab().selectedResults().list.Index(), names[0])
+	r := h.searchTab().selectedResults()
+	items := r.list.Items()
+	if len(items) == 0 || len(items) > len(spotify) {
+		h.t.Fatalf("albums = %d, want between 1 and %d:\n%s", len(items), len(spotify), h.view())
 	}
-	h.wantView("> " + names[0])
+	for i, li := range items {
+		if want := fmt.Sprintf(`"uri":"spotify:album:%s"`, li.(searchItem).id); !strings.Contains(spotify[i], want) {
+			h.t.Fatalf("album %d = %q, want Spotify's album %d: %s\n%s", i, li.(searchItem).name, i, spotify[i], h.view())
+		}
+	}
+	if r.list.Index() != 0 {
+		h.t.Fatalf("selected album = %d, want the first", r.list.Index())
+	}
 }

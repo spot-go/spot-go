@@ -84,6 +84,7 @@ type (
 		artistAlbums   map[string][]string
 		onPlay         func(*fakeAPI)
 		searchItems    map[string][]string
+		searchByQuery  map[string]map[string][]string
 		searches       []url.Values
 		searchStatus   int
 		playLag        int
