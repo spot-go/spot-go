@@ -64,7 +64,15 @@ Spotify may only list the songs of playlists you own or collaborate on, dependin
 
 The Search tab searches the Spotify catalog. Press `/`, type what you want to listen to and press `enter`. While you type, every key goes to the search, so `space`, `k`, `+`, `-`, `←` and `→` don't control Spotify or switch tabs. `esc` goes back to the results without searching.
 
-The left side lists the kinds of results, with how many Spotify found of each: songs, artists, albums, playlists, podcasts and episodes. The right side lists the results of the selected kind. `tab` moves between the two sides, and `r` searches again. The Web API returns at most 10 results of each kind per request, so spot-go loads more as you move down the list, up to the first 1000.
+The left side lists the kinds of results: all, songs, artists, albums, playlists, podcasts and episodes. Next to each kind is how many Spotify found, and next to All is how many results it mixes. The right side lists the results of the selected kind, in Spotify's order. `tab` moves between the two sides, and `r` searches again. The Web API returns at most 10 results of each kind per request, so spot-go loads more as you move down the list, up to the first 1000.
+
+All comes first and mixes the kinds, as in the Spotify app, with the kind of each result next to it. The Web API has no mixed search, so spot-go builds it from the first 10 results of each kind:
+
+- The top result comes first: the artist or podcast named exactly as your search, ignoring case and accents, or else the first artist, or else the first podcast.
+- Then the albums, songs and playlists, taking the next one of each kind in turn: the first album, the first song, the first playlist, the second album, and so on.
+- Then the podcasts and episodes the same way. When the top result is a podcast, they come before the music.
+
+All doesn't load more results. To see more of a kind, select that kind.
 
 `enter` plays the selected song or episode, the selected album or playlist from the start, or the selected artist, and Spotify picks the songs. On a podcast, it plays the newest episode, from where you stopped. An episode also plays from where you stopped.
 

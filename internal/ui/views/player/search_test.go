@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/spot-go/spot-go/internal/spotify"
 )
 
 var searchResponseKeys = map[string]string{
@@ -153,16 +155,30 @@ func TestSearchFindsEveryKind(t *testing.T) {
 	if q.Get("q") != "beatles" || q.Get("type") != "track,artist,album,playlist,show,episode" || q.Get("offset") != "0" {
 		t.Fatalf("search query = %v", q)
 	}
+	if got := searchCategories[h.searchTab().category].name; got != "All" {
+		t.Fatalf("category = %q, want All first", got)
+	}
+	h.wantView("All", "Songs", "Artists", "Albums", "Playlists", "Podcasts", "Episodes")
+
+	h.selectSearchCategory("Songs")
 	if got, want := h.searchResultNames(), []string{"Come Together", "Her Majesty"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("songs = %v, want %v", got, want)
 	}
-	h.wantView("Come Together - The Beatles", "4:19", "Songs", "Artists", "Albums", "Playlists", "Podcasts", "Episodes")
+	h.wantView("Come Together - The Beatles", "4:19")
 
 	h.selectSearchCategory("Playlists")
 	if got, want := h.searchResultNames(), []string{"Beatles Best"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("playlists = %v, want %v", got, want)
 	}
 	h.wantView("Beatles Best by Ana")
+	if got, want := h.searchResultLines(), []string{"Beatles Best | Ana"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("playlist rows = %v, want the owner only in the detail column: %v", got, want)
+	}
+
+	h.selectSearchCategory("Podcasts")
+	if got, want := h.searchResultLines(), []string{"Morning Briefing | The Daily"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("podcast rows = %v, want the publisher only in the detail column: %v", got, want)
+	}
 
 	h.selectSearchCategory("Episodes")
 	h.wantView(`No episodes found for "beatles".`)
@@ -193,6 +209,7 @@ func TestSearchPlaysEachKind(t *testing.T) {
 	h := newHarnessWith(t, searchAPI(), 120, 40)
 	h.send(key("left"))
 	h.searchFor("beatles")
+	h.selectSearchCategory("Songs")
 
 	h.send(key("enter"))
 	h.wantBody(0, map[string]any{"uris": []any{"spotify:track:" + fmt.Sprintf("%x", "Come Together")}})
@@ -222,6 +239,7 @@ func TestSearchLoadsMoreAsYouMoveDown(t *testing.T) {
 	h := newHarnessWith(t, api, 120, 14)
 	h.send(key("left"))
 	h.searchFor("milton")
+	h.selectSearchCategory("Songs")
 
 	if got := len(h.searchResultNames()); got != 10 {
 		t.Fatalf("songs = %d, want the first 10", got)
@@ -253,7 +271,13 @@ func TestSearchFillsTheListRightAway(t *testing.T) {
 	h := newHarnessWith(t, api, 120, 40)
 	h.send(key("left"))
 	h.searchFor("milton")
+	h.selectSearchCategory("Songs")
 
+	// Searching again from Songs keeps Songs, and fills it without a key.
+	h.searchAgain("milton nascimento")
+	if got := searchCategories[h.searchTab().category].name; got != "Songs" {
+		t.Fatalf("category = %q, want Songs", got)
+	}
 	if got := len(h.searchResultNames()); got != 25 {
 		t.Fatalf("songs = %d, want all 25 to fill the list without a key", got)
 	}
@@ -318,6 +342,25 @@ func TestSearchDoesNotPlayResultsOfAnEarlierSearch(t *testing.T) {
 	h.send(key("enter"), key("down"))
 	h.wantPlays(0)
 	h.dontWantView("Come Together")
+	if got := len(h.searchTab().results); got != 0 {
+		t.Fatalf("results of %d kinds kept, want the earlier search's results cleared", got)
+	}
+}
+
+func TestSearchIgnoresAnEarlierSearchThatLoadsLate(t *testing.T) {
+	h := newHarnessWith(t, timBernardesAPI(), 120, 40)
+	h.send(key("left"))
+	h.searchFor("tim bernardes")
+	earlier := h.searchTab().gen
+	h.searchAgain("MORNING briefing")
+
+	h.send(searchLoaded{gen: earlier, results: spotify.SearchResults{
+		Songs: []spotify.PlaylistItem{{Name: "Ghost Song", URI: "spotify:track:ghost", Playable: true}},
+		Pages: map[spotify.SearchType]spotify.SearchPage{spotify.SearchSongs: {Next: 1, Total: 1, Last: true}},
+	}})
+
+	h.dontWantView("Ghost Song")
+	h.wantView("Morning Briefing - The Daily")
 }
 
 func TestSearchShowsEachResultOnce(t *testing.T) {
@@ -330,6 +373,16 @@ func TestSearchShowsEachResultOnce(t *testing.T) {
 	h := newHarnessWith(t, api, 120, 40)
 	h.send(key("left"))
 	h.searchFor("beatles")
+	together := 0
+	for _, line := range h.searchResultLines() {
+		if strings.HasPrefix(line, "Come Together") {
+			together++
+		}
+	}
+	if together != 1 {
+		t.Fatalf("All lists Come Together %d times, want once:\n%s", together, strings.Join(h.searchResultLines(), "\n"))
+	}
+	h.selectSearchCategory("Songs")
 
 	if got, want := h.searchResultNames(), []string{"Come Together", "Something"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("songs = %v, want %v", got, want)
@@ -381,7 +434,7 @@ func TestSearchListsAlbumsInSpotifysOrder(t *testing.T) {
 
 	// Chico's steps: go to Albums, search again from Albums, then go to
 	// Artists and back.
-	h.send(keys("tab", "down", "down")...)
+	h.send(keys("tab", "down", "down", "down")...)
 	h.send(key("tab"))
 	h.wantSearchAlbumsInOrder(api.searchByQuery["radiohead"]["album"])
 
@@ -412,5 +465,268 @@ func (h *harness) wantSearchAlbumsInOrder(spotify []string) {
 	}
 	if r.list.Index() != 0 {
 		h.t.Fatalf("selected album = %d, want the first", r.list.Index())
+	}
+}
+
+func playlistJSON(id, name, owner string) string {
+	return fmt.Sprintf(`{"id":%q,"uri":"spotify:playlist:%s","name":%q,"owner":{"display_name":%q}}`, id, id, name, owner)
+}
+
+func searchShowJSON(id, name, publisher string) string {
+	return fmt.Sprintf(`{"id":%q,"uri":"spotify:show:%s","name":%q,"publisher":%q}`, id, id, name, publisher)
+}
+
+// timBernardesAPI returns results like the ones the Spotify app shows for
+// "tim bernardes".
+func timBernardesAPI() *fakeAPI {
+	api := searchAPI()
+	api.searchByQuery = map[string]map[string][]string{
+		"tim bernardes": {
+			"artist": {artistJSON("ar-tb", "Tim Bernardes"), artistJSON("ar-terno", "O Terno")},
+			"album": {
+				albumJSON("al-mil", "Mil Coisas Invisíveis", "album", "2022-06-10", "day", 15, "Tim Bernardes"),
+				albumJSON("al-recomecar", "Recomeçar", "album", "2017-07-28", "day", 11, "Tim Bernardes"),
+				albumJSON("al-atras", "<atrás/além>", "album", "2019-04-02", "day", 10, "O Terno"),
+			},
+			"track": {
+				albumTrackJSON("eu vou", "O Terno", 240000, true),
+				albumTrackJSON("A Balada de Tim Bernardes", "Tim Bernardes", 250000, true),
+				albumTrackJSON("BB (Garupa de Moto Amarela)", "Tim Bernardes", 260000, true),
+			},
+			"playlist": {
+				playlistJSON("pl-this", "This Is Tim Bernardes", "Spotify"),
+				playlistJSON("pl-cala", "cala a boca tim bernardes", "Thales Moutinho"),
+			},
+			"show":    {searchShowJSON("sh-musica", "Música Brasileira Hoje", "Rádio")},
+			"episode": {episodeJSON(testEpisode{name: "Entrevista com Tim Bernardes", date: "2024-03-01", precision: "day", durationMs: 1800000})},
+		},
+		"MORNING briefing": {
+			"artist":  {artistJSON("ar-morning", "Morning Glory")},
+			"show":    {searchShowJSON("s0", "Morning Briefing", "The Daily")},
+			"episode": {episodeJSON(testEpisode{name: "How the Vote Count Works", date: "2024-11-07", precision: "day", durationMs: 3134000})},
+			"track":   {albumTrackJSON("Morning", "Beck", 300000, true)},
+		},
+	}
+	return api
+}
+
+func (h *harness) searchResultLines() []string {
+	var lines []string
+	for _, li := range h.searchTab().selectedResults().list.Items() {
+		item := li.(searchItem)
+		lines = append(lines, item.label()+" | "+item.detail)
+	}
+	return lines
+}
+
+func TestSearchAllMixesTheBestOfEachKind(t *testing.T) {
+	h := newHarnessWith(t, timBernardesAPI(), 120, 40)
+	h.send(key("left"))
+
+	h.searchFor("tim bernardes")
+
+	want := []string{
+		"Tim Bernardes | Artist",
+		"Mil Coisas Invisíveis - Tim Bernardes | Album",
+		"eu vou - O Terno | Song",
+		"This Is Tim Bernardes - Spotify | Playlist",
+		"Recomeçar - Tim Bernardes | Album",
+		"A Balada de Tim Bernardes - Tim Bernardes | Song",
+		"cala a boca tim bernardes - Thales Moutinho | Playlist",
+		"<atrás/além> - O Terno | Album",
+		"BB (Garupa de Moto Amarela) - Tim Bernardes | Song",
+		"Música Brasileira Hoje - Rádio | Podcast",
+		"Entrevista com Tim Bernardes | Episode",
+	}
+	if got := h.searchResultLines(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("all =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if top := h.searchTab().selectedResults().list.Items()[0].(searchItem); !top.top {
+		t.Fatal("the artist is not marked as the top result")
+	}
+	for _, row := range []string{`> Tim Bernardes +Artist +│`, `This Is Tim Bernardes - Spotify +Playlist +│`, `eu vou - O Terno +Song +│`, `Recomeçar - Tim Bernardes +Album +│`, `Entrevista com Tim Bernardes +Episode +│`} {
+		if !regexp.MustCompile(row).MatchString(h.view()) {
+			t.Fatalf("view has no row matching %q:\n%s", row, h.view())
+		}
+	}
+	h.send(key("tab"))
+	h.wantView(`Results for "tim bernardes"`)
+	if !regexp.MustCompile(`All +11 │`).MatchString(h.view()) {
+		t.Fatalf("view does not count 11 results:\n%s", h.view())
+	}
+}
+
+func TestSearchAllPutsAPodcastNamedLikeTheSearchFirst(t *testing.T) {
+	h := newHarnessWith(t, timBernardesAPI(), 120, 40)
+	h.send(key("left"))
+
+	h.searchFor("MORNING briefing")
+
+	want := []string{
+		"Morning Briefing - The Daily | Podcast",
+		"How the Vote Count Works | Episode",
+		"Morning - Beck | Song",
+	}
+	if got := h.searchResultLines(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("all =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestSearchAllPlaysEachKind(t *testing.T) {
+	h := newHarnessWith(t, timBernardesAPI(), 120, 40)
+	h.send(key("left"))
+	h.searchFor("tim bernardes")
+
+	h.send(key("enter"))
+	h.wantBody(0, map[string]any{"context_uri": "spotify:artist:ar-tb"})
+
+	h.send(key("down"), key("enter"))
+	h.wantPlay(1, "spotify:album:al-mil", 0)
+
+	h.send(key("down"), key("enter"))
+	h.wantBody(2, map[string]any{"uris": []any{"spotify:track:" + fmt.Sprintf("%x", "eu vou")}})
+	h.wantView("⏸ eu vou — O Terno")
+
+	h.send(key("down"), key("enter"))
+	h.wantPlay(3, "spotify:playlist:pl-this", 0)
+}
+
+func TestSearchAllDoesNotLoadMore(t *testing.T) {
+	h := newHarnessWith(t, timBernardesAPI(), 120, 14)
+	h.send(key("left"))
+	h.searchFor("tim bernardes")
+
+	h.send(key("end"), key("down"), key("end"))
+
+	if got := len(h.api.searches); got != 1 {
+		t.Fatalf("searches = %d, want only the first one: All mixes the first page of each kind", got)
+	}
+}
+
+func TestSearchAllWithoutResults(t *testing.T) {
+	api := timBernardesAPI()
+	api.searchByQuery["zzzz"] = map[string][]string{}
+	h := newHarnessWith(t, api, 120, 40)
+	h.send(key("left"))
+
+	h.searchFor("zzzz")
+
+	h.wantView(`No results found for "zzzz".`)
+	h.send(key("enter"))
+	h.wantPlays(0)
+}
+
+func TestSearchAllWithoutAnExactMatch(t *testing.T) {
+	h := newHarnessWith(t, searchAPI(), 120, 40)
+	h.send(key("left"))
+
+	h.searchFor("beatles")
+
+	want := []string{
+		"The Beatles | Artist",
+		"Abbey Road - The Beatles | Album",
+		"Come Together - The Beatles | Song",
+		"Beatles Best - Ana | Playlist",
+		"Her Majesty - The Beatles | Song",
+		"Morning Briefing - The Daily | Podcast",
+	}
+	if got := h.searchResultLines(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("all =\n%s\nwant the first artist on top\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestSearchAllTopResultIsTheExactNameAnywhereInItsKind(t *testing.T) {
+	api := timBernardesAPI()
+	api.searchByQuery["o terno"] = api.searchByQuery["tim bernardes"]
+	api.searchByQuery["musica  brasileira HOJE"] = api.searchByQuery["tim bernardes"]
+	h := newHarnessWith(t, api, 120, 40)
+	h.send(key("left"))
+
+	h.searchFor("o terno")
+	if got := h.searchResultLines()[0]; got != "O Terno | Artist" {
+		t.Fatalf("top = %q, want the second artist, named as the search", got)
+	}
+
+	// Accents, case and spaces aside, the podcast is named as the search,
+	// so it comes first, before the first artist, with the episodes.
+	h.searchAgain("musica  brasileira HOJE")
+	lines := h.searchResultLines()
+	if want := []string{"Música Brasileira Hoje - Rádio | Podcast", "Entrevista com Tim Bernardes | Episode", "Mil Coisas Invisíveis - Tim Bernardes | Album"}; !reflect.DeepEqual(lines[:3], want) {
+		t.Fatalf("all starts with\n%s\nwant\n%s", strings.Join(lines[:3], "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestSearchAllWithPodcastsAndNoArtists(t *testing.T) {
+	api := timBernardesAPI()
+	api.searchByQuery["daily news"] = map[string][]string{
+		"show":    {searchShowJSON("s0", "Morning Briefing", "The Daily")},
+		"episode": {episodeJSON(testEpisode{name: "Inside the Final Hours", date: "2024-11-06", precision: "day", durationMs: 3600000, resumeMs: 1740000})},
+		"track":   {albumTrackJSON("News", "Band", 200000, true)},
+	}
+	h := newHarnessWith(t, api, 120, 40)
+	h.send(key("left"))
+	h.searchFor("daily news")
+
+	want := []string{
+		"Morning Briefing - The Daily | Podcast",
+		"Inside the Final Hours | Episode",
+		"News - Band | Song",
+	}
+	if got := h.searchResultLines(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("all =\n%s\nwant the first podcast on top\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+
+	// The podcast and the episode play as they do in their own kinds: the
+	// newest episode of the podcast, and the episode from where you stopped.
+	h.send(key("enter"))
+	h.wantEpisodePlay(0, "spotify:show:s0", "How the Vote Count Works", 0)
+	h.send(key("down"), key("enter"))
+	h.wantBody(1, map[string]any{"uris": []any{episodeURI("Inside the Final Hours")}, "position_ms": float64(1740000)})
+}
+
+func TestSearchArrowsBeforeTheFirstSearchKeepAll(t *testing.T) {
+	h := newHarnessWith(t, timBernardesAPI(), 120, 40)
+	h.send(key("left"))
+
+	h.send(keys("down", "down", "up", "down")...)
+	h.searchFor("tim bernardes")
+
+	if got := searchCategories[h.searchTab().category].name; got != "All" {
+		t.Fatalf("category = %q, want All", got)
+	}
+}
+
+func TestSearchAgainLeavesAKindWithoutResults(t *testing.T) {
+	h := newHarnessWith(t, timBernardesAPI(), 120, 40)
+	h.send(key("left"))
+	h.searchFor("tim bernardes")
+	h.selectSearchCategory("Playlists")
+
+	h.searchAgain("MORNING briefing")
+
+	if got := searchCategories[h.searchTab().category].name; got != "All" {
+		t.Fatalf("category = %q, want All when Playlists has nothing", got)
+	}
+	h.dontWantView("No playlists found")
+}
+
+func TestSearchNamesFoldOnlyAccents(t *testing.T) {
+	tests := []struct {
+		a, b string
+		same bool
+	}{
+		{"Beyoncé", "beyonce", true},
+		{"Tim  Bernardes ", " tim bernardes", true},
+		{"Música Brasileira Hoje", "MUSICA brasileira hoje", true},
+		{"Björk", "bjork", true},
+		{"バンド", "ハンド", false},
+		{"ガラス", "カラス", false},
+		{"कुल", "कल", false},
+		{"Tim Bernardes", "O Terno", false},
+	}
+	for _, tt := range tests {
+		if got := sameName(tt.a, tt.b); got != tt.same {
+			t.Errorf("sameName(%q, %q) = %t, want %t", tt.a, tt.b, got, tt.same)
+		}
 	}
 }

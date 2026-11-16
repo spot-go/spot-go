@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/list"
@@ -18,6 +19,9 @@ import (
 	"github.com/spot-go/spot-go/internal/spotify"
 	"github.com/spot-go/spot-go/internal/ui/styles"
 	libspotify "github.com/zmb3/spotify/v2"
+	"golang.org/x/text/runes"
+	"golang.org/x/text/transform"
+	"golang.org/x/text/unicode/norm"
 )
 
 type (
@@ -64,6 +68,8 @@ type (
 		duration time.Duration
 		resume   time.Duration
 		playable bool
+		mixed    bool
+		top      bool
 	}
 
 	searchDelegate struct {
@@ -108,6 +114,10 @@ type (
 	}
 )
 
+// searchAll is the All results: a mix of the other kinds, which the Web API
+// has no type for.
+const searchAll spotify.SearchType = "all"
+
 const (
 	stateSearchIdle = searchState(iota)
 	stateSearchLoading
@@ -124,12 +134,22 @@ const (
 
 var (
 	searchCategories = []searchCategory{
+		{searchAll, "All", "result", "results"},
 		{spotify.SearchSongs, "Songs", "song", "songs"},
 		{spotify.SearchArtists, "Artists", "artist", "artists"},
 		{spotify.SearchAlbums, "Albums", "album", "albums"},
 		{spotify.SearchPlaylists, "Playlists", "playlist", "playlists"},
 		{spotify.SearchShows, "Podcasts", "podcast", "podcasts"},
 		{spotify.SearchEpisodes, "Episodes", "episode", "episodes"},
+	}
+	combiningAccents = &unicode.RangeTable{R16: []unicode.Range16{{Lo: 0x0300, Hi: 0x036F, Stride: 1}}}
+	searchKindLabels = map[spotify.SearchType]string{
+		spotify.SearchSongs:     "Song",
+		spotify.SearchArtists:   "Artist",
+		spotify.SearchAlbums:    "Album",
+		spotify.SearchPlaylists: "Playlist",
+		spotify.SearchShows:     "Podcast",
+		spotify.SearchEpisodes:  "Episode",
 	}
 	searchTitleStyle = lipgloss.NewStyle().
 				Background(styles.LipglossColorBackgroundGreenSpotify).
@@ -159,7 +179,7 @@ func newSearchModel(ctx playerContext) searchModel {
 func (s searchItem) FilterValue() string { return s.name }
 
 func (s searchItem) label() string {
-	if s.artist == "" || s.kind == spotify.SearchShows || s.kind == spotify.SearchPlaylists {
+	if s.artist == "" || !s.mixed && (s.kind == spotify.SearchShows || s.kind == spotify.SearchPlaylists) {
 		return printable(s.name)
 	}
 	return printable(s.name + " - " + s.artist)
@@ -198,6 +218,9 @@ func (d searchDelegate) Render(w io.Writer, m list.Model, index int, li list.Ite
 	}
 	if !item.playable {
 		style = style.Faint(true)
+	}
+	if item.top {
+		style = style.Bold(true)
 	}
 
 	detail := fit(printable(item.detail), max(0, m.Width()/3))
@@ -396,7 +419,10 @@ func (s searchModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return s.play()
 
 	case "up", "down":
-		if s.leftFocus {
+		// The categories show only once a search has loaded, so a key that
+		// moved them before would leave the first search on a kind other
+		// than All.
+		if s.leftFocus && s.state == stateSearchLoaded {
 			if msg.String() == "up" {
 				s.category = max(0, s.category-1)
 			} else {
@@ -446,9 +472,19 @@ func (s *searchModel) search(query string) tea.Cmd {
 func (s *searchModel) loaded(results spotify.SearchResults) {
 	s.state = stateSearchLoaded
 	s.results = make(map[spotify.SearchType]*searchResults, len(searchCategories))
+	byKind := make(map[spotify.SearchType][]list.Item, len(searchCategories))
+	for _, c := range searchCategories {
+		if c.kind != searchAll {
+			byKind[c.kind] = uniqueItems(nil, searchItems(c.kind, results))
+		}
+	}
+	byKind[searchAll] = mixedItems(s.query, byKind)
 	for _, c := range searchCategories {
 		r := &searchResults{page: results.Pages[c.kind]}
-		r.list = s.newRightList(uniqueItems(nil, searchItems(c.kind, results)), searchDelegate{focused: !s.leftFocus && !s.typing}, c.singular, c.plural)
+		if c.kind == searchAll {
+			r.page = spotify.SearchPage{Next: len(byKind[c.kind]), Total: len(byKind[c.kind]), Last: true}
+		}
+		r.list = s.newRightList(byKind[c.kind], searchDelegate{focused: !s.leftFocus && !s.typing}, c.singular, c.plural)
 		s.results[c.kind] = r
 	}
 	if len(s.selectedResults().list.Items()) == 0 {
@@ -500,6 +536,85 @@ func (s searchModel) addPage(msg searchPageLoaded) tea.Cmd {
 		return nil
 	}
 	return s.more()
+}
+
+// mixedItems builds the All results from the first page of each kind, as
+// the Web API has no mixed search. The top result comes first: the artist
+// or podcast named exactly as the search, or else the first artist, or else
+// the first podcast. Then come the albums, songs and playlists, taking the
+// next one of each kind in turn, so the best matches of every kind show
+// near the top; then the podcasts and episodes the same way. When the top
+// result is a podcast, the podcasts and episodes come before the music.
+func mixedItems(query string, byKind map[spotify.SearchType][]list.Item) []list.Item {
+	music := []spotify.SearchType{spotify.SearchAlbums, spotify.SearchSongs, spotify.SearchPlaylists}
+	talk := []spotify.SearchType{spotify.SearchShows, spotify.SearchEpisodes}
+
+	var items []list.Item
+	top, hasTop := topResult(query, byKind)
+	if hasTop {
+		top.mixed, top.top, top.detail = true, true, searchKindLabels[top.kind]
+		items = append(items, top)
+		if top.kind == spotify.SearchShows {
+			music, talk = talk, music
+		}
+	}
+	for _, group := range [][]spotify.SearchType{music, talk} {
+		for rank := 0; ; rank++ {
+			more := false
+			for _, kind := range group {
+				if rank >= len(byKind[kind]) {
+					continue
+				}
+				more = true
+				item := byKind[kind][rank].(searchItem)
+				if hasTop && item.uri == top.uri {
+					continue
+				}
+				item.mixed, item.detail = true, searchKindLabels[kind]
+				items = append(items, item)
+			}
+			if !more {
+				break
+			}
+		}
+	}
+	return items
+}
+
+// topResult picks the top result of the All results among the artists and
+// podcasts: the first one named exactly as query, ignoring case and accents,
+// or else the first artist, or else the first podcast.
+func topResult(query string, byKind map[spotify.SearchType][]list.Item) (searchItem, bool) {
+	kinds := []spotify.SearchType{spotify.SearchArtists, spotify.SearchShows}
+	for _, kind := range kinds {
+		for _, li := range byKind[kind] {
+			if item := li.(searchItem); sameName(item.name, query) {
+				return item, true
+			}
+		}
+	}
+	for _, kind := range kinds {
+		if len(byKind[kind]) > 0 {
+			return byKind[kind][0].(searchItem), true
+		}
+	}
+	return searchItem{}, false
+}
+
+func sameName(a, b string) bool {
+	return foldName(a) == foldName(b)
+}
+
+// foldName drops case, accents and extra spaces, so "Tim  Bernardes" and
+// "tim bernardes" are the same name. Only the accents of the Combining
+// Diacritical Marks block go, as other marks, such as the kana voicing
+// marks or Indic vowel signs, change the letter.
+func foldName(s string) string {
+	folded, _, err := transform.String(transform.Chain(norm.NFD, runes.Remove(runes.In(combiningAccents)), norm.NFC), s)
+	if err != nil {
+		folded = s
+	}
+	return strings.Join(strings.Fields(strings.ToLower(folded)), " ")
 }
 
 // uniqueItems returns a copy of listed followed by the items of page whose
@@ -705,6 +820,9 @@ func (s searchModel) rightView() string {
 	c := searchCategories[s.category]
 	r := s.selectedResults()
 	title := c.name + ` for "` + s.query + `"`
+	if c.kind == searchAll {
+		title = `Results for "` + s.query + `"`
+	}
 	if item, ok := s.selectedItem(); ok && !s.leftFocus {
 		title = item.heading()
 	}
