@@ -42,10 +42,10 @@ The API key is passed to Soloist on its command line, so other users of the same
 
 ## Keys
 
-- `←` and `→` switch tabs.
+- `←` and `→` switch tabs. spot-go opens on the Playlists tab. The Queue and Search tabs are to its left.
 - `↑` and `↓` move in the focused list.
 - `tab` moves between the list on the left and the list on the right: the songs of the selected playlist or album, the episodes of the selected podcast, or the albums of the selected artist.
-- `enter` plays the selected playlist or album from the start, the newest episode of the selected podcast, the selected artist, or the selected song, episode or album.
+- `enter` plays the selected playlist or album from the start, the newest episode of the selected podcast, the selected artist, or the selected song, episode or album. On the Queue tab, it skips to the selected song or episode (see [Queue](#queue)).
 - `/` filters the list on the left. The matches keep the order of the list. On the Search tab, `/` types a search (see [Search](#search)).
 - `r` reloads the list on the right.
 - `s` changes the order of the list on the left: playlists (see [Playlist order](#playlist-order)), podcasts (see [Podcasts](#podcasts)), artists (see [Artists](#artists)) or albums (see [Albums](#albums)).
@@ -59,6 +59,14 @@ On macOS, the play/pause, next and previous keys of the keyboard, and the Now Pl
 On Linux, spot-go shows up as an MPRIS media player on the D-Bus session bus, so the media keys of desktops such as GNOME and KDE, their media controls and `playerctl` work too. Desktops usually send the keys to the player that played last.
 
 Spotify may only list the songs of playlists you own or collaborate on, depending on the mode of the Spotify app. Other playlists still play with `enter`.
+
+## Queue
+
+The Queue tab, the first tab, shows what Spotify plays on any device: the song or episode playing now on the left, and what plays next on the right, in order. The tab loads the queue when you open it, follows Spotify every 5 seconds while it is open, and loads it again right after a skip. `r` loads it again too.
+
+`enter` plays the selected song or episode by skipping to it, as in the Spotify app: Spotify skips the songs before it, and the songs after it stay in the queue. The Web API can't play an item of the queue directly, so spot-go asks Spotify to skip once for each song before it.
+
+The Web API only returns the first part of the queue, usually 20 songs or episodes, and doesn't say which ones you added to the queue and which ones come from the playlist, album or podcast playing, so spot-go lists them together.
 
 ## Search
 

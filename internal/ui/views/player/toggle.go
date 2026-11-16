@@ -153,7 +153,7 @@ func skipPlayback(ctx context.Context, client *spotify.Client, next bool, every 
 		}
 	}
 	toggled := toggledFrom(after, plays, settled)
-	toggled.paused = !after.Playing
+	toggled.paused, toggled.skip = !after.Playing, true
 	return toggled
 }
 

@@ -68,12 +68,14 @@ type (
 )
 
 const (
-	searchTab        = 0
-	playlistsTab     = 1
-	podcastsTab      = 2
-	artistsTab       = 3
-	albumsTab        = 4
+	queueTab         = 0
+	searchTab        = 1
+	playlistsTab     = 2
+	podcastsTab      = 3
+	artistsTab       = 4
+	albumsTab        = 5
 	minContentHeight = 4
+	tabPadding       = 1
 	tooSmallWindow   = "The terminal window is too small. Please make it bigger."
 )
 
@@ -84,7 +86,7 @@ var (
 	inactiveTabStyle  = lipgloss.NewStyle().
 				Border(inactiveTabBorder, true).
 				BorderForeground(styles.LipglossColorForegroundGreenSpotify).
-				Padding(0, 1)
+				Padding(0, tabPadding)
 	activeTabStyle = inactiveTabStyle.Border(activeTabBorder, true)
 	windowStyle    = lipgloss.NewStyle().
 			BorderForeground(styles.LipglossColorForegroundGreenSpotify).
@@ -125,6 +127,7 @@ func NewModel(
 		playerContext: playerContext,
 		WindowSize:    windowSize,
 		tabs: []tab{
+			{name: "Queue", content: newQueueModel(playerContext)},
 			{name: "Search", content: newSearchModel(playerContext)},
 			{name: "Playlists", content: newPlaylistModel(playerContext, historyErr), initialized: true},
 			{name: "Podcasts", content: newPodcastModel(playerContext, historyErr)},
@@ -236,10 +239,13 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case searchPlaybackStarted:
 		return m.playbackStarted(msg, msg.uri, msg.item, msg.info())
 
+	case queuePlaybackStarted:
+		return m.skippedTo(msg)
+
 	case playbackConfirmed:
 		return m.playbackConfirmed(msg)
 
-	case playbackFailed, episodePlaybackFailed, albumPlaybackFailed, artistPlaybackFailed, searchPlaybackFailed:
+	case playbackFailed, episodePlaybackFailed, albumPlaybackFailed, artistPlaybackFailed, searchPlaybackFailed, queuePlaybackFailed:
 		m.toggle.settled++
 		return m, m.broadcast(msg)
 
@@ -269,12 +275,14 @@ func (m Model) switchTab(i int) (Model, tea.Cmd) {
 		return m, nil
 	}
 
+	hidden := m.updateTab(m.activeTab, tabHidden{})
 	m.activeTab = i
-	if m.tabs[i].initialized {
-		return m, nil
+	var init tea.Cmd
+	if !m.tabs[i].initialized {
+		m.tabs[i].initialized = true
+		init = m.tabs[i].content.Init()
 	}
-	m.tabs[i].initialized = true
-	return m, m.tabs[i].content.Init()
+	return m, tea.Batch(hidden, init, m.updateTab(i, tabShown{}))
 }
 
 func (m Model) updateTab(i int, msg tea.Msg) tea.Cmd {
@@ -316,7 +324,17 @@ func (m Model) activeCapturesInput() bool {
 	return ok && c.capturesInput()
 }
 
+// tabRow is the row of tabs. When it doesn't fit the window, the tabs drop
+// the space around their names.
 func (m Model) tabRow() string {
+	row := m.tabRowWith(tabPadding)
+	if lipgloss.Width(row) > m.Width {
+		row = m.tabRowWith(0)
+	}
+	return row
+}
+
+func (m Model) tabRowWith(padding int) string {
 	var renderedTabs []string
 	for i, t := range m.tabs {
 		var style lipgloss.Style
@@ -328,6 +346,7 @@ func (m Model) tabRow() string {
 		} else {
 			style = inactiveTabStyle
 		}
+		style = style.Padding(0, padding)
 		border, _, _, _, _ := style.GetBorder()
 		if isFirst && isActive {
 			border.BottomLeft = "│"

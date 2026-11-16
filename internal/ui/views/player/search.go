@@ -151,10 +151,6 @@ var (
 		spotify.SearchShows:     "Podcast",
 		spotify.SearchEpisodes:  "Episode",
 	}
-	searchTitleStyle = lipgloss.NewStyle().
-				Background(styles.LipglossColorBackgroundGreenSpotify).
-				Foreground(styles.LipglossColorBlack).
-				Padding(0, 1)
 )
 
 func newSearchModel(ctx playerContext) searchModel {
@@ -738,7 +734,7 @@ func (s searchModel) View() tea.View {
 
 func (s searchModel) leftView() string {
 	width := s.leftWidth()
-	lines := []string{searchTitleStyle.Render("Search"), "", fit(s.input.View(), width), ""}
+	lines := []string{paneTitleStyle.Render("Search"), "", fit(s.input.View(), width), ""}
 	if s.state == stateSearchLoaded {
 		for i, c := range searchCategories {
 			lines = append(lines, s.categoryLine(i, c, width))
