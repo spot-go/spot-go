@@ -83,6 +83,10 @@ type (
 		artistRequests int
 		artistAlbums   map[string][]string
 		onPlay         func(*fakeAPI)
+		searchItems    map[string][]string
+		searchByQuery  map[string]map[string][]string
+		searches       []url.Values
+		searchStatus   int
 		playLag        int
 		started        func(*fakeAPI)
 	}
@@ -425,6 +429,9 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 			return errorResponse(r, http.StatusBadRequest, "missing limit=10, market=from_token or include_groups"), nil
 		}
 		return f.page(r, id, f.artistAlbums[id], query), nil
+
+	case path == "search":
+		return f.search(r), nil
 
 	case path == "me/player/play" && r.Method == http.MethodPut:
 		var body map[string]any
@@ -776,7 +783,7 @@ func tabSize(content tea.Model) contentDimension {
 		return contentDimension{width: c.width, height: c.height}
 	case albumModel:
 		return contentDimension{width: c.width, height: c.height}
-	case placeholderModel:
+	case searchModel:
 		return contentDimension{width: c.width, height: c.height}
 	}
 	return contentDimension{}

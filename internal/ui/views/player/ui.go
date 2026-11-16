@@ -68,6 +68,7 @@ type (
 )
 
 const (
+	searchTab        = 0
 	playlistsTab     = 1
 	podcastsTab      = 2
 	artistsTab       = 3
@@ -124,7 +125,7 @@ func NewModel(
 		playerContext: playerContext,
 		WindowSize:    windowSize,
 		tabs: []tab{
-			placeholderTab("Search"),
+			{name: "Search", content: newSearchModel(playerContext)},
 			{name: "Playlists", content: newPlaylistModel(playerContext, historyErr), initialized: true},
 			{name: "Podcasts", content: newPodcastModel(playerContext, historyErr)},
 			{name: "Artists", content: newArtistModel(playerContext, historyErr)},
@@ -232,10 +233,13 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case artistPlaybackStarted:
 		return m.playbackStarted(msg, msg.uri, "", msg.info())
 
+	case searchPlaybackStarted:
+		return m.playbackStarted(msg, msg.uri, msg.item, msg.info())
+
 	case playbackConfirmed:
 		return m.playbackConfirmed(msg)
 
-	case playbackFailed, episodePlaybackFailed, albumPlaybackFailed, artistPlaybackFailed:
+	case playbackFailed, episodePlaybackFailed, albumPlaybackFailed, artistPlaybackFailed, searchPlaybackFailed:
 		m.toggle.settled++
 		return m, m.broadcast(msg)
 

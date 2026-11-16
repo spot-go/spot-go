@@ -601,8 +601,11 @@ func TestProgressTicksOnEveryTab(t *testing.T) {
 
 	h.send(keys("left", "left", "left", "left")...)
 	h.send(progressTicked{})
-	if len(*ticks) != albumsTab {
-		t.Fatalf("ticks = %v, want none on the Search tab", *ticks)
+	if got := h.player().activeTab; got != searchTab {
+		t.Fatalf("activeTab = %d, want the Search tab", got)
+	}
+	if len(*ticks) != albumsTab+1 {
+		t.Fatalf("ticks = %v, want one on the Search tab too", *ticks)
 	}
 }
 func TestNowPlayingLineFitsEveryWidth(t *testing.T) {
