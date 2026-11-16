@@ -126,18 +126,19 @@ func (h *harness) wantQueueReads(n int) {
 	}
 }
 
-func TestQueueIsTheFirstTab(t *testing.T) {
+func TestQueueIsBetweenSearchAndPlaylists(t *testing.T) {
 	h := newHarness(t, 120, 40)
 
-	if got := h.player().tabs[0].name; got != "Queue" {
-		t.Fatalf("first tab = %q, want Queue", got)
+	var got []string
+	for _, tab := range h.player().tabs[:3] {
+		got = append(got, tab.name)
+	}
+	if want := []string{"Search", "Queue", "Playlists"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("first tabs = %q, want %q", got, want)
 	}
 	names := strings.SplitN(h.view(), "\n", 3)[1]
-	if strings.Index(names, "Queue") > strings.Index(names, "Search") {
-		t.Fatalf("tab names = %q, want Queue left of Search", names)
-	}
-	if got := h.player().activeTab; got != playlistsTab {
-		t.Fatalf("activeTab = %d, want spot-go to still open on the Playlists tab", got)
+	if search, queue := strings.Index(names, "Search"), strings.Index(names, "Queue"); search < 0 || queue < search {
+		t.Fatalf("tab names = %q, want Search, then Queue", names)
 	}
 }
 

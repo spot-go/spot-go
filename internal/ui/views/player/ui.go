@@ -68,8 +68,8 @@ type (
 )
 
 const (
-	queueTab         = 0
-	searchTab        = 1
+	searchTab        = 0
+	queueTab         = 1
 	playlistsTab     = 2
 	podcastsTab      = 3
 	artistsTab       = 4
@@ -127,14 +127,16 @@ func NewModel(
 		playerContext: playerContext,
 		WindowSize:    windowSize,
 		tabs: []tab{
+			{name: "Search", content: newSearchModel(playerContext), initialized: true},
 			{name: "Queue", content: newQueueModel(playerContext)},
-			{name: "Search", content: newSearchModel(playerContext)},
+			// The Playlists tab loads at the start even though spot-go opens
+			// on Search: it follows what Spotify plays, for every tab.
 			{name: "Playlists", content: newPlaylistModel(playerContext, historyErr), initialized: true},
 			{name: "Podcasts", content: newPodcastModel(playerContext, historyErr)},
 			{name: "Artists", content: newArtistModel(playerContext, historyErr)},
 			{name: "Albums", content: newAlbumModel(playerContext, historyErr)},
 		},
-		activeTab:     playlistsTab,
+		activeTab:     searchTab,
 		volumeSaver:   newVolumeSaver(saveVolume),
 		confirmEvery:  confirmPollEvery,
 		startPolls:    confirmPolls,
@@ -147,7 +149,13 @@ func NewModel(
 }
 
 func (m Model) Init() tea.Cmd {
-	return m.tabs[m.activeTab].content.Init()
+	var cmds []tea.Cmd
+	for _, t := range m.tabs {
+		if t.initialized {
+			cmds = append(cmds, t.content.Init())
+		}
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

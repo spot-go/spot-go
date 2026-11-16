@@ -599,7 +599,7 @@ func TestProgressTicksOnEveryTab(t *testing.T) {
 		}
 	}
 
-	for _, tab := range []int{searchTab, queueTab} {
+	for _, tab := range []int{queueTab, searchTab} {
 		for h.player().activeTab > tab {
 			h.send(key("left"))
 		}

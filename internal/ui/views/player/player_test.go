@@ -633,6 +633,9 @@ func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model
 	client := spotify.NewClient(&http.Client{Transport: api})
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: width, Height: height}}
 	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store, nil, nil)
+	// spot-go opens on the Search tab (see TestSpotGoOpensOnTheSearchTab),
+	// but most tests start on the Playlists tab, which loads at the start.
+	m.activeTab = playlistsTab
 	m.confirmEvery = time.Millisecond
 	m.startPolls = 0
 	m.progressEvery = 0
@@ -863,6 +866,40 @@ func TestPlaylistsLoad(t *testing.T) {
 	h.send(tea.WindowSizeMsg{Width: 120, Height: 40})
 	if resized := h.view(); resized != v {
 		t.Fatalf("the first WindowSizeMsg changed the view, so the initial size was wrong:\nbefore:\n%s\nafter:\n%s", v, resized)
+	}
+}
+
+func TestSpotGoOpensOnTheSearchTab(t *testing.T) {
+	api := soWhatOnPhone()
+	client := spotify.NewClient(&http.Client{Transport: api})
+	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: 120, Height: 40}}
+	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, nil, nil, nil)
+	m.progressEvery = 0
+	playlists := m.tabs[playlistsTab].content.(playlistModel)
+	playlists.after = testAfter
+	m.tabs[playlistsTab].content = playlists
+	h := &harness{t: t, api: api, model: m, holdTimers: true}
+
+	h.run(m.Init())
+
+	if got := h.player().activeTab; got != searchTab {
+		t.Fatalf("activeTab = %d, want the Search tab", got)
+	}
+	h.wantView(searchHelpText)
+	// The Playlists tab still loads, to follow what Spotify plays.
+	if h.playlistLoads != 1 {
+		t.Fatalf("playlists loaded %d times, want 1", h.playlistLoads)
+	}
+	h.wantView("⏸ So What — Miles Davis")
+
+	h.send(key("right"))
+	if got := h.player().activeTab; got != queueTab {
+		t.Fatalf("activeTab = %d, want the Queue tab right of Search", got)
+	}
+	h.send(key("right"))
+	h.wantView("Rock", "Jazz")
+	if h.playlistLoads != 1 {
+		t.Fatalf("playlists loaded %d times, want them loaded once", h.playlistLoads)
 	}
 }
 
@@ -1121,13 +1158,13 @@ func TestViewFitsTheWindow(t *testing.T) {
 func TestOversizedTabContentIsClipped(t *testing.T) {
 	h := newHarness(t, 80, 24)
 	m := h.player()
-	m.tabs[queueTab] = tab{name: "Queue", content: tallModel{}}
+	m.tabs[searchTab] = tab{name: "Search", content: tallModel{}}
 	h.model = m
 
 	h.send(keys("left", "left")...)
 
 	v := h.view()
-	if h.player().activeTab != queueTab || lipgloss.Height(v) > 24 || lipgloss.Width(v) > 80 || !strings.Contains(strings.SplitN(v, "\n", 3)[1], "Queue") {
+	if h.player().activeTab != searchTab || lipgloss.Height(v) > 24 || lipgloss.Width(v) > 80 || !strings.Contains(strings.SplitN(v, "\n", 3)[1], "Search") {
 		t.Fatalf("oversized content pushed the tab bar out of the window:\n%s", v)
 	}
 }
