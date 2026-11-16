@@ -501,11 +501,15 @@ func (s searchModel) addPage(msg searchPageLoaded) tea.Cmd {
 	}
 	r.loading = false
 	r.page = msg.results.Pages[msg.kind]
-	below := len(r.list.Items()) - r.list.Index()
+	index := r.list.Index()
+	below := len(r.list.Items()) - index
 	selected, hasSelected := r.list.SelectedItem().(searchItem)
 	items := sortSearchItems(msg.kind, uniqueItems(r.list.Items(), searchItems(msg.kind, msg.results)))
 	r.list.SetItems(items)
-	if hasSelected && msg.kind == spotify.SearchAlbums {
+	// Sorted albums from the new page can land above the selection. A
+	// selection at the top stays at the top, on the newest album; one
+	// further down stays on the same album.
+	if hasSelected && msg.kind == spotify.SearchAlbums && index > 0 {
 		for i, li := range items {
 			if li.(searchItem).uri == selected.uri {
 				r.list.Select(i)

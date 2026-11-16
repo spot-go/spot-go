@@ -430,3 +430,34 @@ func TestSearchShowsEachResultOnce(t *testing.T) {
 		t.Fatalf("songs = %v, want %v", got, want)
 	}
 }
+
+func TestSearchAlbumsStartAtTheNewest(t *testing.T) {
+	api := searchAPI()
+	var albums []string
+	for i := range 40 {
+		// Each page holds newer albums than the one before.
+		year := 1980 + i
+		albums = append(albums, albumJSON(fmt.Sprintf("al%d", i), fmt.Sprintf("Album %d", year), "album", strconv.Itoa(year), "year", 10, "Radiohead"))
+	}
+	api.searchItems["album"] = albums
+	h := newHarnessWith(t, api, 120, 40)
+	h.send(key("left"))
+	h.searchFor("radiohead")
+
+	// Go to Albums on the left, as a person does, and tab to its results.
+	h.send(keys("tab", "down", "down")...)
+	if got := searchCategories[h.searchTab().category].name; got != "Albums" {
+		t.Fatalf("category = %q, want Albums", got)
+	}
+	h.send(key("tab"))
+
+	names := h.searchResultNames()
+	if len(names) <= 10 {
+		t.Fatalf("albums = %d, want more pages loaded to fill the list", len(names))
+	}
+	selected, _ := h.searchTab().selectedItem()
+	if selected.name != names[0] || h.searchTab().selectedResults().list.Index() != 0 {
+		t.Fatalf("selected = %q at %d, want the first album %q", selected.name, h.searchTab().selectedResults().list.Index(), names[0])
+	}
+	h.wantView("> " + names[0])
+}
