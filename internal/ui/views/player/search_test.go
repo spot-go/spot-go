@@ -64,6 +64,14 @@ func searchAPI() *fakeAPI {
 	return api
 }
 
+func (h *harness) openSearchTab() {
+	h.t.Helper()
+
+	for h.player().activeTab > searchTab {
+		h.send(key("left"))
+	}
+}
+
 func (h *harness) searchTab() searchModel {
 	return h.player().tabs[searchTab].content.(searchModel)
 }
@@ -134,7 +142,7 @@ func (h *harness) wantBody(i int, want map[string]any) {
 func TestSearchTabStartsWithAHint(t *testing.T) {
 	h := newHarnessWith(t, searchAPI(), 120, 40)
 
-	h.send(key("left"))
+	h.openSearchTab()
 
 	h.wantView("Search", searchHelpText, "/ search")
 	if len(h.api.searches) != 0 {
@@ -144,7 +152,7 @@ func TestSearchTabStartsWithAHint(t *testing.T) {
 
 func TestSearchFindsEveryKind(t *testing.T) {
 	h := newHarnessWith(t, searchAPI(), 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 
 	h.searchFor("beatles")
 
@@ -186,7 +194,7 @@ func TestSearchFindsEveryKind(t *testing.T) {
 
 func TestSearchKeysAreTypedWhileTyping(t *testing.T) {
 	h := newHarnessWith(t, playingOnPhone(), 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 
 	h.send(keys("/", "k", "space", "+", "left", "right", "r")...)
 
@@ -207,7 +215,7 @@ func TestSearchKeysAreTypedWhileTyping(t *testing.T) {
 
 func TestSearchPlaysEachKind(t *testing.T) {
 	h := newHarnessWith(t, searchAPI(), 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 	h.searchFor("beatles")
 	h.selectSearchCategory("Songs")
 
@@ -237,7 +245,7 @@ func TestSearchLoadsMoreAsYouMoveDown(t *testing.T) {
 	api := searchAPI()
 	api.searchItems["track"] = manyAlbumTracksJSON(25)
 	h := newHarnessWith(t, api, 120, 14)
-	h.send(key("left"))
+	h.openSearchTab()
 	h.searchFor("milton")
 	h.selectSearchCategory("Songs")
 
@@ -269,7 +277,7 @@ func TestSearchFillsTheListRightAway(t *testing.T) {
 	api := searchAPI()
 	api.searchItems["track"] = manyAlbumTracksJSON(25)
 	h := newHarnessWith(t, api, 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 	h.searchFor("milton")
 	h.selectSearchCategory("Songs")
 
@@ -287,7 +295,7 @@ func TestSearchErrorsCanBeRetried(t *testing.T) {
 	api := searchAPI()
 	api.searchStatus = http.StatusInternalServerError
 	h := newHarnessWith(t, api, 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 	h.searchFor("beatles")
 
 	h.wantView("Fail to search:", "search failed", "Press r to try again.")
@@ -302,7 +310,7 @@ func TestSearchErrorsCanBeRetried(t *testing.T) {
 
 func TestSearchAgainKeepsTheQuery(t *testing.T) {
 	h := newHarnessWith(t, searchAPI(), 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 	h.searchFor("beatles")
 
 	h.send(key("/"))
@@ -319,7 +327,7 @@ func TestSearchAgainKeepsTheQuery(t *testing.T) {
 func TestSearchFitsSmallWindows(t *testing.T) {
 	for _, width := range []int{40, 60, 80} {
 		h := newHarnessWith(t, searchAPI(), width, 20)
-		h.send(key("left"))
+		h.openSearchTab()
 		h.searchFor("beatles")
 		for row := range strings.SplitSeq(h.view(), "\n") {
 			if got := ansi.StringWidth(row); got > width {
@@ -332,7 +340,7 @@ func TestSearchFitsSmallWindows(t *testing.T) {
 func TestSearchDoesNotPlayResultsOfAnEarlierSearch(t *testing.T) {
 	api := searchAPI()
 	h := newHarnessWith(t, api, 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 	h.searchFor("beatles")
 
 	api.set(func(f *fakeAPI) { f.searchStatus = http.StatusInternalServerError })
@@ -349,7 +357,7 @@ func TestSearchDoesNotPlayResultsOfAnEarlierSearch(t *testing.T) {
 
 func TestSearchIgnoresAnEarlierSearchThatLoadsLate(t *testing.T) {
 	h := newHarnessWith(t, timBernardesAPI(), 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 	h.searchFor("tim bernardes")
 	earlier := h.searchTab().gen
 	h.searchAgain("MORNING briefing")
@@ -371,7 +379,7 @@ func TestSearchShowsEachResultOnce(t *testing.T) {
 		albumTrackJSON("Come Together", "The Beatles", 259000, true),
 	}
 	h := newHarnessWith(t, api, 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 	h.searchFor("beatles")
 	together := 0
 	for _, line := range h.searchResultLines() {
@@ -429,7 +437,7 @@ func radioheadAndTimBernardesAPI() *fakeAPI {
 func TestSearchListsAlbumsInSpotifysOrder(t *testing.T) {
 	api := radioheadAndTimBernardesAPI()
 	h := newHarnessWith(t, api, 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 	h.searchFor("radiohead")
 
 	// Chico's steps: go to Albums, search again from Albums, then go to
@@ -521,7 +529,7 @@ func (h *harness) searchResultLines() []string {
 
 func TestSearchAllMixesTheBestOfEachKind(t *testing.T) {
 	h := newHarnessWith(t, timBernardesAPI(), 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 
 	h.searchFor("tim bernardes")
 
@@ -558,7 +566,7 @@ func TestSearchAllMixesTheBestOfEachKind(t *testing.T) {
 
 func TestSearchAllPutsAPodcastNamedLikeTheSearchFirst(t *testing.T) {
 	h := newHarnessWith(t, timBernardesAPI(), 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 
 	h.searchFor("MORNING briefing")
 
@@ -574,7 +582,7 @@ func TestSearchAllPutsAPodcastNamedLikeTheSearchFirst(t *testing.T) {
 
 func TestSearchAllPlaysEachKind(t *testing.T) {
 	h := newHarnessWith(t, timBernardesAPI(), 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 	h.searchFor("tim bernardes")
 
 	h.send(key("enter"))
@@ -593,7 +601,7 @@ func TestSearchAllPlaysEachKind(t *testing.T) {
 
 func TestSearchAllDoesNotLoadMore(t *testing.T) {
 	h := newHarnessWith(t, timBernardesAPI(), 120, 14)
-	h.send(key("left"))
+	h.openSearchTab()
 	h.searchFor("tim bernardes")
 
 	h.send(key("end"), key("down"), key("end"))
@@ -607,7 +615,7 @@ func TestSearchAllWithoutResults(t *testing.T) {
 	api := timBernardesAPI()
 	api.searchByQuery["zzzz"] = map[string][]string{}
 	h := newHarnessWith(t, api, 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 
 	h.searchFor("zzzz")
 
@@ -618,7 +626,7 @@ func TestSearchAllWithoutResults(t *testing.T) {
 
 func TestSearchAllWithoutAnExactMatch(t *testing.T) {
 	h := newHarnessWith(t, searchAPI(), 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 
 	h.searchFor("beatles")
 
@@ -640,7 +648,7 @@ func TestSearchAllTopResultIsTheExactNameAnywhereInItsKind(t *testing.T) {
 	api.searchByQuery["o terno"] = api.searchByQuery["tim bernardes"]
 	api.searchByQuery["musica  brasileira HOJE"] = api.searchByQuery["tim bernardes"]
 	h := newHarnessWith(t, api, 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 
 	h.searchFor("o terno")
 	if got := h.searchResultLines()[0]; got != "O Terno | Artist" {
@@ -664,7 +672,7 @@ func TestSearchAllWithPodcastsAndNoArtists(t *testing.T) {
 		"track":   {albumTrackJSON("News", "Band", 200000, true)},
 	}
 	h := newHarnessWith(t, api, 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 	h.searchFor("daily news")
 
 	want := []string{
@@ -686,7 +694,7 @@ func TestSearchAllWithPodcastsAndNoArtists(t *testing.T) {
 
 func TestSearchArrowsBeforeTheFirstSearchKeepAll(t *testing.T) {
 	h := newHarnessWith(t, timBernardesAPI(), 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 
 	h.send(keys("down", "down", "up", "down")...)
 	h.searchFor("tim bernardes")
@@ -698,7 +706,7 @@ func TestSearchArrowsBeforeTheFirstSearchKeepAll(t *testing.T) {
 
 func TestSearchAgainLeavesAKindWithoutResults(t *testing.T) {
 	h := newHarnessWith(t, timBernardesAPI(), 120, 40)
-	h.send(key("left"))
+	h.openSearchTab()
 	h.searchFor("tim bernardes")
 	h.selectSearchCategory("Playlists")
 

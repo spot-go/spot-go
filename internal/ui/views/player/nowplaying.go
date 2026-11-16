@@ -124,3 +124,14 @@ func (m Model) playbackConfirmed(msg playbackConfirmed) (Model, tea.Cmd) {
 	m = m.publishNowPlaying(msg.playing.Item, playingInfo(msg.playing), time.Now())
 	return m, m.broadcast(msg)
 }
+
+// skippedTo shows a skip to an item of the queue. The Queue tab already
+// waited for Spotify to play the item, so there is nothing left to confirm.
+// A newer play started while it skipped keeps what it shows.
+func (m Model) skippedTo(msg queuePlaybackStarted) (Model, tea.Cmd) {
+	m.toggle.settled++
+	if msg.plays == *m.plays {
+		m = m.publishCommand(msg.item, msg.info())
+	}
+	return m, m.broadcast(msg)
+}

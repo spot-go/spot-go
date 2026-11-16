@@ -40,6 +40,10 @@ var (
 			Foreground(styles.LipglossColorForegroundGreenSpotify)
 	playbackErrorStyle = lipgloss.NewStyle().
 				Foreground(styles.LipglossColorRed)
+	paneTitleStyle = lipgloss.NewStyle().
+			Background(styles.LipglossColorBackgroundGreenSpotify).
+			Foreground(styles.LipglossColorBlack).
+			Padding(0, 1)
 )
 
 func after(d time.Duration, msg tea.Msg) tea.Cmd {
@@ -199,16 +203,19 @@ func (s paneSize) statusLine(status playbackStatus, volume volumeLevel) string {
 	return text + gap + levelStyle.Render(level)
 }
 
+// keyHelp shows the keys of the right pane. tab, which moves to target, is
+// left out when target is empty, as on tabs with only one list.
 func (s paneSize) keyHelp(h help.Styles, target string) string {
+	hint := func(key, desc string) string {
+		return h.ShortKey.Inline(true).Render(key) + " " + h.ShortDesc.Inline(true).Render(desc)
+	}
+	hints := []string{hint("enter", "play"), hint("r", "refresh"), hint("space", "play/pause")}
+	if target != "" {
+		hints = append([]string{hint("tab", target)}, hints...)
+	}
 	separator := h.ShortSeparator.Inline(true).Render(" • ")
-	text := h.ShortKey.Inline(true).Render("tab") + " " + h.ShortDesc.Inline(true).Render(target) +
-		separator +
-		h.ShortKey.Inline(true).Render("enter") + " " + h.ShortDesc.Inline(true).Render("play") +
-		separator +
-		h.ShortKey.Inline(true).Render("r") + " " + h.ShortDesc.Inline(true).Render("refresh") +
-		separator +
-		h.ShortKey.Inline(true).Render("space") + " " + h.ShortDesc.Inline(true).Render("play/pause")
-	volume := separator + h.ShortKey.Inline(true).Render("+/-") + " " + h.ShortDesc.Inline(true).Render("volume")
+	text := strings.Join(hints, separator)
+	volume := separator + hint("+/-", "volume")
 	if lipgloss.Width(text+volume) <= s.rightWidth() {
 		text += volume
 	}

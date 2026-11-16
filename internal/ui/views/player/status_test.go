@@ -585,7 +585,7 @@ func TestProgressTicksOnEveryTab(t *testing.T) {
 	h := newHarnessWith(t, soWhatOnPhone(), 120, 40)
 	ticks := h.recordProgressTicks()
 	h.send(pollPlayback{})
-	if len(*ticks) != playlistsTab {
+	if len(*ticks) != 1 {
 		t.Fatalf("ticks = %v, want one on the Playlists tab", *ticks)
 	}
 
@@ -594,18 +594,23 @@ func TestProgressTicksOnEveryTab(t *testing.T) {
 		if got := h.player().activeTab; got != tab {
 			t.Fatalf("activeTab = %d, want %d", got, tab)
 		}
-		if len(*ticks) != tab {
-			t.Fatalf("ticks = %v on tab %d, want %d", *ticks, tab, tab)
+		if want := tab - playlistsTab + 1; len(*ticks) != want {
+			t.Fatalf("ticks = %v on tab %d, want %d", *ticks, tab, want)
 		}
 	}
 
-	h.send(keys("left", "left", "left", "left")...)
-	h.send(progressTicked{})
-	if got := h.player().activeTab; got != searchTab {
-		t.Fatalf("activeTab = %d, want the Search tab", got)
-	}
-	if len(*ticks) != albumsTab+1 {
-		t.Fatalf("ticks = %v, want one on the Search tab too", *ticks)
+	for _, tab := range []int{queueTab, searchTab} {
+		for h.player().activeTab > tab {
+			h.send(key("left"))
+		}
+		before := len(*ticks)
+		h.send(progressTicked{})
+		if got := h.player().activeTab; got != tab {
+			t.Fatalf("activeTab = %d, want %d", got, tab)
+		}
+		if len(*ticks) != before+1 {
+			t.Fatalf("ticks = %v, want one on the %s tab too", *ticks, h.player().tabs[tab].name)
+		}
 	}
 }
 func TestNowPlayingLineFitsEveryWidth(t *testing.T) {
