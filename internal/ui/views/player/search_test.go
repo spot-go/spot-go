@@ -272,3 +272,18 @@ func TestSearchFitsSmallWindows(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchDoesNotPlayResultsOfAnEarlierSearch(t *testing.T) {
+	api := searchAPI()
+	h := newHarnessWith(t, api, 120, 40)
+	h.send(key("left"))
+	h.searchFor("beatles")
+
+	api.set(func(f *fakeAPI) { f.searchStatus = http.StatusInternalServerError })
+	h.send(key("r"))
+	h.wantView("Fail to search:")
+
+	h.send(key("enter"), key("down"))
+	h.wantPlays(0)
+	h.dontWantView("Come Together")
+}

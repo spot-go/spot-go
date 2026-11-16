@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -23,6 +24,7 @@ type (
 		playerContext
 		paneSize
 		input     textinput.Model
+		help      help.Styles
 		typing    bool
 		leftFocus bool
 		category  int
@@ -147,6 +149,7 @@ func newSearchModel(ctx playerContext) searchModel {
 	return searchModel{
 		playerContext: ctx,
 		input:         input,
+		help:          help.DefaultStyles(styles.HasDarkBackground),
 		leftFocus:     true,
 		results:       make(map[spotify.SearchType]*searchResults),
 	}
@@ -386,6 +389,9 @@ func (s searchModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			s.focusResults()
 			return s, nil
 		}
+		if s.state != stateSearchLoaded {
+			return s, nil
+		}
 		return s.play()
 
 	case "up", "down":
@@ -399,7 +405,7 @@ func (s searchModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if s.leftFocus {
+	if s.leftFocus || s.state != stateSearchLoaded {
 		return s, nil
 	}
 	r := s.selectedResults()
@@ -422,6 +428,7 @@ func (s searchModel) status() playbackStatus {
 func (s *searchModel) search(query string) tea.Cmd {
 	s.gen++
 	s.query, s.state, s.err = query, stateSearchLoading, nil
+	s.results = make(map[spotify.SearchType]*searchResults)
 	gen, ctx, client := s.gen, s.ctx, s.spotifyClient
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(ctx, searchTimeout)
@@ -576,30 +583,27 @@ func (s searchModel) startPlayback(seq int, item searchItem) tea.Cmd {
 	}
 }
 
+// playNewestEpisode plays the newest playable episode of show, looking only
+// at its newest page of episodes, as the Podcasts tab does.
 func playNewestEpisode(ctx context.Context, client *spotify.Client, deviceID libspotify.ID, seq int, show searchItem) tea.Msg {
-	for offset := 0; ; {
-		page, err := client.ShowEpisodesPage(ctx, show.id, offset)
-		if err != nil {
+	page, err := client.ShowEpisodesPage(ctx, show.id, 0)
+	if err != nil {
+		return searchPlaybackFailed{seq, err}
+	}
+	for _, ep := range page.Items {
+		if !ep.Playable {
+			continue
+		}
+		var from time.Duration
+		if ep.InProgress() {
+			from = ep.Resume
+		}
+		if err := client.PlayEpisode(ctx, deviceID, show.uri, ep.URI, from); err != nil {
 			return searchPlaybackFailed{seq, err}
 		}
-		for _, ep := range page.Items {
-			if !ep.Playable {
-				continue
-			}
-			var from time.Duration
-			if ep.InProgress() {
-				from = ep.Resume
-			}
-			if err := client.PlayEpisode(ctx, deviceID, show.uri, ep.URI, from); err != nil {
-				return searchPlaybackFailed{seq, err}
-			}
-			return searchPlaybackStarted{seq: seq, uri: show.uri, item: ep.URI, name: ep.Name, artist: show.name, duration: ep.Duration, from: from}
-		}
-		if page.Last {
-			return searchPlaybackFailed{seq, fmt.Errorf("%s has no episodes to play", show.name)}
-		}
-		offset = page.Next
+		return searchPlaybackStarted{seq: seq, uri: show.uri, item: ep.URI, name: ep.Name, artist: show.name, duration: ep.Duration, from: from}
 	}
+	return searchPlaybackFailed{seq, fmt.Errorf("%s has no episodes to play", show.name)}
 }
 
 func (msg searchPlaybackStarted) info() media.Info {
@@ -654,7 +658,7 @@ func (s searchModel) categoryLine(i int, c searchCategory, width int) string {
 }
 
 func (s searchModel) leftHelp(width int) string {
-	h := newList(nil, list.NewDefaultDelegate()).Help.Styles
+	h := s.help
 	var hints []string
 	if s.typing {
 		hints = append(hints, h.ShortKey.Inline(true).Render("enter")+" "+h.ShortDesc.Inline(true).Render("search"))
@@ -678,7 +682,7 @@ func (s searchModel) rightView() string {
 	if !s.leftFocus {
 		target = "categories"
 	}
-	keys := s.keyHelp(newList(nil, list.NewDefaultDelegate()).Help.Styles, target)
+	keys := s.keyHelp(s.help, target)
 
 	switch s.state {
 	case stateSearchIdle:
