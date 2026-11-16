@@ -64,7 +64,7 @@ Spotify may only list the songs of playlists you own or collaborate on, dependin
 
 The Search tab searches the Spotify catalog. Press `/`, type what you want to listen to and press `enter`. While you type, every key goes to the search, so `space`, `k`, `+`, `-`, `←` and `→` don't control Spotify or switch tabs. `esc` goes back to the results without searching.
 
-The left side lists the kinds of results, with how many Spotify found of each: songs, artists, albums, playlists, podcasts and episodes. The right side lists the results of the selected kind. `tab` moves between the two sides, and `r` searches again. The Web API returns at most 10 results of each kind per request, so spot-go loads more as you move down the list, up to the first 1000.
+The left side lists the kinds of results, with how many Spotify found of each: songs, artists, albums, playlists, podcasts and episodes. The right side lists the results of the selected kind, in the order Spotify returns them, by relevance. Albums are the exception: they are sorted by release year, newest first, and albums of the same year keep Spotify's order. Albums without a release date come last. `tab` moves between the two sides, and `r` searches again. The Web API returns at most 10 results of each kind per request, so spot-go loads more as you move down the list, up to the first 1000. The album order covers the albums loaded so far, so a newer album that loads later moves above the older ones, while the selection stays on the same album.
 
 `enter` plays the selected song or episode, the selected album or playlist from the start, or the selected artist, and Spotify picks the songs. On a podcast, it plays the newest episode, from where you stopped. An episode also plays from where you stopped.
 

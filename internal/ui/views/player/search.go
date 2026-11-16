@@ -1,9 +1,11 @@
 package player
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -62,6 +64,7 @@ type (
 		detail   string
 		duration time.Duration
 		resume   time.Duration
+		year     int
 		playable bool
 	}
 
@@ -221,7 +224,11 @@ func searchItems(kind spotify.SearchType, r spotify.SearchResults) []list.Item {
 	case spotify.SearchAlbums:
 		for _, a := range r.Albums {
 			detail := strings.TrimSpace(discographyType(a) + "  " + discographyYear(a))
-			items = append(items, searchItem{kind: kind, id: a.ID, uri: a.URI, name: discographyName(a), artist: strings.Join(a.Artists, ", "), detail: detail, playable: true})
+			item := searchItem{kind: kind, id: a.ID, uri: a.URI, name: discographyName(a), artist: strings.Join(a.Artists, ", "), detail: detail, playable: true}
+			if !a.Released.IsZero() && a.Released.Year() >= 1 {
+				item.year = a.Released.Year()
+			}
+			items = append(items, item)
 		}
 	case spotify.SearchPlaylists:
 		for _, p := range r.Playlists {
@@ -447,7 +454,7 @@ func (s *searchModel) loaded(results spotify.SearchResults) {
 	s.results = make(map[spotify.SearchType]*searchResults, len(searchCategories))
 	for _, c := range searchCategories {
 		r := &searchResults{page: results.Pages[c.kind]}
-		r.list = s.newRightList(searchItems(c.kind, results), searchDelegate{focused: !s.leftFocus && !s.typing}, c.singular, c.plural)
+		r.list = s.newRightList(sortSearchItems(c.kind, uniqueItems(nil, searchItems(c.kind, results))), searchDelegate{focused: !s.leftFocus && !s.typing}, c.singular, c.plural)
 		s.results[c.kind] = r
 	}
 	if len(s.selectedResults().list.Items()) == 0 {
@@ -494,22 +501,59 @@ func (s searchModel) addPage(msg searchPageLoaded) tea.Cmd {
 	}
 	r.loading = false
 	r.page = msg.results.Pages[msg.kind]
-	seen := make(map[libspotify.URI]bool, len(r.list.Items()))
-	for _, li := range r.list.Items() {
+	below := len(r.list.Items()) - r.list.Index()
+	selected, hasSelected := r.list.SelectedItem().(searchItem)
+	items := sortSearchItems(msg.kind, uniqueItems(r.list.Items(), searchItems(msg.kind, msg.results)))
+	r.list.SetItems(items)
+	if hasSelected && msg.kind == spotify.SearchAlbums {
+		for i, li := range items {
+			if li.(searchItem).uri == selected.uri {
+				r.list.Select(i)
+				break
+			}
+		}
+	}
+	if searchCategories[s.category].kind != msg.kind {
+		return nil
+	}
+	// Load the next page only when this one added results below the
+	// selection. Sorted albums can all land above it, and then loading
+	// again would chain through every page; the next key loads more instead.
+	if len(items)-r.list.Index() <= below {
+		return nil
+	}
+	return s.more()
+}
+
+// uniqueItems returns a copy of listed followed by the items of page whose
+// URI isn't listed yet, so every URI shows once.
+func uniqueItems(listed, page []list.Item) []list.Item {
+	items := slices.Clone(listed)
+	seen := make(map[libspotify.URI]bool, len(listed)+len(page))
+	for _, li := range listed {
 		seen[li.(searchItem).uri] = true
 	}
-	items := r.list.Items()
-	for _, li := range searchItems(msg.kind, msg.results) {
+	for _, li := range page {
 		if uri := li.(searchItem).uri; !seen[uri] {
 			seen[uri] = true
 			items = append(items, li)
 		}
 	}
-	r.list.SetItems(items)
-	if searchCategories[s.category].kind != msg.kind {
-		return nil
+	return items
+}
+
+// sortSearchItems orders albums by release year, newest first. Albums of the
+// same year keep the order Spotify returned them in, which is by relevance,
+// and albums without a release date come last. Other kinds keep Spotify's
+// order.
+func sortSearchItems(kind spotify.SearchType, items []list.Item) []list.Item {
+	if kind != spotify.SearchAlbums {
+		return items
 	}
-	return s.more()
+	slices.SortStableFunc(items, func(a, b list.Item) int {
+		return cmp.Compare(b.(searchItem).year, a.(searchItem).year)
+	})
+	return items
 }
 
 func (s searchModel) selectedResults() *searchResults {
