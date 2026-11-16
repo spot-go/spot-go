@@ -32,7 +32,7 @@ func TestQueueReadsSongsAndEpisodes(t *testing.T) {
 		Playing: &PlaylistItem{Name: "Come Together", Artists: []string{"The Beatles"}, Duration: 259 * time.Second, URI: "spotify:track:t1", Playable: true},
 		Items: []PlaylistItem{
 			{Position: 0, Name: "Something", Artists: []string{"The Beatles", "George Harrison"}, Duration: 182 * time.Second, URI: "spotify:track:t2", Playable: true},
-			{Position: 1, Name: "How the Vote Count Works", Artists: []string{"Morning Briefing"}, Duration: 3134 * time.Second, URI: "spotify:episode:e1", Playable: true},
+			{Position: 3, Name: "How the Vote Count Works", Artists: []string{"Morning Briefing"}, Duration: 3134 * time.Second, URI: "spotify:episode:e1", Playable: true},
 		},
 	}
 	if !reflect.DeepEqual(got, want) {

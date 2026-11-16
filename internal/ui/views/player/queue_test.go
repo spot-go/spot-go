@@ -15,7 +15,7 @@ import (
 	"github.com/spot-go/spot-go/internal/spotify"
 )
 
-const voteCountJSON = `{"type":"episode","name":"How the Vote Count Works","uri":"spotify:episode:vote","duration_ms":3134000,"show":{"name":"Morning Briefing"}}`
+const voteCountJSON = `{"type":"episode","name":"How the Vote Count Works","uri":"spotify:episode:vote","duration_ms":3134000,"show":{"name":"Morning Briefing"},"resume_point":{"resume_position_ms":1740000}}`
 
 // queueResponse answers GET me/player/queue with what plays now and f.queue.
 func (f *fakeAPI) queueResponse(r *http.Request) *http.Response {
@@ -30,7 +30,8 @@ func (f *fakeAPI) queueResponse(r *http.Request) *http.Response {
 	return response(r, http.StatusOK, fmt.Sprintf(`{"currently_playing":%s,"queue":[%s]}`, playing, strings.Join(f.queue, ",")))
 }
 
-// playNextInQueue plays the first item of f.queue, as a skip does.
+// playNextInQueue plays the first item of f.queue, as a skip does: an
+// episode from where it was stopped, and paused if Spotify was paused.
 func (f *fakeAPI) playNextInQueue() {
 	var next struct {
 		URI        string `json:"uri"`
@@ -39,10 +40,14 @@ func (f *fakeAPI) playNextInQueue() {
 		Artists    []struct {
 			Name string `json:"name"`
 		} `json:"artists"`
+		ResumePoint struct {
+			PositionMs int `json:"resume_position_ms"`
+		} `json:"resume_point"`
 	}
 	_ = json.Unmarshal([]byte(f.queue[0]), &next)
 	f.queue = f.queue[1:]
-	f.playingItem, f.playingName, f.durationMs, f.progressMs, f.playingArtist = next.URI, next.Name, next.DurationMs, 0, ""
+	f.playingItem, f.playingName, f.durationMs, f.playingArtist = next.URI, next.Name, next.DurationMs, ""
+	f.progressMs = next.ResumePoint.PositionMs
 	if len(next.Artists) > 0 {
 		f.playingArtist = next.Artists[0].Name
 	}
@@ -158,7 +163,6 @@ func TestQueueLoadsWhenOpened(t *testing.T) {
 func TestQueuePlaysTheSelectedItemBySkippingToIt(t *testing.T) {
 	api := queueAPI()
 	h := newQueueHarness(t, api)
-	h.confirmStarts()
 	published := h.recordNowPlaying()
 
 	h.send(keys("down", "down", "enter")...)
@@ -167,28 +171,65 @@ func TestQueuePlaysTheSelectedItemBySkippingToIt(t *testing.T) {
 	h.wantPlays(0)
 	wantInfo(t, published, media.Info{ID: albumTrackURI("Oh! Darling"), Title: "Oh! Darling", Artist: "The Beatles", Duration: 206 * time.Second, Playing: true})
 	h.wantView("⏸ Oh! Darling — The Beatles", "Now playing")
+	// The skip reads the queue to count the items before Oh! Darling, and
+	// the queue loads again after it.
+	h.wantQueueReads(3)
 	h.wantQueue("How the Vote Count Works")
 	if got := h.queueTab().list.Index(); got != 0 {
 		t.Fatalf("selection = %d, want the top of the queue", got)
 	}
-	// Spotify confirmed the skip, so the queue loads again.
-	h.wantQueueReads(2)
 }
 
-func TestQueueSkipWaitsOnlyForTheItem(t *testing.T) {
+func TestQueueSkipShowsWhereSpotifyPlaysTheItem(t *testing.T) {
 	api := queueAPI()
-	// Spotify may show another context, or none, while an item added to the
-	// queue plays.
-	api.onPlay = nil
+	api.paused = true
 	h := newQueueHarness(t, api)
-	h.confirmStarts()
 	published := h.recordNowPlaying()
-	api.set(func(f *fakeAPI) { f.playing = "spotify:playlist:p9" })
 
+	h.send(keys("end", "enter")...)
+
+	h.wantSkips("next", "next", "next", "next")
+	wantInfo(t, published, media.Info{ID: "spotify:episode:vote", Title: "How the Vote Count Works", Artist: "Morning Briefing", Duration: 3134 * time.Second, Elapsed: 29 * time.Minute})
+	h.wantView("▶ How the Vote Count Works — Morning Briefing", "29:00 / 52:14")
+}
+
+func TestQueueSkipsToTheItemWhereItIsNow(t *testing.T) {
+	api := queueAPI()
+	h := newQueueHarness(t, api)
+	h.send(keys("down", "down")...)
+
+	// Come Together ended, and the queue on screen is a song behind.
+	api.set((*fakeAPI).playNextInQueue)
 	h.send(key("enter"))
 
-	wantInfo(t, published, media.Info{ID: albumTrackURI("Something"), Title: "Something", Artist: "The Beatles", Duration: 182 * time.Second, Playing: true})
-	h.wantPlayerReads(1)
+	h.wantSkips("next", "next")
+	h.wantView("⏸ Oh! Darling — The Beatles")
+	h.wantQueue("How the Vote Count Works")
+}
+
+func TestQueueSkipFailsWhenTheItemLeftTheQueue(t *testing.T) {
+	api := queueAPI()
+	h := newQueueHarness(t, api)
+	h.send(keys("down", "down")...)
+
+	api.set(func(f *fakeAPI) { f.queue = f.queue[3:] })
+	h.send(key("enter"))
+
+	h.wantSkips()
+	h.wantView("Fail to play: Oh! Darling is no longer in the queue")
+	h.wantQueue("How the Vote Count Works")
+}
+
+func TestQueueCountsTheEntriesItCantShow(t *testing.T) {
+	api := queueAPI()
+	api.queue = []string{api.queue[0], "null", api.queue[2]}
+	h := newQueueHarness(t, api)
+	h.wantView("1  Something - The Beatles", "3  Oh! Darling - The Beatles")
+
+	h.send(keys("down", "enter")...)
+
+	h.wantSkips("next", "next", "next")
+	h.wantView("⏸ Oh! Darling — The Beatles")
 }
 
 func TestQueueShowsAFailedSkip(t *testing.T) {
@@ -201,7 +242,7 @@ func TestQueueShowsAFailedSkip(t *testing.T) {
 	h.wantSkips("next")
 	h.wantView("Fail to play: Player command failed: No active device found")
 	// Some skips may have gone through, so the queue loads again.
-	h.wantQueueReads(2)
+	h.wantQueueReads(3)
 	h.wantQueue("Something", "Maxwell's Silver Hammer", "Oh! Darling", "How the Vote Count Works")
 }
 
@@ -214,7 +255,7 @@ func TestQueueIgnoresEnterWhileSkipping(t *testing.T) {
 	if h.queueTab().skipping {
 		t.Fatal("the queue is still skipping after the skip ended")
 	}
-	h.send(key("enter"))
+	h.send(key("home"), key("enter"))
 	h.wantSkips("next", "next", "next")
 }
 
@@ -251,22 +292,23 @@ func TestQueueLoadsAgainAfterAMediaKeySkip(t *testing.T) {
 	h.wantView("Something")
 }
 
-func TestQueueDoesNotFollowAPollRightAfterASkip(t *testing.T) {
+func TestQueueDropsLoadsFromBeforeASkip(t *testing.T) {
 	api := queueAPI()
 	h := newQueueHarness(t, api)
-	h.send(key("enter"))
+	before := h.queueTab().gen
+	h.send(key("down"))
+
+	// enter starts the skip; hold it to send what arrives while it runs.
+	model, skip := h.model.Update(key("enter"))
+	h.model = model
+	h.send(queueLoaded{gen: before, queue: spotify.Queue{Items: []spotify.PlaylistItem{{Name: "Ghost Song", URI: "spotify:track:ghost"}}}})
+	h.dontWantView("Ghost Song")
+	h.send(pollPlayback{}, key("r"))
 	h.wantQueueReads(1)
 
-	h.send(pollPlayback{})
-	h.wantQueueReads(1)
-
-	m := h.player()
-	q := m.tabs[queueTab].content.(queueModel)
-	q.skippedAt = q.skippedAt.Add(-followGrace)
-	m.tabs[queueTab].content = q
-	h.model = m
-	h.send(pollPlayback{})
-	h.wantQueueReads(2)
+	h.run(skip)
+	h.wantSkips("next", "next")
+	h.wantQueue("Oh! Darling", "How the Vote Count Works")
 }
 
 func TestQueueKeepsTheSelectedItemWhenItLoadsAgain(t *testing.T) {
@@ -294,7 +336,11 @@ func TestQueueErrorsCanBeRetried(t *testing.T) {
 	h.wantSkips()
 
 	api.set(func(f *fakeAPI) { f.queueStatus = 0 })
-	h.send(key("r"))
+	model, load := h.model.Update(key("r"))
+	h.model = model
+	h.wantView(queueLoadingText)
+	h.dontWantView("Fail to load the queue")
+	h.run(load)
 	h.wantView("1  Something - The Beatles")
 
 	api.set(func(f *fakeAPI) { f.queueStatus = http.StatusInternalServerError })
@@ -353,17 +399,22 @@ func TestQueueFitsSmallWindows(t *testing.T) {
 	api.playingName = strings.Repeat("Uma música com um nome bem comprido 👋🏽 ", 3)
 	h := newQueueHarness(t, api)
 
-	for width := 50; width <= 120; width++ {
-		for _, height := range []int{8, 14, 24} {
+	// The player clips what a tab draws, so check the tab's own view.
+	for width := 56; width <= 120; width++ {
+		for _, height := range []int{9, 14, 24} {
 			h.send(tea.WindowSizeMsg{Width: width, Height: height})
-			v := h.view()
+			if v := h.view(); strings.Contains(v, tooSmallWindow) {
+				t.Fatalf("%dx%d: the window is too small for the Queue tab:\n%s", width, height, v)
+			}
+			size := tabSize(h.queueTab())
+			v := h.queueTab().View().Content
 			for i, row := range strings.Split(v, "\n") {
-				if got := ansi.StringWidth(row); got > width {
-					t.Fatalf("%dx%d: line %d is %d columns wide:\n%s", width, height, i, got, v)
+				if got := ansi.StringWidth(row); got > size.width {
+					t.Fatalf("%dx%d: line %d is %d columns wide, want at most %d:\n%s", width, height, i, got, size.width, v)
 				}
 			}
-			if got := len(strings.Split(v, "\n")); got > height {
-				t.Fatalf("%dx%d: view has %d lines:\n%s", width, height, got, v)
+			if got := len(strings.Split(v, "\n")); got > size.height {
+				t.Fatalf("%dx%d: the tab has %d lines, want at most %d:\n%s", width, height, got, size.height, v)
 			}
 		}
 	}

@@ -1,6 +1,7 @@
 package player
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"strings"
@@ -22,17 +23,19 @@ type (
 	queueModel struct {
 		playerContext
 		paneSize
-		help      help.Styles
-		gen       int
-		loading   bool
-		err       error
-		playing   *spotify.PlaylistItem
-		list      *list.Model
-		visible   bool
-		skipping  bool
-		skippedAt time.Time
-		playback  playbackStatus
-		volume    volumeLevel
+		help     help.Styles
+		gen      int
+		loading  bool
+		err      error
+		playing  *spotify.PlaylistItem
+		list     *list.Model
+		visible  bool
+		skipping bool
+		playback playbackStatus
+		volume   volumeLevel
+		// confirmEvery is how often a skip reads what Spotify plays, until it
+		// plays the item skipped to.
+		confirmEvery time.Duration
 	}
 
 	// tabShown and tabHidden tell a tab that it became the active tab or
@@ -52,11 +55,13 @@ type (
 
 	queuePlaybackStarted struct {
 		seq      int
-		position int
+		plays    int
 		item     libspotify.URI
 		name     string
 		artist   string
 		duration time.Duration
+		from     time.Duration
+		paused   bool
 	}
 
 	queuePlaybackFailed struct {
@@ -78,6 +83,7 @@ func newQueueModel(ctx playerContext) queueModel {
 	return queueModel{
 		playerContext: ctx,
 		help:          help.DefaultStyles(styles.HasDarkBackground),
+		confirmEvery:  confirmPollEvery,
 	}
 }
 
@@ -123,20 +129,17 @@ func (q queueModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case queuePlaybackStarted:
 		q.skipping = false
-		if msg.seq != q.playback.seq {
-			return q, nil
+		if msg.seq == q.playback.seq {
+			q.playback = playingStatus(msg.seq, msg.item, msg.info(), time.Now())
 		}
-		q.playback = playingStatus(msg.seq, msg.item, msg.info(), time.Now())
-		q.skippedAt = time.Now()
-		q.skippedTo(msg)
-		return q, nil
+		cmd := q.reload()
+		return q, cmd
 
 	case queuePlaybackFailed:
 		q.skipping = false
-		if msg.seq != q.playback.seq {
-			return q, nil
+		if msg.seq == q.playback.seq {
+			q.playback = playbackStatus{seq: msg.seq, text: "Fail to play: " + errorText(msg.err), err: true}
 		}
-		q.playback = playbackStatus{seq: msg.seq, text: "Fail to play: " + errorText(msg.err), err: true}
 		// Some of the skips may have gone through.
 		cmd := q.reload()
 		return q, cmd
@@ -171,9 +174,7 @@ func (q queueModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.plays == *q.plays {
 			q.playback = q.playback.follow(msg.playing, time.Now())
 		}
-		// Right after a skip, Spotify may still show the queue from before
-		// it, which would bring back the songs skipped.
-		if q.loading || time.Since(q.skippedAt) < followGrace {
+		if q.loading {
 			return q, nil
 		}
 		cmd := q.reload()
@@ -214,7 +215,12 @@ func (q *queueModel) reload() tea.Cmd {
 	return q.load()
 }
 
+// load loads the queue again. A skip loads it once it ends, as a queue read
+// while it skips would show items it skips.
 func (q *queueModel) load() tea.Cmd {
+	if q.skipping {
+		return nil
+	}
 	q.gen++
 	q.loading = true
 	gen, ctx, client := q.gen, q.ctx, q.spotifyClient
@@ -242,39 +248,6 @@ func (q *queueModel) loaded(queue spotify.Queue) {
 	q.list.Select(index)
 }
 
-// skippedTo shows the queue as it is after the skip to msg's item, before
-// Spotify confirms it: the item plays, and the items after it come next.
-func (q *queueModel) skippedTo(msg queuePlaybackStarted) {
-	if q.list == nil {
-		return
-	}
-	items := q.list.Items()
-	position := msg.position
-	if position >= len(items) || items[position].(songItem).URI != msg.item {
-		position = -1
-		for i, li := range items {
-			if li.(songItem).URI == msg.item {
-				position = i
-				break
-			}
-		}
-		if position < 0 {
-			return
-		}
-	}
-
-	playing := items[position].(songItem).PlaylistItem
-	q.playing = &playing
-	next := make([]spotify.PlaylistItem, 0, len(items)-position-1)
-	for _, li := range items[position+1:] {
-		song := li.(songItem).PlaylistItem
-		song.Position = len(next)
-		next = append(next, song)
-	}
-	q.list.SetItems(songItems(next))
-	q.list.Select(0)
-}
-
 func (q queueModel) play() (tea.Model, tea.Cmd) {
 	if q.skipping || q.list == nil {
 		return q, nil
@@ -285,38 +258,81 @@ func (q queueModel) play() (tea.Model, tea.Cmd) {
 	}
 
 	*q.plays++
-	q.skipping = true
+	// A load still running would show the queue from before the skip.
+	q.gen++
+	q.loading, q.skipping = false, true
 	q.playback = playbackStatus{seq: q.playback.seq + 1, text: "Starting " + song.Name + "...", starting: true}
-	return q, q.skipTo(q.playback.seq, song.PlaylistItem)
+	return q, q.skipTo(q.playback.seq, *q.plays, song.PlaylistItem)
 }
 
 // skipTo plays song by skipping to it, as the Web API can't play an item of
 // the queue: Spotify skips the items before it and keeps the rest of the
-// queue and its context.
-func (q queueModel) skipTo(seq int, song spotify.PlaylistItem) tea.Cmd {
-	ctx, client := q.ctx, q.spotifyClient
+// queue and its context. The queue on screen can be seconds old, so skipTo
+// reads it again to count the items before song. Then it waits for Spotify
+// to play song, to show whether it plays or stays paused, and from where.
+func (q queueModel) skipTo(seq, plays int, song spotify.PlaylistItem) tea.Cmd {
+	ctx, client, every := q.ctx, q.spotifyClient, q.confirmEvery
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(ctx, playbackTimeout)
 		defer cancel()
 
-		for range song.Position + 1 {
-			if err := client.Next(ctx); err != nil {
-				return queuePlaybackFailed{seq, err}
+		failed := queuePlaybackFailed{seq: seq}
+		queue, err := client.Queue(ctx)
+		if err != nil {
+			failed.err = err
+			return failed
+		}
+		position, ok := queuePosition(queue.Items, song)
+		if !ok {
+			failed.err = fmt.Errorf("%s is no longer in the queue", song.Name)
+			return failed
+		}
+		for range position + 1 {
+			if failed.err = client.Next(ctx); failed.err != nil {
+				return failed
 			}
 		}
-		return queuePlaybackStarted{
-			seq:      seq,
-			position: song.Position,
-			item:     song.URI,
-			name:     song.Name,
-			artist:   song.Artist(),
-			duration: song.Duration,
+
+		started := queuePlaybackStarted{seq: seq, plays: plays, item: song.URI, name: song.Name, artist: song.Artist(), duration: song.Duration}
+		again := queue.Playing != nil && queue.Playing.URI == song.URI
+		for range confirmPolls {
+			if wait(ctx, every) != nil {
+				break
+			}
+			state, err := client.Playback(ctx)
+			if err != nil {
+				break
+			}
+			if state.Item == song.URI && (!again || state.Progress < followGrace) {
+				started.from, started.paused = state.Progress, !state.Playing
+				started.duration = cmp.Or(state.Duration, started.duration)
+				break
+			}
 		}
+		return started
 	}
 }
 
+// queuePosition finds song in items: the position of the item with its URI
+// nearest to where song was.
+func queuePosition(items []spotify.PlaylistItem, song spotify.PlaylistItem) (int, bool) {
+	distance := func(position int) int {
+		if position < song.Position {
+			return song.Position - position
+		}
+		return position - song.Position
+	}
+	best := -1
+	for _, item := range items {
+		if item.URI == song.URI && (best < 0 || distance(item.Position) < distance(best)) {
+			best = item.Position
+		}
+	}
+	return best, best >= 0
+}
+
 func (msg queuePlaybackStarted) info() media.Info {
-	return media.Info{Title: msg.name, Artist: msg.artist, Duration: msg.duration, Playing: true}
+	return media.Info{Title: msg.name, Artist: msg.artist, Duration: msg.duration, Elapsed: msg.from, Playing: !msg.paused}
 }
 
 func (q queueModel) View() tea.View {
@@ -367,7 +383,7 @@ func (q queueModel) rightView() string {
 	keys := q.keyHelp(q.help, "")
 	if q.list == nil {
 		text := queueLoadingText
-		if q.err != nil {
+		if q.err != nil && !q.loading {
 			text = fmt.Sprintf("Fail to load the queue:\n%s\n\nPress r to try again.", errorText(q.err))
 		}
 		return q.rightPane("", "", func() string { return q.notice(text) }, q.playback, q.volume, keys)

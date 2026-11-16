@@ -460,10 +460,10 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		if path == "me/player/next" && f.nextItem != "" {
 			f.playingItem, f.playingName = f.nextItem, f.nextName
 		}
+		f.progressMs = 0
 		if path == "me/player/next" && len(f.queue) > 0 {
 			f.playNextInQueue()
 		}
-		f.progressMs = 0
 		return response(r, http.StatusNoContent, ""), nil
 
 	case path == "me/player/volume" && r.Method == http.MethodPut:
@@ -650,6 +650,9 @@ func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model
 	albums := m.tabs[albumsTab].content.(albumModel)
 	albums.after = testAfter
 	m.tabs[albumsTab].content = albums
+	queue := m.tabs[queueTab].content.(queueModel)
+	queue.confirmEvery = time.Millisecond
+	m.tabs[queueTab].content = queue
 	return m
 }
 

@@ -78,36 +78,13 @@ func playingInfo(playing spotify.NowPlaying) media.Info {
 }
 
 func (m Model) playbackStarted(msg tea.Msg, uri, item libspotify.URI, info media.Info) (Model, tea.Cmd) {
-	return m.commandStarted(msg, item, info, func(playing spotify.NowPlaying, latest time.Duration) bool {
-		return startedPlaying(playing, uri, item, latest)
-	})
-}
-
-// skippedTo is playbackStarted for a skip to an item of the queue. A skip
-// starts no context, and while an item added to the queue plays, Spotify may
-// show the context from before or none, so only the item has to show up.
-func (m Model) skippedTo(msg queuePlaybackStarted) (Model, tea.Cmd) {
-	return m.commandStarted(msg, msg.item, msg.info(), func(playing spotify.NowPlaying, latest time.Duration) bool {
-		return playing.Item == msg.item && playing.Progress <= latest+followGrace
-	})
-}
-
-func (m Model) commandStarted(msg tea.Msg, item libspotify.URI, info media.Info, started func(spotify.NowPlaying, time.Duration) bool) (Model, tea.Cmd) {
 	m.toggle.settled++
 	before := m.nowPlaying
 	m = m.publishCommand(item, info)
-	return m, tea.Batch(m.broadcast(msg), m.confirm(before, info.Elapsed, started))
+	return m, tea.Batch(m.broadcast(msg), m.confirmStart(before, uri, item, info.Elapsed))
 }
 
 func (m Model) confirmStart(before nowPlaying, uri, item libspotify.URI, from time.Duration) tea.Cmd {
-	return m.confirm(before, from, func(playing spotify.NowPlaying, latest time.Duration) bool {
-		return startedPlaying(playing, uri, item, latest)
-	})
-}
-
-// confirm waits for Spotify to show what a command started: started tells
-// whether what plays is it, given the latest position it can be at.
-func (m Model) confirm(before nowPlaying, from time.Duration, started func(spotify.NowPlaying, time.Duration) bool) tea.Cmd {
 	ctx, client, every, polls := m.ctx, m.spotifyClient, m.confirmEvery, m.startPolls
 	confirmed := playbackConfirmed{plays: *m.plays, commandAt: m.nowPlaying.commandAt}
 
@@ -124,7 +101,7 @@ func (m Model) confirm(before nowPlaying, from time.Duration, started func(spoti
 			if err != nil {
 				return nil
 			}
-			if started(playing, from+time.Since(start)) && !before.stillPlaying(playing, time.Now()) {
+			if startedPlaying(playing, uri, item, from+time.Since(start)) && !before.stillPlaying(playing, time.Now()) {
 				confirmed.playing = playing
 				return confirmed
 			}
@@ -145,5 +122,16 @@ func (m Model) playbackConfirmed(msg playbackConfirmed) (Model, tea.Cmd) {
 		return m, nil
 	}
 	m = m.publishNowPlaying(msg.playing.Item, playingInfo(msg.playing), time.Now())
+	return m, m.broadcast(msg)
+}
+
+// skippedTo shows a skip to an item of the queue. The Queue tab already
+// waited for Spotify to play the item, so there is nothing left to confirm.
+// A newer play started while it skipped keeps what it shows.
+func (m Model) skippedTo(msg queuePlaybackStarted) (Model, tea.Cmd) {
+	m.toggle.settled++
+	if msg.plays == *m.plays {
+		m = m.publishCommand(msg.item, msg.info())
+	}
 	return m, m.broadcast(msg)
 }

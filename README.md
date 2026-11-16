@@ -64,7 +64,7 @@ Spotify may only list the songs of playlists you own or collaborate on, dependin
 
 The Queue tab, the first tab, shows what Spotify plays on any device: the song or episode playing now on the left, and what plays next on the right, in order. The tab loads the queue when you open it, follows Spotify every 5 seconds while it is open, and loads it again right after a skip. `r` loads it again too.
 
-`enter` plays the selected song or episode by skipping to it, as in the Spotify app: Spotify skips the songs before it, and the songs after it stay in the queue. The Web API can't play an item of the queue directly, so spot-go asks Spotify to skip once for each song before it.
+`enter` plays the selected song or episode by skipping to it, as in the Spotify app: Spotify skips the songs before it, and the songs after it stay in the queue. The Web API can't play an item of the queue directly, so spot-go reads the queue again, to find where the selected item is now, and asks Spotify to skip once for each item before it. If the item left the queue in the meantime, nothing is skipped. The status then shows what Spotify plays: from where, such as where you stopped an episode, and whether it plays or stays paused.
 
 The Web API only returns the first part of the queue, usually 20 songs or episodes, and doesn't say which ones you added to the queue and which ones come from the playlist, album or podcast playing, so spot-go lists them together.
 

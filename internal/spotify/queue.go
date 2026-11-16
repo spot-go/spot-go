@@ -11,7 +11,9 @@ type (
 		// plays nothing.
 		Playing *PlaylistItem
 		// Items are the songs and episodes that play next, in order. Each
-		// Position is its place in Items.
+		// Position is its place in the queue, counting the entries the Web
+		// API returns empty, which Items leaves out, so the item at Position
+		// plays after Position+1 skips.
 		Items []PlaylistItem
 	}
 
@@ -35,9 +37,9 @@ func (c Client) Queue(ctx context.Context) (Queue, error) {
 		playing := p.playlistItem(0, false)
 		queue.Playing = &playing
 	}
-	for _, p := range resp.Queue {
+	for i, p := range resp.Queue {
 		if p != nil && p.URI != "" {
-			queue.Items = append(queue.Items, p.playlistItem(len(queue.Items), false))
+			queue.Items = append(queue.Items, p.playlistItem(i, false))
 		}
 	}
 	return queue, nil
