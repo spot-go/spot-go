@@ -127,15 +127,24 @@ func (t trackTitle) String() string {
 }
 
 func (t trackTitle) fit(room int) string {
-	if full := t.String(); lipgloss.Width(full) <= room {
-		return full
+	return t.cut(room).String()
+}
+
+// cut cuts the title to room columns: the artist first, down to
+// minArtistWidth, and then the name without the artist.
+func (t trackTitle) cut(room int) trackTitle {
+	if lipgloss.Width(t.String()) <= room {
+		return t
 	}
 	if t.name != "" && t.artist != "" {
 		if artist := clip(t.artist, room-lipgloss.Width(t.name+artistSeparator)); lipgloss.Width(artist) >= minArtistWidth {
-			return t.name + artistSeparator + artist
+			return trackTitle{name: t.name, artist: artist}
 		}
 	}
-	return clip(cmp.Or(t.name, t.artist), room)
+	if t.name == "" {
+		return trackTitle{artist: clip(t.artist, room)}
+	}
+	return trackTitle{name: clip(t.name, room)}
 }
 
 func clip(s string, width int) string {

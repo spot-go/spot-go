@@ -421,22 +421,27 @@ func TestPlayingASongShowsItsArtistAndLength(t *testing.T) {
 
 	h.send(keys("tab", "down", "enter")...)
 
-	h.wantView("🎧 ⏸ Paranoid — Black Sabbath " + bar(0) + " 0:00 / 2:48 🎧")
+	h.wantPlayerRow(0, "⏸ Paranoid — Black Sabbath")
+	h.wantPlayerRow(1, strings.Repeat(wideBarEmpty, minWideBarWidth)+" 0:00 / 2:48")
+	h.dontWantPlayerRow(1, wideBarFilled, wideBarHalf)
 }
 
 func TestStatusShowsAPauseMadeElsewhere(t *testing.T) {
 	api := soWhatOnPhone()
 	h := newHarnessWith(t, api, 120, 40)
 	h.send(pollPlayback{})
-	h.wantView("🎧 ⏸ So What — Miles Davis " + bar(1) + " 1:00 / 9:22 🎧")
+	h.wantPlayerRow(0, "⏸ So What — Miles Davis")
+	h.wantPlayerRow(1, "1:00 / 9:22")
 
 	api.set(func(f *fakeAPI) { f.paused, f.progressMs = true, 75000 })
 	h.send(pollPlayback{})
-	h.wantView("🎧 ▶ So What — Miles Davis " + bar(1) + " 1:15 / 9:22 🎧")
+	h.wantPlayerRow(0, quietEqualizer+" ▶ So What — Miles Davis")
+	h.wantPlayerRow(1, "1:15 / 9:22")
 
 	api.set(func(f *fakeAPI) { f.progressMs = 300000 })
 	h.send(pollPlayback{})
-	h.wantView("🎧 ▶ So What — Miles Davis " + bar(5) + " 5:00 / 9:22 🎧")
+	h.wantPlayerRow(0, quietEqualizer+" ▶ So What — Miles Davis")
+	h.wantPlayerRow(1, "5:00 / 9:22")
 }
 
 func TestStatusShowsASeekElsewhereAfterAPauseFromSpotGo(t *testing.T) {
@@ -575,7 +580,8 @@ func TestProgressDoesNotTickWithoutALength(t *testing.T) {
 
 	h.send(key("enter"))
 
-	h.wantView("🎧 ⏸ Rock 🎧")
+	h.wantPlayerRow(0, "⏸ Rock")
+	h.dontWantPlayerRow(1, " / ")
 	if len(*ticks) != 0 {
 		t.Fatalf("ticks = %v, want none without a length to count", *ticks)
 	}
@@ -623,7 +629,9 @@ func TestNowPlayingLineFitsEveryWidth(t *testing.T) {
 
 	for _, volume := range []bool{true, false} {
 		if !volume {
-			h.send(volumeHidden{seq: h.player().volume.seq})
+			m := h.player()
+			m.playerBar.hasVolume = false
+			h.model = m
 		}
 		for width := 60; width <= 160; width++ {
 			h.send(tea.WindowSizeMsg{Width: width, Height: 24})
@@ -636,6 +644,7 @@ func TestNowPlayingLineFitsEveryWidth(t *testing.T) {
 					t.Fatalf("%dx24 volume %t: line %d is %d columns wide, want %d:\n%s", width, volume, i, got, width, v)
 				}
 			}
+			wantFrameEdges(t, v, width)
 		}
 	}
 }
@@ -650,7 +659,8 @@ func TestPauseWhileSpotifyOmitsTheItemKeepsTheSong(t *testing.T) {
 	h.send(key("k"))
 
 	h.wantPauses("")
-	h.wantView("🎧 ▶ So What — Miles Davis " + bar(1) + " 1:00 / 9:22 🎧")
+	h.wantPlayerRow(0, "▶ So What — Miles Davis")
+	h.wantPlayerRow(1, "1:00 / 9:22")
 	if got := lastInfo(t, published); got.Title != "So What" || got.Playing {
 		t.Fatalf("now playing = %+v, want So What paused", got)
 	}

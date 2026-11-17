@@ -14,12 +14,13 @@ import (
 )
 
 type paneSize struct {
-	width  int
-	height int
+	width       int
+	height      int
+	spotifyKeys bool
 }
 
 const (
-	rightViewChrome     = 6
+	rightViewChrome     = 4
 	rightViewPadding    = 1
 	minListStatusHeight = 4
 	leftHelpIndent      = 6
@@ -151,7 +152,7 @@ func leftHelp(h help.Styles, width int) string {
 		Render(text)
 }
 
-func (s paneSize) rightPane(title, note string, body func() string, status playbackStatus, volume volumeLevel, keys string) string {
+func (s paneSize) rightPane(title, note string, body func() string, keys string) string {
 	width := s.rightWidth()
 	title = fit(printable(title), width-lipgloss.Width(note)) + note
 	parts := []string{
@@ -161,15 +162,12 @@ func (s paneSize) rightPane(title, note string, body func() string, status playb
 			Render(fit(title, width)),
 		"",
 	}
-	line := s.statusLine(status, volume)
 	if height := s.listHeight(); height > 0 {
 		parts = append(parts, lipgloss.NewStyle().
 			Width(width).
 			Height(height).
 			MaxHeight(height).
-			Render(body()), "", line, "")
-	} else {
-		parts = append(parts, line)
+			Render(body()), "")
 	}
 	parts = append(parts, keys)
 
@@ -188,36 +186,28 @@ func (s paneSize) notice(text string) string {
 		Render(text)
 }
 
-func (s paneSize) statusLine(status playbackStatus, volume volumeLevel) string {
-	width, now := s.rightWidth(), time.Now()
-	if !volume.shown {
-		return status.view(width, now)
-	}
-	levelStyle := playingStyle
-	if volume.err != nil {
-		levelStyle = playbackErrorStyle
-	}
-	level := fit(printable(volume.text()), width)
-	text := status.view(width-lipgloss.Width(level)-1, now)
-	gap := strings.Repeat(" ", max(0, width-lipgloss.Width(text)-lipgloss.Width(level)))
-	return text + gap + levelStyle.Render(level)
-}
-
 // keyHelp shows the keys of the right pane. tab, which moves to target, is
-// left out when target is empty, as on tabs with only one list.
+// left out when target is empty, as on tabs with only one list. The keys
+// that control Spotify on every tab show in the player, or here, as many as
+// fit, when the compact player has no room for them.
 func (s paneSize) keyHelp(h help.Styles, target string) string {
 	hint := func(key, desc string) string {
 		return h.ShortKey.Inline(true).Render(key) + " " + h.ShortDesc.Inline(true).Render(desc)
 	}
-	hints := []string{hint("enter", "play"), hint("r", "refresh"), hint("space", "play/pause")}
+	hints := []string{hint("enter", "play"), hint("r", "refresh")}
 	if target != "" {
 		hints = append([]string{hint("tab", target)}, hints...)
 	}
 	separator := h.ShortSeparator.Inline(true).Render(" • ")
 	text := strings.Join(hints, separator)
-	volume := separator + hint("+/-", "volume")
-	if lipgloss.Width(text+volume) <= s.rightWidth() {
-		text += volume
+	if s.spotifyKeys {
+		for _, ph := range playerHints {
+			next := separator + hint(ph.key, ph.desc)
+			if lipgloss.Width(text+next) > s.rightWidth() {
+				break
+			}
+			text += next
+		}
 	}
 	return lipgloss.NewStyle().
 		Width(s.rightWidth()).

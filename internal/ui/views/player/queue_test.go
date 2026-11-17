@@ -156,8 +156,9 @@ func TestQueueLoadsWhenOpened(t *testing.T) {
 		"Next up",
 		"1  Something - The Beatles", "3:02",
 		"4  How the Vote Count Works - Morning Briefing", "52:14",
-		"enter play • r refresh • space play/pause",
+		"enter play • r refresh",
 	)
+	h.wantBottomLine("space play/pause")
 	h.dontWantView("tab ")
 }
 

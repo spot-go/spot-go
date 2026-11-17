@@ -1,6 +1,7 @@
 package player
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -48,6 +49,9 @@ type (
 		plays          []playRequest
 		pauses         []string
 		device         string
+		deviceName     string
+		shuffle        bool
+		repeat         string
 		volume         int
 		noVolume       bool
 		volumeStatus   int
@@ -92,6 +96,14 @@ type (
 		queueRequests  int
 		playLag        int
 		started        func(*fakeAPI)
+		modes          []string
+		modeStatus     int
+		// soloistModes are the mode changes made through Soloist, and
+		// soloistErr is what Soloist answers them.
+		soloistModes []string
+		soloistErr   error
+		seeks        []string
+		seekStatus   int
 	}
 
 	recentPlay struct {
@@ -289,7 +301,7 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 		item, context, device := "null", fmt.Sprintf(`{"type":"playlist","uri":%q}`, f.playing), "null"
 		if f.device != "" {
-			device = fmt.Sprintf(`{"id":%q,"volume_percent":%d,"supports_volume":%t}`, f.device, f.volume, !f.noVolume)
+			device = fmt.Sprintf(`{"id":%q,"name":%q,"volume_percent":%d,"supports_volume":%t}`, f.device, f.deviceName, f.volume, !f.noVolume)
 		}
 		if f.playingItem != "" {
 			item = fmt.Sprintf(`{"uri":%q,"name":%q,"duration_ms":%d,"artists":[%s]}`, f.playingItem, f.playingName, f.durationMs, f.artistsJSON())
@@ -301,7 +313,11 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 			context = "null"
 			item = fmt.Sprintf(`{"type":"episode","uri":%q,"name":%q,"duration_ms":%d,"show":{"uri":%q}}`, f.playingItem, f.playingName, f.durationMs, f.playing)
 		}
-		return response(r, http.StatusOK, fmt.Sprintf(`{"is_playing":%t,"progress_ms":%d,"context":%s,"device":%s,"item":%s}`, !f.paused, f.progressMs, context, device, item)), nil
+		repeat := "off"
+		if f.repeat != "" {
+			repeat = f.repeat
+		}
+		return response(r, http.StatusOK, fmt.Sprintf(`{"is_playing":%t,"progress_ms":%d,"shuffle_state":%t,"repeat_state":%q,"context":%s,"device":%s,"item":%s}`, !f.paused, f.progressMs, f.shuffle, repeat, context, device, item)), nil
 
 	case strings.HasPrefix(path, "playlists/") && strings.HasSuffix(path, "/items"):
 		id := strings.TrimSuffix(strings.TrimPrefix(path, "playlists/"), "/items")
@@ -475,6 +491,29 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		f.volume, _ = strconv.Atoi(query.Get("volume_percent"))
 		return response(r, http.StatusNoContent, ""), nil
 
+	case (path == "me/player/shuffle" || path == "me/player/repeat") && r.Method == http.MethodPut:
+		state := r.URL.Query().Get("state")
+		f.modes = append(f.modes, strings.TrimPrefix(path, "me/player/")+"="+state)
+		// Spotify doesn't let the Web API change the modes on Soloist.
+		if f.modeStatus != 0 || f.device == testDeviceID {
+			return errorResponse(r, cmp.Or(f.modeStatus, http.StatusForbidden), "Player command failed: Restriction violated"), nil
+		}
+		if path == "me/player/shuffle" {
+			f.shuffle = state == "true"
+		} else {
+			f.repeat = state
+		}
+		return response(r, http.StatusNoContent, ""), nil
+
+	case path == "me/player/seek" && r.Method == http.MethodPut:
+		position := r.URL.Query().Get("position_ms")
+		f.seeks = append(f.seeks, position)
+		if f.seekStatus != 0 {
+			return errorResponse(r, f.seekStatus, "Player command failed: Restriction violated"), nil
+		}
+		f.progressMs, _ = strconv.Atoi(position)
+		return response(r, http.StatusNoContent, ""), nil
+
 	case path == "me/player/pause" && r.Method == http.MethodPut:
 		f.pauses = append(f.pauses, r.URL.Query().Get("device_id"))
 		if f.pauseStatus != 0 {
@@ -581,6 +620,31 @@ func (f *fakeAPI) playRequests() []playRequest {
 	return append([]playRequest(nil), f.plays...)
 }
 
+// SetShuffle and SetRepeat change the modes through Soloist, which then
+// tells Spotify.
+func (f *fakeAPI) SetShuffle(_ context.Context, on bool) error {
+	return f.changeSoloistMode(fmt.Sprintf("shuffle=%t", on), func() { f.shuffle = on })
+}
+
+func (f *fakeAPI) SetRepeat(_ context.Context, mode string) error {
+	return f.changeSoloistMode("repeat="+mode, func() { f.repeat = mode })
+}
+
+func (f *fakeAPI) changeSoloistMode(change string, apply func()) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.soloistModes = append(f.soloistModes, change)
+	if f.soloistErr != nil {
+		return f.soloistErr
+	}
+	if f.device != testDeviceID {
+		return errors.New("Spotify Soloist is not the active device")
+	}
+	apply()
+	return nil
+}
+
 func (f *fakeAPI) set(fn func(f *fakeAPI)) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -632,7 +696,7 @@ func newModelWith(api *fakeAPI, width, height int) Model {
 func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model {
 	client := spotify.NewClient(&http.Client{Transport: api})
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: width, Height: height}}
-	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store, nil, nil)
+	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store, nil, nil, api)
 	// spot-go opens on the Search tab (see TestSpotGoOpensOnTheSearchTab),
 	// but most tests start on the Playlists tab, which loads at the start.
 	m.activeTab = playlistsTab
@@ -791,17 +855,17 @@ func (h *harness) selected() string {
 func tabSize(content tea.Model) contentDimension {
 	switch c := content.(type) {
 	case playlistModel:
-		return contentDimension{width: c.width, height: c.height}
+		return contentDimension(c.paneSize)
 	case podcastModel:
-		return contentDimension{width: c.width, height: c.height}
+		return contentDimension(c.paneSize)
 	case artistModel:
-		return contentDimension{width: c.width, height: c.height}
+		return contentDimension(c.paneSize)
 	case albumModel:
-		return contentDimension{width: c.width, height: c.height}
+		return contentDimension(c.paneSize)
 	case searchModel:
-		return contentDimension{width: c.width, height: c.height}
+		return contentDimension(c.paneSize)
 	case queueModel:
-		return contentDimension{width: c.width, height: c.height}
+		return contentDimension(c.paneSize)
 	}
 	return contentDimension{}
 }
@@ -838,6 +902,10 @@ func key(k string) tea.Msg {
 		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
 	case "ctrl+q":
 		return tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl}
+	case "ctrl+s":
+		return tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
+	case "ctrl+r":
+		return tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl}
 	}
 	return tea.KeyPressMsg{Code: []rune(k)[0], Text: k}
 }
@@ -873,7 +941,7 @@ func TestSpotGoOpensOnTheSearchTab(t *testing.T) {
 	api := soWhatOnPhone()
 	client := spotify.NewClient(&http.Client{Transport: api})
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: 120, Height: 40}}
-	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, nil, nil, nil)
+	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, nil, nil, nil, api)
 	m.progressEvery = 0
 	playlists := m.tabs[playlistsTab].content.(playlistModel)
 	playlists.after = testAfter

@@ -36,6 +36,8 @@ type (
 		activeTab     int
 		toggle        playbackToggle
 		volume        volumeControl
+		modes         [modeCount]modeControl
+		playerBar     playerBar
 		volumeSaver   *volumeSaver
 		confirmEvery  time.Duration
 		startPolls    int
@@ -44,6 +46,14 @@ type (
 		after         func(time.Duration, tea.Msg) tea.Cmd
 		publish       func(media.Info)
 		nowPlaying    nowPlaying
+		ownModes      ModeControl
+	}
+
+	// ModeControl changes shuffle and repeat on spot-go's own device, where
+	// the Spotify Web API can't change them.
+	ModeControl interface {
+		SetShuffle(ctx context.Context, on bool) error
+		SetRepeat(ctx context.Context, mode string) error
 	}
 
 	tab struct {
@@ -55,6 +65,9 @@ type (
 	contentDimension struct {
 		width  int
 		height int
+		// spotifyKeys is true when the tab shows the keys that control
+		// Spotify, as the compact player has no room for them.
+		spotifyKeys bool
 	}
 
 	inputCapturer interface {
@@ -88,10 +101,11 @@ var (
 				BorderForeground(styles.LipglossColorForegroundGreenSpotify).
 				Padding(0, tabPadding)
 	activeTabStyle = inactiveTabStyle.Border(activeTabBorder, true)
-	windowStyle    = lipgloss.NewStyle().
+	// windowStyle frames the tab content on its sides. The tab row is
+	// above it, and the player below.
+	windowStyle = lipgloss.NewStyle().
 			BorderForeground(styles.LipglossColorForegroundGreenSpotify).
-			Border(lipgloss.NormalBorder()).
-			UnsetBorderTop()
+			Border(lipgloss.NormalBorder(), false, true)
 )
 
 func NewModel(
@@ -103,6 +117,7 @@ func NewModel(
 	historyStore *library.Store,
 	publish func(media.Info),
 	saveVolume func(int) error,
+	ownModes ModeControl,
 ) Model {
 	var (
 		history    library.History
@@ -143,6 +158,7 @@ func NewModel(
 		progressEvery: progressInterval,
 		after:         after,
 		publish:       publish,
+		ownModes:      ownModes,
 	}
 	m.broadcast(m.contentDimension())
 	return m
@@ -203,6 +219,30 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			if !m.activeCapturesInput() {
 				return m.changePlayback(toggleChange)
 			}
+		case "n":
+			if !m.activeCapturesInput() {
+				return m.changePlayback(nextChange)
+			}
+		case "p":
+			if !m.activeCapturesInput() {
+				return m.changePlayback(previousChange)
+			}
+		case ">", ".":
+			if !m.activeCapturesInput() {
+				return m.seek(seekStep)
+			}
+		case "<", ",":
+			if !m.activeCapturesInput() {
+				return m.seek(-seekStep)
+			}
+		case "ctrl+s":
+			if !m.activeCapturesInput() {
+				return m.changeMode(shuffleMode, 1)
+			}
+		case "ctrl+r":
+			if !m.activeCapturesInput() {
+				return m.changeMode(repeatMode, 1)
+			}
 		case "+", "=":
 			if !m.activeCapturesInput() {
 				return m.changeVolume(volumeStep)
@@ -222,8 +262,13 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case playbackToggled:
 		m = m.playbackToggled(msg)
+		if msg.seek && msg.err != nil {
+			// What plays didn't change, so the tabs keep showing it.
+			return m.notify("Fail to seek: "+errorText(msg.err), true)
+		}
 		if msg.err == nil && msg.plays == *m.plays {
 			m = m.publishToggled(msg)
+			m.playerBar.idle = false
 		}
 		broadcast := m.broadcast(msg)
 		m, skip := m.nextSkip()
@@ -231,6 +276,12 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case volumeChanged:
 		return m.volumeChanged(msg)
+
+	case modeChanged:
+		return m.modeChanged(msg)
+
+	case noticeHidden:
+		return m.noticeHidden(msg), nil
 
 	case playbackStarted:
 		return m.playbackStarted(msg, msg.uri, msg.item, msg.info())
@@ -260,6 +311,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case playbackPolled:
 		if msg.err == nil && msg.plays == *m.plays {
 			m = m.publishPolled(msg.playing)
+			m = m.followPolled(msg.playing)
 		}
 		return m, tea.Batch(m.broadcast(msg), m.rememberPolledVolume(msg))
 
@@ -378,21 +430,29 @@ func (m Model) tabRowWith(padding int) string {
 	return lipgloss.JoinHorizontal(lipgloss.Bottom, row, gap, closeBox)
 }
 
-func (m Model) layout() (string, contentDimension) {
+// layout is the tab row, the size of the tab content under it, and whether
+// the window has room for the full player under the content.
+func (m Model) layout() (string, contentDimension, bool) {
 	row := m.tabRow()
-	return row, contentDimension{
-		width:  lipgloss.Width(row) - windowStyle.GetHorizontalFrameSize(),
-		height: m.Height - lipgloss.Height(row) - 2,
+	full := m.hasRoomForFullPlayer(lipgloss.Height(row))
+	chrome := compactPlayerChrome
+	if full {
+		chrome = fullPlayerChrome
 	}
+	return row, contentDimension{
+		width:       lipgloss.Width(row) - windowStyle.GetHorizontalFrameSize(),
+		height:      m.Height - lipgloss.Height(row) - chrome,
+		spotifyKeys: !full,
+	}, full
 }
 
 func (m Model) contentDimension() contentDimension {
-	_, cd := m.layout()
+	_, cd, _ := m.layout()
 	return cd
 }
 
 func (m Model) View() tea.View {
-	row, cd := m.layout()
+	row, cd, full := m.layout()
 	if lipgloss.Width(row) > m.Width || cd.height < minContentHeight {
 		return views.FullScreen(lipgloss.NewStyle().
 			Width(m.Width).
@@ -406,9 +466,10 @@ func (m Model) View() tea.View {
 		Render(m.tabs[m.activeTab].content.View().Content)
 	window := windowStyle.
 		Width(cd.width + windowStyle.GetHorizontalBorderSize()).
-		Height(cd.height + windowStyle.GetVerticalBorderSize()).
+		Height(cd.height).
 		Render(content)
-	return views.FullScreen(docStyle.Height(m.Height).Render(row+"\n"+window), m.Height)
+	player := m.playerView(lipgloss.Width(row), full, time.Now())
+	return views.FullScreen(docStyle.Height(m.Height).Render(row+"\n"+window+"\n"+player), m.Height)
 }
 
 func tabBorderWithBottom(left, middle, right string) lipgloss.Border {
