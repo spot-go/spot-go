@@ -3,12 +3,16 @@ package soloist
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/spot-go/spot-go/internal/command"
 )
 
 func TestAPIKey(t *testing.T) {
@@ -224,5 +228,209 @@ while true; do sleep 0.05; done
 	}
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Fatalf("Stop() took %v, want SIGTERM to end the daemon right away", elapsed)
+	}
+}
+
+// countingScript is a Soloist that logs in, and counts how many times it
+// started in the file it returns.
+func countingScript(t *testing.T, daemon string) string {
+	t.Helper()
+
+	starts := filepath.Join(t.TempDir(), "starts")
+	writeScript(t, binaryFile, fakeScript(time.Now(), `echo started >> "`+starts+`"
+`+daemon))
+	if err := SaveAPIKey("key"); err != nil {
+		t.Fatal(err)
+	}
+	return starts
+}
+
+// loggedInDaemon logs in and keeps running as itself, so the pattern that
+// finds Soloist still matches it, as it would with an exec.
+const loggedInDaemon = `echo "2026-11-07 16:55:43.837: ready, device_name=spot-go@host device_id=84680ce4-e21b-44ea-96eb-921b6f18fc63"
+echo "2026-11-07 16:55:44.529: logged in as me"
+while true; do sleep 1; done
+`
+
+func startCount(t *testing.T, starts string) int {
+	t.Helper()
+
+	b, err := os.ReadFile(starts)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Count(string(b), "started")
+}
+
+func savedPid(t *testing.T) int {
+	t.Helper()
+
+	b, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pid
+}
+
+func waitStopped(t *testing.T, pid int) {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for command.Running(pid) {
+		if time.Now().After(deadline) {
+			t.Fatalf("Soloist %d still runs", pid)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestDetachLeavesSoloistPlayingForResume(t *testing.T) {
+	useTempFolder(t)
+	starts := countingScript(t, loggedInDaemon)
+
+	if resp := Login(nil); resp.Err != nil {
+		t.Fatalf("Login() = %v", resp.Err)
+	}
+	pid := savedPid(t)
+
+	Detach()
+	if !command.Running(pid) {
+		t.Fatal("Detach() stopped Soloist")
+	}
+	if Adopted() {
+		t.Fatal("Adopted() = true with no Soloist in use")
+	}
+
+	var paired atomic.Bool
+	if resp := Resume(func() { paired.Store(true) }); resp.Err != nil {
+		t.Fatalf("Resume() = %v", resp.Err)
+	}
+	if n := startCount(t, starts); n != 1 {
+		t.Fatalf("Soloist started %d times, want Resume() to use the one left playing", n)
+	}
+	if paired.Load() {
+		t.Fatal("Resume() asked to pair with a Soloist that logged in")
+	}
+	if !Adopted() {
+		t.Fatal("Adopted() = false after Resume() found Soloist playing")
+	}
+	if id := DeviceID(); id != "84680ce4-e21b-44ea-96eb-921b6f18fc63" {
+		t.Fatalf("DeviceID() = %q", id)
+	}
+	if err := Err(); err != nil {
+		t.Fatalf("Err() = %v", err)
+	}
+
+	Stop()
+	waitStopped(t, pid)
+	if _, err := os.Stat(pidFile); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the pid file is still there after Stop(): %v", err)
+	}
+	if Adopted() {
+		t.Fatal("Adopted() = true after Stop()")
+	}
+}
+
+func TestResumeStartsSoloistWhenNoneWasLeftPlaying(t *testing.T) {
+	tests := []struct {
+		name string
+		pid  func(t *testing.T) string
+	}{
+		{name: "no pid file"},
+		{name: "exited", pid: func(t *testing.T) string {
+			cmd := exec.Command("true")
+			if err := cmd.Run(); err != nil {
+				t.Fatal(err)
+			}
+			return strconv.Itoa(cmd.Process.Pid)
+		}},
+		{name: "another program", pid: func(*testing.T) string { return strconv.Itoa(os.Getpid()) }},
+		{name: "garbage", pid: func(*testing.T) string { return "soloist" }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			useTempFolder(t)
+			starts := countingScript(t, loggedInDaemon)
+			if tt.pid != nil {
+				if err := os.WriteFile(pidFile, []byte(tt.pid(t)+"\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if resp := Resume(nil); resp.Err != nil {
+				t.Fatalf("Resume() = %v", resp.Err)
+			}
+			if n := startCount(t, starts); n != 1 {
+				t.Fatalf("Soloist started %d times, want 1", n)
+			}
+			if Adopted() {
+				t.Fatal("Adopted() = true for a Soloist this run started")
+			}
+			if pid := savedPid(t); !command.Running(pid) {
+				t.Fatalf("the pid file has %d, which doesn't run", pid)
+			}
+		})
+	}
+}
+
+func TestLoginStopsSoloistLeftPlaying(t *testing.T) {
+	useTempFolder(t)
+	starts := countingScript(t, loggedInDaemon)
+
+	if resp := Login(nil); resp.Err != nil {
+		t.Fatalf("Login() = %v", resp.Err)
+	}
+	old := savedPid(t)
+	Detach()
+
+	if resp := Login(nil); resp.Err != nil {
+		t.Fatalf("Login() = %v", resp.Err)
+	}
+	waitStopped(t, old)
+	if n := startCount(t, starts); n != 2 {
+		t.Fatalf("Soloist started %d times, want 2", n)
+	}
+	if pid := savedPid(t); pid == old || !command.Running(pid) {
+		t.Fatalf("the pid file has %d, want the new Soloist", pid)
+	}
+}
+
+func TestResumeRestartsSoloistLeftPlayingThatFailed(t *testing.T) {
+	useTempFolder(t)
+	starts := countingScript(t, `if [ "$(wc -l < "$STARTS")" -eq 1 ]; then
+  echo "2026-11-07 16:55:43.837: Error: the audio device went away"
+  while true; do sleep 1; done
+fi
+`+loggedInDaemon)
+	t.Setenv("STARTS", starts)
+
+	p, err := start("key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-p.failed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first Soloist never failed")
+	}
+	old := p.pid()
+	Detach()
+
+	if resp := Resume(nil); resp.Err != nil {
+		t.Fatalf("Resume() = %v", resp.Err)
+	}
+	waitStopped(t, old)
+	if n := startCount(t, starts); n != 2 {
+		t.Fatalf("Soloist started %d times, want Resume() to start a new one", n)
+	}
+	if Adopted() {
+		t.Fatal("Adopted() = true for the new Soloist")
 	}
 }

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"runtime"
+	"syscall"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -45,15 +47,47 @@ func run(cmd *cobra.Command, args []string) {
 		defer f.Close()
 	}
 
-	soloist.KillStale()
 	styles.HasDarkBackground = lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
 	p := tea.NewProgram(login.NewModel(media.Publish))
 	program.Instance = p
 	media.Listen(func(c media.Command) { p.Send(c) })
-	_, err := p.Run()
-	soloist.Stop()
+	stopHangup := quitOnHangup(p)
+	final, err := p.Run()
+	stopHangup()
+	if keepPlaying(final) {
+		soloist.Detach()
+	} else {
+		soloist.Stop()
+	}
 	if err != nil && !errors.Is(err, tea.ErrInterrupted) {
 		log.Fatal(err)
+	}
+}
+
+// keepPlaying reports whether Soloist keeps playing after spot-go quits, as
+// the user chose when quitting.
+func keepPlaying(final tea.Model) bool {
+	k, ok := final.(interface{ KeepPlaying() bool })
+	return ok && k.KeepPlaying()
+}
+
+// quitOnHangup quits p when the terminal closes, as Soloist runs apart from
+// the terminal and would otherwise keep playing. The function it returns
+// stops listening.
+func quitOnHangup(p *tea.Program) func() {
+	hangup := make(chan os.Signal, 1)
+	signal.Notify(hangup, syscall.SIGHUP)
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-hangup:
+			p.Quit()
+		case <-done:
+		}
+	}()
+	return func() {
+		signal.Stop(hangup)
+		close(done)
 	}
 }
 

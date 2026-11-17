@@ -29,6 +29,12 @@ var (
 	apiKeyFile = filepath.Join(Folder, "api-key")
 	volumeFile = filepath.Join(Folder, "volume")
 	dataDir    = filepath.Join(Folder, "data")
+	// logFile has what Soloist writes. It goes to a file and not to spot-go,
+	// so Soloist can keep playing after spot-go quits.
+	logFile = filepath.Join(Folder, "soloist.log")
+	// pidFile has the process ID of the Soloist spot-go started last, so the
+	// next run of spot-go can find it when it was left playing.
+	pidFile = filepath.Join(Folder, "soloist.pid")
 
 	ErrNoAPIKey      = errors.New("no Soloist API key")
 	ErrInvalidAPIKey = errors.New("Spotify rejected the Soloist API key")
@@ -90,6 +96,9 @@ func SaveAPIKey(key string) error {
 	return nil
 }
 
+// Login starts Soloist and waits for it to log in. It first stops any
+// Soloist that runs with spot-go's data folder, such as one an earlier run of
+// spot-go left playing.
 func Login(onPairing func()) LoginResponse {
 	key, err := APIKey()
 	if err != nil {
@@ -106,11 +115,83 @@ func Login(onPairing func()) LoginResponse {
 
 	if err := p.waitLoggedIn(loginTimeout, onPairing); err != nil {
 		if release(p) {
-			p.stop()
+			stopProcess(p)
 		}
 		return LoginResponse{err}
 	}
 	return LoginResponse{nil}
+}
+
+// Resume uses the Soloist an earlier run of spot-go left playing, when there
+// is one, so what it plays goes on. Otherwise, or when that Soloist doesn't
+// log in, it starts Soloist like Login.
+func Resume(onPairing func()) LoginResponse {
+	if _, err := APIKey(); err != nil {
+		return LoginResponse{err}
+	}
+
+	if p := adopt(); p != nil {
+		err := p.waitLoggedIn(loginTimeout, onPairing)
+		if err == nil || errors.Is(err, ErrStopped) {
+			return LoginResponse{err}
+		}
+		if release(p) {
+			stopProcess(p)
+		}
+	}
+	return Login(onPairing)
+}
+
+// adopt follows the Soloist an earlier run of spot-go left playing, if it
+// still runs.
+func adopt() *process {
+	startMu.Lock()
+	defer startMu.Unlock()
+
+	mu.Lock()
+	running := current != nil
+	mu.Unlock()
+	if running {
+		return nil
+	}
+
+	pid, ok := leftRunning()
+	if !ok {
+		return nil
+	}
+	p, err := attachProcess(pid, logFile)
+	if err != nil {
+		return nil
+	}
+
+	mu.Lock()
+	current = p
+	mu.Unlock()
+	return p
+}
+
+// leftRunning is the process ID of the Soloist spot-go started last, when it
+// still runs with spot-go's data folder.
+func leftRunning() (int, bool) {
+	b, err := os.ReadFile(pidFile)
+	if err != nil {
+		return 0, false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil || pid <= 0 {
+		return 0, false
+	}
+
+	out, err := exec.Command("pgrep", "-f", stalePattern(dataDir)).Output()
+	if err != nil {
+		return 0, false
+	}
+	for _, field := range strings.Fields(string(out)) {
+		if field == strconv.Itoa(pid) {
+			return pid, true
+		}
+	}
+	return 0, false
 }
 
 func DeviceID() string {
@@ -142,6 +223,7 @@ func Err() error {
 	return p.err()
 }
 
+// Stop stops Soloist, and with it what it plays.
 func Stop() {
 	startMu.Lock()
 	defer startMu.Unlock()
@@ -149,7 +231,35 @@ func Stop() {
 	stopCurrent()
 }
 
-func KillStale() {
+// Detach leaves Soloist running when spot-go quits, so what it plays keeps
+// playing. The next run of spot-go finds it with Resume.
+func Detach() {
+	startMu.Lock()
+	defer startMu.Unlock()
+
+	mu.Lock()
+	p := current
+	current = nil
+	mu.Unlock()
+
+	if p != nil {
+		p.detach()
+	}
+}
+
+// Adopted reports whether the Soloist in use is one an earlier run of
+// spot-go left playing.
+func Adopted() bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	return current != nil && current.adopted
+}
+
+// killStale stops every Soloist that runs with spot-go's data folder: one an
+// earlier run of spot-go left playing, or one left behind when spot-go
+// crashed.
+func killStale() {
 	pattern := stalePattern(dataDir)
 	_ = exec.Command("pkill", "-f", pattern).Run()
 
@@ -194,10 +304,15 @@ func start(key string) (*process, error) {
 	defer startMu.Unlock()
 
 	stopCurrent()
-	p, err := startProcess(binaryFile, daemonArgs(key))
+	killStale()
+	_ = os.Remove(pidFile)
+	p, err := startProcess(binaryFile, daemonArgs(key), logFile)
 	if err != nil {
 		return nil, err
 	}
+	// Without the file, the next run of spot-go can't find this Soloist if
+	// it is left playing, and stops it instead.
+	_ = os.WriteFile(pidFile, []byte(strconv.Itoa(p.pid())+"\n"), 0600)
 
 	mu.Lock()
 	current = p
@@ -212,7 +327,15 @@ func stopCurrent() {
 	mu.Unlock()
 
 	if p != nil {
-		p.stop()
+		stopProcess(p)
+	}
+}
+
+// stopProcess stops p, and forgets it was started.
+func stopProcess(p *process) {
+	p.stop()
+	if b, err := os.ReadFile(pidFile); err == nil && strings.TrimSpace(string(b)) == strconv.Itoa(p.pid()) {
+		_ = os.Remove(pidFile)
 	}
 }
 

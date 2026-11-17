@@ -28,6 +28,9 @@ type process struct {
 	waitOnce  sync.Once
 	failOnce  sync.Once
 
+	// adopted is true for a Soloist an earlier run of spot-go left playing.
+	adopted bool
+
 	mu      sync.Mutex
 	id      string
 	failure error
@@ -36,15 +39,33 @@ type process struct {
 	tail    []string
 }
 
-func startProcess(bin string, args []string) (*process, error) {
-	p := &process{
+func newProcess() *process {
+	return &process{
 		loggedIn: make(chan struct{}),
 		waiting:  make(chan struct{}),
 		failed:   make(chan struct{}),
 		exited:   make(chan struct{}),
 	}
+}
 
-	cmd, err := command.Start(bin, args, p.handle)
+func startProcess(bin string, args []string, log string) (*process, error) {
+	p := newProcess()
+	cmd, err := command.Start(bin, args, log, p.handle)
+	if err != nil {
+		return nil, err
+	}
+	p.cmd = cmd
+
+	go p.wait()
+	return p, nil
+}
+
+// attachProcess follows pid, a Soloist an earlier run of spot-go started and
+// left playing. Its log tells whether it logged in, and its device ID.
+func attachProcess(pid int, log string) (*process, error) {
+	p := newProcess()
+	p.adopted = true
+	cmd, err := command.Attach(pid, log, p.handle)
 	if err != nil {
 		return nil, err
 	}
@@ -105,6 +126,15 @@ func (p *process) deviceID() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.id
+}
+
+func (p *process) pid() int {
+	return p.cmd.Pid()
+}
+
+// detach stops following the process and leaves it running.
+func (p *process) detach() {
+	p.cmd.Release()
 }
 
 func (p *process) stop() {
