@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"runtime"
+	"syscall"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -16,6 +18,7 @@ import (
 	"github.com/spot-go/spot-go/internal/soloist"
 	"github.com/spot-go/spot-go/internal/ui/styles"
 	"github.com/spot-go/spot-go/internal/ui/views/login"
+	"github.com/spot-go/spot-go/internal/ui/views/player"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -45,15 +48,63 @@ func run(cmd *cobra.Command, args []string) {
 		defer f.Close()
 	}
 
-	soloist.KillStale()
 	styles.HasDarkBackground = lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
 	p := tea.NewProgram(login.NewModel(media.Publish))
 	program.Instance = p
 	media.Listen(func(c media.Command) { p.Send(c) })
-	_, err := p.Run()
-	soloist.Stop()
+	stopHangup := quitOnHangup(p)
+	final, err := p.Run()
+	if keepPlaying(final) {
+		soloist.Detach()
+	} else {
+		soloist.Stop()
+	}
+	// Until Soloist stopped, a hang-up only quits spot-go, which already
+	// quit, and doesn't end spot-go before it stopped Soloist.
+	stopHangup()
 	if err != nil && !errors.Is(err, tea.ErrInterrupted) {
 		log.Fatal(err)
+	}
+}
+
+type keeper interface {
+	// KeepPlaying reports whether Soloist keeps playing after spot-go quits.
+	KeepPlaying() bool
+}
+
+// The program's model is the login view until the player shows, and then
+// the player.
+var (
+	_ keeper = login.Model{}
+	_ keeper = player.Model{}
+)
+
+// keepPlaying reports whether Soloist keeps playing after spot-go quits: the
+// user chose so when quitting the player, or spot-go found it playing and
+// quit before the player showed.
+func keepPlaying(final tea.Model) bool {
+	k, ok := final.(keeper)
+	return ok && k.KeepPlaying()
+}
+
+// quitOnHangup quits p when the terminal closes, as Soloist runs apart from
+// the terminal and would otherwise keep playing. A Soloist an earlier run of
+// spot-go left playing still keeps playing if the player didn't show yet, as
+// with any other quit. The function it returns stops listening.
+func quitOnHangup(p *tea.Program) func() {
+	hangup := make(chan os.Signal, 1)
+	signal.Notify(hangup, syscall.SIGHUP)
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-hangup:
+			p.Quit()
+		case <-done:
+		}
+	}()
+	return func() {
+		signal.Stop(hangup)
+		close(done)
 	}
 }
 

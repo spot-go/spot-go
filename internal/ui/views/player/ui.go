@@ -47,6 +47,13 @@ type (
 		publish       func(media.Info)
 		nowPlaying    nowPlaying
 		ownModes      ModeControl
+		quitPrompt    quitPrompt
+		// keepPlaying is true when the user chose to keep the music playing
+		// after spot-go quits.
+		keepPlaying bool
+		// knowsPlayback is true once spot-go read what Spotify plays, or
+		// changed it.
+		knowsPlayback bool
 	}
 
 	// ModeControl changes shuffle and repeat on spot-go's own device, where
@@ -204,9 +211,12 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
+		if m.quitPrompt.open {
+			return m.quitKey(msg)
+		}
 		switch msg.String() {
 		case "ctrl+q", "ctrl+c":
-			return m, tea.Quit
+			return m.quit()
 		case "left":
 			if !m.activeCapturesInput() {
 				return m.switchTab(m.activeTab - 1)
@@ -267,6 +277,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			return m.notify("Fail to seek: "+errorText(msg.err), true)
 		}
 		if msg.err == nil && msg.plays == *m.plays {
+			m.knowsPlayback = true
 			m = m.publishToggled(msg)
 			m.playerBar.idle = false
 		}
@@ -310,6 +321,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case playbackPolled:
 		if msg.err == nil && msg.plays == *m.plays {
+			m.knowsPlayback = true
 			m = m.publishPolled(msg.playing)
 			m = m.followPolled(msg.playing)
 		}
@@ -318,6 +330,12 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.WindowSizeMsg = msg
 		return m, m.broadcast(m.contentDimension())
+
+	case tea.PasteMsg:
+		if m.quitPrompt.open {
+			// The prompt takes no text, and the tab under it doesn't show.
+			return m, nil
+		}
 
 	case tabFilterMatches:
 		if msg.tab < 0 || msg.tab >= len(m.tabs) {
@@ -454,16 +472,26 @@ func (m Model) contentDimension() contentDimension {
 func (m Model) View() tea.View {
 	row, cd, full := m.layout()
 	if lipgloss.Width(row) > m.Width || cd.height < minContentHeight {
+		if m.quitPrompt.open {
+			return views.FullScreen(lipgloss.NewStyle().
+				MaxWidth(m.Width).
+				MaxHeight(m.Height).
+				Render(m.quitPrompt.view(m.Width, m.Height)), m.Height)
+		}
 		return views.FullScreen(lipgloss.NewStyle().
 			Width(m.Width).
 			MaxHeight(m.Height).
 			Render(tooSmallWindow), m.Height)
 	}
 
+	tabContent := m.tabs[m.activeTab].content.View().Content
+	if m.quitPrompt.open {
+		tabContent = m.quitPrompt.view(cd.width, cd.height)
+	}
 	content := lipgloss.NewStyle().
 		MaxWidth(cd.width).
 		MaxHeight(cd.height).
-		Render(m.tabs[m.activeTab].content.View().Content)
+		Render(tabContent)
 	window := windowStyle.
 		Width(cd.width + windowStyle.GetHorizontalBorderSize()).
 		Height(cd.height).

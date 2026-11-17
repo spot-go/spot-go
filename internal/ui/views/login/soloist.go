@@ -33,17 +33,34 @@ Press esc to change the Soloist API key.`
 
 var errSoloistNotSetUp = errors.New("Soloist is not set up")
 
+// soloistStartupLogin uses the Soloist an earlier run of spot-go left
+// playing, or else starts Soloist, when it is set up. A Soloist left playing
+// keeps its build: a newer one, when the build gets old, waits for the next
+// time spot-go starts Soloist, so what plays isn't cut.
 func (m Model) soloistStartupLogin() tea.Msg {
-	if soloist.NeedsDownload() || !soloist.HasAPIKey() {
+	if !soloist.HasAPIKey() || (soloist.NeedsDownload() && !soloist.LeftPlaying()) {
 		return soloist.LoginResponse{Err: errSoloistNotSetUp}
 	}
-	return m.soloistLogin()
+	return m.soloistResume()
+}
+
+func (m Model) soloistResume() tea.Msg {
+	return soloist.Resume(pairingNeeded)
 }
 
 func (m Model) soloistLogin() tea.Msg {
-	return soloist.Login(func() {
-		go program.Instance.Send(soloistPairingNeeded{})
-	})
+	return soloist.Login(pairingNeeded)
+}
+
+func pairingNeeded() {
+	go program.Instance.Send(soloistPairingNeeded{})
+}
+
+// KeepPlaying reports whether Soloist keeps playing when spot-go quits
+// before the player shows: only when it is one an earlier run of spot-go
+// left playing, which keeps playing as it was found.
+func (m Model) KeepPlaying() bool {
+	return soloist.Adopted()
 }
 
 func (m Model) isWaitingSoloistLogin() bool {
@@ -114,7 +131,12 @@ func (m Model) soloistDownloadFinished() (tea.Model, tea.Cmd) {
 func (m Model) soloistDownloadFailed(err error) (tea.Model, tea.Cmd) {
 	m.soloistUpdateTried = true
 	if _, checkErr := soloist.CheckBinary(); checkErr == nil {
-		return m.prepareSoloist()
+		if !soloist.HasAPIKey() {
+			return m.showSoloistAPIKey(nil), nil
+		}
+		// The build in place still works, and so does a Soloist an earlier
+		// run of spot-go left playing with it.
+		return m.startSoloistWith(m.soloistResume)
 	}
 
 	m.state = stateWebAPILogged
@@ -123,10 +145,14 @@ func (m Model) soloistDownloadFailed(err error) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) startSoloist() (tea.Model, tea.Cmd) {
+	return m.startSoloistWith(m.soloistLogin)
+}
+
+func (m Model) startSoloistWith(login tea.Cmd) (tea.Model, tea.Cmd) {
 	m.state = stateSoloistLoggingIn
 	m.activeModel = nil
 	m.msg = m.spinner.View()
-	return m, tea.Batch(m.soloistLogin, m.spinner.Tick)
+	return m, tea.Batch(login, m.spinner.Tick)
 }
 
 func (m Model) showSoloistAPIKey(err error) Model {
