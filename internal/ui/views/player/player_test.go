@@ -739,7 +739,7 @@ func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model
 	client := spotify.NewClient(&http.Client{Transport: api})
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: width, Height: height}}
 	m := NewModel(size, context.Background(), client, api.account(), &libspotify.PlayerDevice{ID: testDeviceID}, store, nil, nil, api)
-	// spot-go opens on the Search tab (see TestSpotGoOpensOnTheSearchTab),
+	// spot-go opens on the Queue tab (see TestSpotGoOpensOnTheQueueTab),
 	// but most tests start on the Playlists tab, which loads at the start.
 	m.activeTab = playlistsTab
 	m.confirmEvery = time.Millisecond
@@ -783,6 +783,18 @@ func newHarnessWith(t *testing.T, api *fakeAPI, width, height int) *harness {
 	h := &harness{t: t, api: api, model: m}
 	h.run(m.Init())
 	return h
+}
+
+// openTab moves to tab with the arrow keys, left or right.
+func (h *harness) openTab(tab int) {
+	h.t.Helper()
+
+	for h.player().activeTab > tab {
+		h.send(key("left"))
+	}
+	for h.player().activeTab < tab {
+		h.send(key("right"))
+	}
 }
 
 func (h *harness) send(msgs ...tea.Msg) {
@@ -980,8 +992,9 @@ func TestPlaylistsLoad(t *testing.T) {
 	}
 }
 
-func TestSpotGoOpensOnTheSearchTab(t *testing.T) {
+func TestSpotGoOpensOnTheQueueTab(t *testing.T) {
 	api := soWhatOnPhone()
+	api.queue = []string{albumTrackJSON("Freddie Freeloader", "Miles Davis", 589000, true)}
 	client := spotify.NewClient(&http.Client{Transport: api})
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: 120, Height: 40}}
 	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, nil, nil, nil, api)
@@ -993,10 +1006,14 @@ func TestSpotGoOpensOnTheSearchTab(t *testing.T) {
 
 	h.run(m.Init())
 
-	if got := h.player().activeTab; got != searchTab {
-		t.Fatalf("activeTab = %d, want the Search tab", got)
+	if got := h.player().activeTab; got != queueTab {
+		t.Fatalf("activeTab = %d, want the Queue tab", got)
 	}
-	h.wantView(searchHelpText)
+	// The queue loads at the start, as when the tab is switched to, and
+	// again when the first poll reads what Spotify plays, as the tab
+	// follows Spotify while it shows.
+	h.wantQueueReads(2)
+	h.wantView("Next up", "1  Freddie Freeloader - Miles Davis")
 	// The Playlists tab still loads, to follow what Spotify plays.
 	if h.playlistLoads != 1 {
 		t.Fatalf("playlists loaded %d times, want 1", h.playlistLoads)
@@ -1004,9 +1021,10 @@ func TestSpotGoOpensOnTheSearchTab(t *testing.T) {
 	h.wantView("⏸ So What — Miles Davis")
 
 	h.send(key("right"))
-	if got := h.player().activeTab; got != queueTab {
-		t.Fatalf("activeTab = %d, want the Queue tab right of Search", got)
+	if got := h.player().activeTab; got != searchTab {
+		t.Fatalf("activeTab = %d, want the Search tab right of Queue", got)
 	}
+	h.wantView(searchHelpText)
 	h.send(key("right"))
 	h.wantView("Rock", "Jazz")
 	if h.playlistLoads != 1 {
@@ -1272,7 +1290,7 @@ func TestOversizedTabContentIsClipped(t *testing.T) {
 	m.tabs[searchTab] = tab{name: "Search", content: tallModel{}}
 	h.model = m
 
-	h.send(keys("left", "left")...)
+	h.openSearchTab()
 
 	v := h.view()
 	if h.player().activeTab != searchTab || lipgloss.Height(v) > 24 || lipgloss.Width(v) > 80 || !strings.Contains(strings.SplitN(v, "\n", 3)[1], "Search") {

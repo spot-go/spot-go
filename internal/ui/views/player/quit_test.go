@@ -193,9 +193,7 @@ func TestQuitPromptTakesEveryKey(t *testing.T) {
 func TestQuitPromptWhileTypingASearch(t *testing.T) {
 	h := newHarnessWith(t, soWhatOnSpotGo(), 120, 40)
 	h.send(pollPlayback{})
-	for h.player().activeTab > searchTab {
-		h.send(key("left"))
-	}
+	h.openSearchTab()
 	h.send(key("/"))
 
 	if h.press("ctrl+c") {
@@ -285,9 +283,7 @@ func TestQuitAfterThePollFollowsWhatPlays(t *testing.T) {
 func TestQuitPromptDropsPastes(t *testing.T) {
 	h := newHarnessWith(t, soWhatOnSpotGo(), 120, 40)
 	h.send(pollPlayback{})
-	for h.player().activeTab > searchTab {
-		h.send(key("left"))
-	}
+	h.openSearchTab()
 	h.send(key("/"))
 	h.press("ctrl+c")
 

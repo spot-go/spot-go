@@ -151,13 +151,8 @@ func TestPlayerIsAtTheBottomOfEveryTab(t *testing.T) {
 	h := newHarnessWith(t, soWhatOnPixel(), 120, 40)
 	h.send(pollPlayback{})
 
-	for _, tab := range []int{searchTab, queueTab, playlistsTab, podcastsTab, artistsTab, albumsTab} {
-		for h.player().activeTab > tab {
-			h.send(key("left"))
-		}
-		for h.player().activeTab < tab {
-			h.send(key("right"))
-		}
+	for _, tab := range []int{queueTab, searchTab, playlistsTab, podcastsTab, artistsTab, albumsTab} {
+		h.openTab(tab)
 
 		lines := strings.Split(h.view(), "\n")
 		if len(lines) != 40 {
@@ -454,9 +449,7 @@ func TestPlayerDoesNotSayNothingPlaysRightAfterAPlayStarts(t *testing.T) {
 	h.wantPlayerRow(0, nothingPlaying)
 
 	h.send(key("enter"))
-	for range playlistsTab - searchTab {
-		h.send(key("left"))
-	}
+	h.openSearchTab()
 	h.dontWantPlayerRow(0, nothingPlaying, " on ")
 
 	// Spotify can take a moment to report the play.

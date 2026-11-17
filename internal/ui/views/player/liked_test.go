@@ -347,7 +347,7 @@ func TestRefusedLikedSongsPlayIsConfirmed(t *testing.T) {
 func TestLikedSongsLoadOnceThePlaylistsTabShows(t *testing.T) {
 	api := withLikedSongs()
 	m := newModelWith(api, 120, 40)
-	m.activeTab = searchTab
+	m.activeTab = queueTab
 	playlists := m.tabs[playlistsTab].content.(playlistModel)
 	playlists.visible = false
 	m.tabs[playlistsTab].content = playlists
@@ -361,7 +361,7 @@ func TestLikedSongsLoadOnceThePlaylistsTabShows(t *testing.T) {
 		t.Fatalf("Liked Songs requests = %v before the Playlists tab showed, want none", got)
 	}
 
-	h.send(keys("right", "right")...)
+	h.openTab(playlistsTab)
 	if got := api.requestsFor(likedSongsKey); !reflect.DeepEqual(got, []string{"liked@0"}) {
 		t.Fatalf("Liked Songs requests = %v, want liked@0 once the tab shows", got)
 	}
@@ -376,7 +376,7 @@ func TestLikedSongsLoadOnceThePlaylistsTabShows(t *testing.T) {
 func TestPlaylistSongsStillLoadOnAnotherTab(t *testing.T) {
 	api := newFakeAPI()
 	m := newModelWith(api, 120, 40)
-	m.activeTab = searchTab
+	m.activeTab = queueTab
 	playlists := m.tabs[playlistsTab].content.(playlistModel)
 	playlists.visible = false
 	m.tabs[playlistsTab].content = playlists

@@ -84,9 +84,7 @@ func newQueueHarness(t *testing.T, api *fakeAPI) *harness {
 func (h *harness) openQueueTab() {
 	h.t.Helper()
 
-	for h.player().activeTab > queueTab {
-		h.send(key("left"))
-	}
+	h.openTab(queueTab)
 }
 
 func (h *harness) queueTab() queueModel {
@@ -126,19 +124,19 @@ func (h *harness) wantQueueReads(n int) {
 	}
 }
 
-func TestQueueIsBetweenSearchAndPlaylists(t *testing.T) {
+func TestQueueIsTheFirstTabLeftOfSearch(t *testing.T) {
 	h := newHarness(t, 120, 40)
 
 	var got []string
 	for _, tab := range h.player().tabs[:3] {
 		got = append(got, tab.name)
 	}
-	if want := []string{"Search", "Queue", "Playlists"}; !reflect.DeepEqual(got, want) {
+	if want := []string{"Queue", "Search", "Playlists"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("first tabs = %q, want %q", got, want)
 	}
 	names := strings.SplitN(h.view(), "\n", 3)[1]
-	if search, queue := strings.Index(names, "Search"), strings.Index(names, "Queue"); search < 0 || queue < search {
-		t.Fatalf("tab names = %q, want Search, then Queue", names)
+	if queue, search := strings.Index(names, "Queue"), strings.Index(names, "Search"); queue < 0 || search < queue {
+		t.Fatalf("tab names = %q, want Queue, then Search", names)
 	}
 }
 
