@@ -1,6 +1,7 @@
 package player
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -299,4 +300,19 @@ func TestQuitPromptDropsPastes(t *testing.T) {
 	if got := h.player().tabs[searchTab].content.(searchModel).input.Value(); got != "pasted" {
 		t.Fatalf("search input = %q after a paste, want the paste: the test doesn't reach the input", got)
 	}
+}
+
+func TestQuitAsksWhenAPollBeforeAPlayIsDropped(t *testing.T) {
+	h := newHarnessWith(t, soWhatOnSpotGo(), 120, 40)
+	h.player().playerDevice.Active = true
+	// A play started while the first poll ran, so the poll says nothing
+	// about what plays now, and the play failed.
+	plays := *h.player().plays
+	*h.player().plays = plays + 1
+	h.send(playbackPolled{plays: plays}, searchPlaybackFailed{err: errors.New("Restriction violated")})
+
+	if h.press("ctrl+c") {
+		t.Fatal("spot-go quit without asking after a poll it dropped")
+	}
+	h.wantQuitPrompt()
 }

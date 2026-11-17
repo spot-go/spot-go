@@ -64,8 +64,8 @@ type (
 
 // Start starts name with args, its output going to logFile, which it empties
 // first. onLine gets each line of the output as name writes it. name runs in
-// the folder of logFile, so it doesn't keep the folder spot-go started in
-// busy after spot-go quits.
+// the folder of logFile, when its path is absolute, so it doesn't keep the
+// folder spot-go started in busy after spot-go quits.
 //
 // stdout and stderr share logFile, as in a terminal: a line one of them
 // writes in several parts can take in a line the other writes meanwhile.
@@ -83,7 +83,10 @@ func Start(name string, args []string, logFile string, onLine func(line string))
 
 	cmd := exec.Command(name, args...)
 	cmd.Stdout, cmd.Stderr = out, out
-	cmd.Dir = filepath.Dir(logFile)
+	if dir := filepath.Dir(logFile); filepath.IsAbs(dir) {
+		// A relative name and args are relative to spot-go's folder.
+		cmd.Dir = dir
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		in.Close()

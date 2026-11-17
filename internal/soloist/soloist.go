@@ -148,6 +148,13 @@ func Resume(onPairing func()) LoginResponse {
 	return Login(onPairing)
 }
 
+// LeftPlaying reports whether a Soloist an earlier run of spot-go left
+// playing still runs.
+func LeftPlaying() bool {
+	_, ok := leftRunning()
+	return ok
+}
+
 // adopt follows the Soloist an earlier run of spot-go left playing, if it
 // still runs.
 func adopt() *process {

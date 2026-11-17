@@ -138,6 +138,28 @@ func TestStartMissingBinary(t *testing.T) {
 	}
 }
 
+func TestStartWithRelativePaths(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.Mkdir("player", 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("player", "run"), []byte("#!/bin/sh\necho \"$1\"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	got := newLines()
+	p, err := Start(filepath.Join("player", "run"), []string{"hello"}, filepath.Join("player", "run.log"), got.add)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Wait(); err != nil {
+		t.Fatalf("Wait() = %v", err)
+	}
+	if lines := got.all(); len(lines) != 1 || lines[0] != "hello" {
+		t.Fatalf("lines = %q, want [hello]", lines)
+	}
+}
+
 func TestStartRunsInItsOwnSession(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("reads the session from /proc")

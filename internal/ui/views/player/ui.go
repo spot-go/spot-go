@@ -271,13 +271,13 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 
 	case playbackToggled:
-		m.knowsPlayback = m.knowsPlayback || msg.err == nil
 		m = m.playbackToggled(msg)
 		if msg.seek && msg.err != nil {
 			// What plays didn't change, so the tabs keep showing it.
 			return m.notify("Fail to seek: "+errorText(msg.err), true)
 		}
 		if msg.err == nil && msg.plays == *m.plays {
+			m.knowsPlayback = true
 			m = m.publishToggled(msg)
 			m.playerBar.idle = false
 		}
@@ -320,8 +320,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, m.broadcast(msg)
 
 	case playbackPolled:
-		m.knowsPlayback = m.knowsPlayback || msg.err == nil
 		if msg.err == nil && msg.plays == *m.plays {
+			m.knowsPlayback = true
 			m = m.publishPolled(msg.playing)
 			m = m.followPolled(msg.playing)
 		}

@@ -307,6 +307,9 @@ func TestDetachLeavesSoloistPlayingForResume(t *testing.T) {
 	if Adopted() {
 		t.Fatal("Adopted() = true with no Soloist in use")
 	}
+	if !LeftPlaying() {
+		t.Fatal("LeftPlaying() = false after Detach()")
+	}
 
 	var paired atomic.Bool
 	if resp := Resume(func() { paired.Store(true) }); resp.Err != nil {
@@ -332,6 +335,9 @@ func TestDetachLeavesSoloistPlayingForResume(t *testing.T) {
 	waitStopped(t, pid)
 	if _, err := os.Stat(pidFile); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("the pid file is still there after Stop(): %v", err)
+	}
+	if LeftPlaying() {
+		t.Fatal("LeftPlaying() = true after Stop()")
 	}
 	if Adopted() {
 		t.Fatal("Adopted() = true after Stop()")

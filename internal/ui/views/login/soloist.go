@@ -34,9 +34,11 @@ Press esc to change the Soloist API key.`
 var errSoloistNotSetUp = errors.New("Soloist is not set up")
 
 // soloistStartupLogin uses the Soloist an earlier run of spot-go left
-// playing, or else starts Soloist, when it is set up.
+// playing, or else starts Soloist, when it is set up. A Soloist left playing
+// keeps its build: a newer one, when the build gets old, waits for the next
+// time spot-go starts Soloist, so what plays isn't cut.
 func (m Model) soloistStartupLogin() tea.Msg {
-	if soloist.NeedsDownload() || !soloist.HasAPIKey() {
+	if !soloist.HasAPIKey() || (soloist.NeedsDownload() && !soloist.LeftPlaying()) {
 		return soloist.LoginResponse{Err: errSoloistNotSetUp}
 	}
 	return m.soloistResume()
