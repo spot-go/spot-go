@@ -46,6 +46,14 @@ type (
 		after         func(time.Duration, tea.Msg) tea.Cmd
 		publish       func(media.Info)
 		nowPlaying    nowPlaying
+		ownModes      ModeControl
+	}
+
+	// ModeControl changes shuffle and repeat on spot-go's own device, where
+	// the Spotify Web API can't change them.
+	ModeControl interface {
+		SetShuffle(ctx context.Context, on bool) error
+		SetRepeat(ctx context.Context, mode string) error
 	}
 
 	tab struct {
@@ -109,6 +117,7 @@ func NewModel(
 	historyStore *library.Store,
 	publish func(media.Info),
 	saveVolume func(int) error,
+	ownModes ModeControl,
 ) Model {
 	var (
 		history    library.History
@@ -149,6 +158,7 @@ func NewModel(
 		progressEvery: progressInterval,
 		after:         after,
 		publish:       publish,
+		ownModes:      ownModes,
 	}
 	m.broadcast(m.contentDimension())
 	return m

@@ -174,6 +174,7 @@ func daemonArgs(key string) []string {
 		"--data-dir", dataDir,
 		"--cache-dir", cacheDir(),
 		"--cache-size", strconv.Itoa(cacheSizeMB),
+		"--ws", wsAddr,
 	}
 	if percent, ok := savedVolume(); ok {
 		args = append(args, "--initial-volume", strconv.Itoa(percent))

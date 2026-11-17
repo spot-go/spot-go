@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/spot-go/spot-go/internal/spotify"
+	libspotify "github.com/zmb3/spotify/v2"
 )
 
 type (
@@ -13,15 +14,20 @@ type (
 	playerMode int
 
 	// modeControl changes a mode. Presses while a change runs add up, and
-	// run once it ends.
+	// run once it ends. device and plays are where Spotify played, and what
+	// plays was, at the last change.
 	modeControl struct {
 		busy    bool
 		pending int
 		at      time.Time
+		device  libspotify.ID
+		plays   int
 	}
 
 	modeChanged struct {
 		mode    playerMode
+		device  libspotify.ID
+		plays   int
 		shuffle bool
 		repeat  spotify.Repeat
 		err     error
@@ -66,11 +72,15 @@ func (m Model) changeMode(mode playerMode, presses int) (Model, tea.Cmd) {
 		m.modes[mode] = c
 		return m, nil
 	}
-	fresh := !c.at.IsZero() && time.Since(c.at) < followGrace
-	m.modes[mode] = modeControl{busy: true, at: c.at}
+	// The last change is fresh while spot-go started nothing since and no
+	// poll showed Spotify on another device (see followPolled). Otherwise
+	// the change reads where Spotify plays, as that decides how to change
+	// the mode.
+	fresh := !c.at.IsZero() && time.Since(c.at) < followGrace && c.plays == *m.plays
+	m.modes[mode] = modeControl{busy: true, at: c.at, device: c.device, plays: c.plays}
 
-	changed := modeChanged{mode: mode, shuffle: m.playerBar.shuffle, repeat: m.playerBar.repeat}
-	ctx, client := m.ctx, m.spotifyClient
+	changed := modeChanged{mode: mode, device: c.device, plays: *m.plays, shuffle: m.playerBar.shuffle, repeat: m.playerBar.repeat}
+	ctx, client, own, ownModes := m.ctx, m.spotifyClient, m.ownDevice(), m.ownModes
 	return m, func() tea.Msg {
 		ctx, cancel := context.WithTimeout(ctx, playbackTimeout)
 		defer cancel()
@@ -86,16 +96,27 @@ func (m Model) changeMode(mode playerMode, presses int) (Model, tea.Cmd) {
 			if changed.err != nil {
 				return changed
 			}
-			changed.shuffle, changed.repeat = state.Shuffle, state.Repeat
+			changed.device, changed.shuffle, changed.repeat = state.Device, state.Shuffle, state.Repeat
 		}
 
+		// Spotify answers "Restriction violated" to the Web API on spot-go's
+		// own device, so spot-go changes the modes there through Soloist.
+		local := ownModes != nil && own != "" && changed.device == own
 		switch mode {
 		case shuffleMode:
 			changed.shuffle = !changed.shuffle
-			changed.err = client.SetShuffle(ctx, changed.shuffle)
+			if local {
+				changed.err = ownModes.SetShuffle(ctx, changed.shuffle)
+			} else {
+				changed.err = client.SetShuffle(ctx, changed.shuffle)
+			}
 		case repeatMode:
 			changed.repeat = nextRepeat(changed.repeat, presses)
-			changed.err = client.SetRepeat(ctx, changed.repeat)
+			if local {
+				changed.err = ownModes.SetRepeat(ctx, string(changed.repeat))
+			} else {
+				changed.err = client.SetRepeat(ctx, changed.repeat)
+			}
 		}
 		return changed
 	}
@@ -120,7 +141,7 @@ func (m Model) modeChanged(msg modeChanged) (Model, tea.Cmd) {
 		return m.notify(msg.mode.failure()+errorText(msg.err), true)
 	}
 
-	m.modes[msg.mode] = modeControl{at: time.Now()}
+	m.modes[msg.mode] = modeControl{at: time.Now(), device: msg.device, plays: msg.plays}
 	switch msg.mode {
 	case shuffleMode:
 		m.playerBar.shuffle = msg.shuffle

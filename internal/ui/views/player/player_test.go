@@ -1,6 +1,7 @@
 package player
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -97,8 +98,12 @@ type (
 		started        func(*fakeAPI)
 		modes          []string
 		modeStatus     int
-		seeks          []string
-		seekStatus     int
+		// soloistModes are the mode changes made through Soloist, and
+		// soloistErr is what Soloist answers them.
+		soloistModes []string
+		soloistErr   error
+		seeks        []string
+		seekStatus   int
 	}
 
 	recentPlay struct {
@@ -489,8 +494,9 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	case (path == "me/player/shuffle" || path == "me/player/repeat") && r.Method == http.MethodPut:
 		state := r.URL.Query().Get("state")
 		f.modes = append(f.modes, strings.TrimPrefix(path, "me/player/")+"="+state)
-		if f.modeStatus != 0 {
-			return errorResponse(r, f.modeStatus, "Player command failed: Restriction violated"), nil
+		// Spotify doesn't let the Web API change the modes on Soloist.
+		if f.modeStatus != 0 || f.device == testDeviceID {
+			return errorResponse(r, cmp.Or(f.modeStatus, http.StatusForbidden), "Player command failed: Restriction violated"), nil
 		}
 		if path == "me/player/shuffle" {
 			f.shuffle = state == "true"
@@ -614,6 +620,31 @@ func (f *fakeAPI) playRequests() []playRequest {
 	return append([]playRequest(nil), f.plays...)
 }
 
+// SetShuffle and SetRepeat change the modes through Soloist, which then
+// tells Spotify.
+func (f *fakeAPI) SetShuffle(_ context.Context, on bool) error {
+	return f.changeSoloistMode(fmt.Sprintf("shuffle=%t", on), func() { f.shuffle = on })
+}
+
+func (f *fakeAPI) SetRepeat(_ context.Context, mode string) error {
+	return f.changeSoloistMode("repeat="+mode, func() { f.repeat = mode })
+}
+
+func (f *fakeAPI) changeSoloistMode(change string, apply func()) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.soloistModes = append(f.soloistModes, change)
+	if f.soloistErr != nil {
+		return f.soloistErr
+	}
+	if f.device != testDeviceID {
+		return errors.New("Spotify Soloist is not the active device")
+	}
+	apply()
+	return nil
+}
+
 func (f *fakeAPI) set(fn func(f *fakeAPI)) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -665,7 +696,7 @@ func newModelWith(api *fakeAPI, width, height int) Model {
 func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model {
 	client := spotify.NewClient(&http.Client{Transport: api})
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: width, Height: height}}
-	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store, nil, nil)
+	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store, nil, nil, api)
 	// spot-go opens on the Search tab (see TestSpotGoOpensOnTheSearchTab),
 	// but most tests start on the Playlists tab, which loads at the start.
 	m.activeTab = playlistsTab
@@ -910,7 +941,7 @@ func TestSpotGoOpensOnTheSearchTab(t *testing.T) {
 	api := soWhatOnPhone()
 	client := spotify.NewClient(&http.Client{Transport: api})
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: 120, Height: 40}}
-	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, nil, nil, nil)
+	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, nil, nil, nil, api)
 	m.progressEvery = 0
 	playlists := m.tabs[playlistsTab].content.(playlistModel)
 	playlists.after = testAfter

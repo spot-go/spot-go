@@ -1,6 +1,7 @@
 package player
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -899,6 +900,136 @@ func TestRepeatKeyGoesThroughTheModes(t *testing.T) {
 		h.wantPlayerRow(1, "⇄  "+want.icon)
 	}
 	h.wantPlayerReads(1)
+}
+
+// soWhatOnSpotGo is So What playing on spot-go's own device, Soloist.
+func soWhatOnSpotGo() *fakeAPI {
+	api := soWhatOnPhone()
+	api.device, api.deviceName = testDeviceID, "spot-go@laptop"
+	return api
+}
+
+func (f *fakeAPI) soloistModeRequests() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]string(nil), f.soloistModes...)
+}
+
+func TestModesOnSpotGoChangeThroughSoloist(t *testing.T) {
+	api := soWhatOnSpotGo()
+	h := newHarnessWith(t, api, 120, 40)
+	h.holdTimers = true
+	h.send(pollPlayback{})
+
+	h.send(key("ctrl+s"))
+	h.wantPlayerRow(0, "Shuffle on")
+	h.send(key("ctrl+r"))
+	h.wantPlayerRow(0, "Repeat on")
+	h.send(key("ctrl+r"))
+	h.wantPlayerRow(0, "Repeat one")
+	h.wantPlayerRow(1, "⇄  ↻¹")
+
+	h.wantModes()
+	if got, want := api.soloistModeRequests(), []string{"shuffle=true", "repeat=context", "repeat=track"}; !slices.Equal(got, want) {
+		t.Fatalf("Soloist mode changes = %q, want %q", got, want)
+	}
+
+	// Spotify then reports what Soloist set.
+	h.holdTimers = false
+	h.send()
+	h.forgetModes()
+	h.send(pollPlayback{})
+	if b := h.player().playerBar; !b.shuffle || b.repeat != spotify.RepeatTrack {
+		t.Fatalf("player = %+v, want shuffle on and repeat one", b)
+	}
+}
+
+func TestModesFollowWhereSpotifyPlays(t *testing.T) {
+	api := soWhatOnPixel()
+	h := newHarnessWith(t, api, 120, 40)
+	h.send(key("ctrl+s"))
+	h.forgetModes()
+
+	api.set(func(f *fakeAPI) { f.device, f.deviceName = testDeviceID, "spot-go@laptop" })
+	h.send(key("ctrl+s"))
+
+	h.wantModes("shuffle=true")
+	if got := api.soloistModeRequests(); !slices.Equal(got, []string{"shuffle=false"}) {
+		t.Fatalf("Soloist mode changes = %q, want shuffle off, as Spotify moved to spot-go", got)
+	}
+}
+
+func TestModesFollowAMoveRightAfterAChange(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		api          func() *fakeAPI
+		move         func(h *harness)
+		web, soloist []string
+	}{
+		{
+			name: "to spot-go",
+			api:  soWhatOnPixel,
+			move: func(h *harness) {
+				h.api.set(func(f *fakeAPI) { f.device, f.deviceName = testDeviceID, "spot-go@laptop" })
+				h.send(pollPlayback{})
+			},
+			web: []string{"shuffle=true"}, soloist: []string{"shuffle=false"},
+		},
+		{
+			name: "to the phone",
+			api:  soWhatOnSpotGo,
+			move: func(h *harness) {
+				h.api.set(func(f *fakeAPI) { f.device, f.deviceName = "phone", "Pixel 7" })
+				h.send(pollPlayback{})
+			},
+			web: []string{"shuffle=false"}, soloist: []string{"shuffle=true"},
+		},
+		{
+			name: "play on spot-go",
+			api:  soWhatOnPixel,
+			move: func(h *harness) {
+				h.api.set(func(f *fakeAPI) {
+					f.onPlay = func(f *fakeAPI) { backInBlackPlays(f); f.device = testDeviceID }
+				})
+				h.send(key("enter"))
+			},
+			web: []string{"shuffle=true"}, soloist: []string{"shuffle=false"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			api := tt.api()
+			h := newHarnessWith(t, api, 120, 40)
+			h.holdTimers = true
+			h.send(pollPlayback{})
+
+			h.send(key("ctrl+s"))
+			tt.move(h)
+			h.send(key("ctrl+s"))
+
+			h.wantModes(tt.web...)
+			if got := api.soloistModeRequests(); !slices.Equal(got, tt.soloist) {
+				t.Fatalf("Soloist mode changes = %q, want %q", got, tt.soloist)
+			}
+			h.wantPlayerRow(0, "Shuffle off")
+		})
+	}
+}
+
+func TestModeFailureOnSpotGo(t *testing.T) {
+	api := soWhatOnSpotGo()
+	api.soloistErr = errors.New("Spotify Soloist is not running with --ws")
+	h := newHarnessWith(t, api, 120, 40)
+	h.holdTimers = true
+	h.send(pollPlayback{})
+
+	h.send(key("ctrl+r"))
+
+	h.wantModes()
+	h.wantPlayerRow(0, "Fail to change repeat: Spotify Soloist is not running with --ws")
+	if got := h.player().playerBar.repeat; got != spotify.RepeatOff {
+		t.Fatalf("repeat = %q, want it still off", got)
+	}
 }
 
 func TestModePressesWhileChangingAddUp(t *testing.T) {

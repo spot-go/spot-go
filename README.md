@@ -40,6 +40,8 @@ Each Soloist build stops working 90 days after it was built. spot-go downloads a
 
 The API key is passed to Soloist on its command line, so other users of the same computer can see it in `ps`.
 
+spot-go also starts Soloist with its local WebSocket API on `127.0.0.1`, on a port the system picks, and changes shuffle and repeat on spot-go's device through it, with `soloist ctl`: the Spotify Web API can't change them on Soloist. The API has no authentication and doesn't check where a connection comes from, so programs on the same computer, and web pages open in a browser on it, that find the port can control Soloist and see what it plays. Other computers can't reach it.
+
 ## Keys
 
 - `←` and `→` switch tabs: Search, Queue, Playlists, Podcasts, Artists and Albums. spot-go opens on the Search tab.
@@ -53,7 +55,7 @@ The API key is passed to Soloist on its command line, so other users of the same
 - `n` and `p` skip to the next and the previous song or episode, like the next and previous media keys.
 - `>` (or `.`) and `<` (or `,`) move 10 seconds forward and back in the song or episode, without going past its start, and stopping a second before its end, so Spotify doesn't skip to the next one. A pause stays paused.
 - `+` (or `=`) and `-` raise and lower the Spotify volume by 5% on the device Spotify is playing on, whether that is spot-go or another device. They don't change the volume of the computer. Some devices, such as some TVs and speakers, don't let Spotify change their volume.
-- `ctrl+s` turns shuffle on and off, and `ctrl+r` goes through the repeat modes as in the Spotify app: repeat the playlist, album or podcast, repeat the song or episode, and no repeat.
+- `ctrl+s` turns shuffle on and off, and `ctrl+r` goes through the repeat modes as in the Spotify app: repeat the playlist, album or podcast, repeat the song or episode, and no repeat. On spot-go's device they go through Soloist, and on other devices through the Spotify Web API.
 
 These keys control Spotify on the device it is playing on, from every tab. Skips, seeks, and volume, shuffle and repeat changes pressed while Spotify is still taking a change add up, and run once it ends. A seek pressed before a skip is dropped, and so are skips and seeks still waiting when a tab starts playing something else. `space` and `k` are ignored while Spotify takes a change.
 

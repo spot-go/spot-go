@@ -446,6 +446,13 @@ func (m Model) noticeHidden(msg noticeHidden) Model {
 // nothing is playing right after one.
 func (m Model) followPolled(playing spotify.NowPlaying) Model {
 	b := &m.playerBar
+	if playing.Device != b.device {
+		// Shuffle and repeat changed on the device Spotify played on before
+		// say nothing about this one.
+		for i := range m.modes {
+			m.modes[i].at = time.Time{}
+		}
+	}
 	b.idle = playing.Device == "" && time.Since(m.nowPlaying.commandAt) >= followGrace
 	b.device, b.deviceName = playing.Device, playing.DeviceName
 	if !m.volume.changing() {
