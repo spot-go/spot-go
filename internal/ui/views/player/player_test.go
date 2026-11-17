@@ -48,6 +48,9 @@ type (
 		plays          []playRequest
 		pauses         []string
 		device         string
+		deviceName     string
+		shuffle        bool
+		repeat         string
 		volume         int
 		noVolume       bool
 		volumeStatus   int
@@ -92,6 +95,10 @@ type (
 		queueRequests  int
 		playLag        int
 		started        func(*fakeAPI)
+		modes          []string
+		modeStatus     int
+		seeks          []string
+		seekStatus     int
 	}
 
 	recentPlay struct {
@@ -289,7 +296,7 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 		item, context, device := "null", fmt.Sprintf(`{"type":"playlist","uri":%q}`, f.playing), "null"
 		if f.device != "" {
-			device = fmt.Sprintf(`{"id":%q,"volume_percent":%d,"supports_volume":%t}`, f.device, f.volume, !f.noVolume)
+			device = fmt.Sprintf(`{"id":%q,"name":%q,"volume_percent":%d,"supports_volume":%t}`, f.device, f.deviceName, f.volume, !f.noVolume)
 		}
 		if f.playingItem != "" {
 			item = fmt.Sprintf(`{"uri":%q,"name":%q,"duration_ms":%d,"artists":[%s]}`, f.playingItem, f.playingName, f.durationMs, f.artistsJSON())
@@ -301,7 +308,11 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 			context = "null"
 			item = fmt.Sprintf(`{"type":"episode","uri":%q,"name":%q,"duration_ms":%d,"show":{"uri":%q}}`, f.playingItem, f.playingName, f.durationMs, f.playing)
 		}
-		return response(r, http.StatusOK, fmt.Sprintf(`{"is_playing":%t,"progress_ms":%d,"context":%s,"device":%s,"item":%s}`, !f.paused, f.progressMs, context, device, item)), nil
+		repeat := "off"
+		if f.repeat != "" {
+			repeat = f.repeat
+		}
+		return response(r, http.StatusOK, fmt.Sprintf(`{"is_playing":%t,"progress_ms":%d,"shuffle_state":%t,"repeat_state":%q,"context":%s,"device":%s,"item":%s}`, !f.paused, f.progressMs, f.shuffle, repeat, context, device, item)), nil
 
 	case strings.HasPrefix(path, "playlists/") && strings.HasSuffix(path, "/items"):
 		id := strings.TrimSuffix(strings.TrimPrefix(path, "playlists/"), "/items")
@@ -473,6 +484,28 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 			return errorResponse(r, f.volumeStatus, "Player command failed: Cannot control device volume"), nil
 		}
 		f.volume, _ = strconv.Atoi(query.Get("volume_percent"))
+		return response(r, http.StatusNoContent, ""), nil
+
+	case (path == "me/player/shuffle" || path == "me/player/repeat") && r.Method == http.MethodPut:
+		state := r.URL.Query().Get("state")
+		f.modes = append(f.modes, strings.TrimPrefix(path, "me/player/")+"="+state)
+		if f.modeStatus != 0 {
+			return errorResponse(r, f.modeStatus, "Player command failed: Restriction violated"), nil
+		}
+		if path == "me/player/shuffle" {
+			f.shuffle = state == "true"
+		} else {
+			f.repeat = state
+		}
+		return response(r, http.StatusNoContent, ""), nil
+
+	case path == "me/player/seek" && r.Method == http.MethodPut:
+		position := r.URL.Query().Get("position_ms")
+		f.seeks = append(f.seeks, position)
+		if f.seekStatus != 0 {
+			return errorResponse(r, f.seekStatus, "Player command failed: Restriction violated"), nil
+		}
+		f.progressMs, _ = strconv.Atoi(position)
 		return response(r, http.StatusNoContent, ""), nil
 
 	case path == "me/player/pause" && r.Method == http.MethodPut:
@@ -838,6 +871,10 @@ func key(k string) tea.Msg {
 		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
 	case "ctrl+q":
 		return tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl}
+	case "ctrl+s":
+		return tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
+	case "ctrl+r":
+		return tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl}
 	}
 	return tea.KeyPressMsg{Code: []rune(k)[0], Text: k}
 }

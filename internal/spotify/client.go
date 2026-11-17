@@ -96,13 +96,17 @@ type (
 		PausedItem     spotify.URI
 		PausedProgress time.Duration
 		Device         spotify.ID
+		DeviceName     string
 		Volume         int
 		SupportsVolume bool
+		Shuffle        bool
+		Repeat         Repeat
 	}
 
 	Playback struct {
 		Playing        bool
 		Device         spotify.ID
+		DeviceName     string
 		Item           spotify.URI
 		Name           string
 		Artist         string
@@ -110,14 +114,23 @@ type (
 		Duration       time.Duration
 		Volume         int
 		SupportsVolume bool
+		Shuffle        bool
+		Repeat         Repeat
 	}
 
+	// Repeat is the repeat mode of the playback: RepeatOff, RepeatContext
+	// or RepeatTrack. It is empty when Spotify doesn't say.
+	Repeat string
+
 	playerResponse struct {
-		IsPlaying  bool             `json:"is_playing"`
-		ProgressMs int              `json:"progress_ms"`
-		Context    *playbackContext `json:"context"`
-		Device     *struct {
+		IsPlaying    bool             `json:"is_playing"`
+		ProgressMs   int              `json:"progress_ms"`
+		ShuffleState bool             `json:"shuffle_state"`
+		RepeatState  Repeat           `json:"repeat_state"`
+		Context      *playbackContext `json:"context"`
+		Device       *struct {
 			ID             spotify.ID `json:"id"`
+			Name           string     `json:"name"`
 			VolumePercent  *int       `json:"volume_percent"`
 			SupportsVolume *bool      `json:"supports_volume"`
 		} `json:"device"`
@@ -143,6 +156,16 @@ type (
 
 const (
 	cacheKeyAllCurrentUsersPlaylists = "AllCurrentUsersPlaylists"
+)
+
+const (
+	// RepeatOff plays the context once.
+	RepeatOff Repeat = "off"
+	// RepeatContext plays the context, such as a playlist or an album,
+	// again from the start when it ends.
+	RepeatContext Repeat = "context"
+	// RepeatTrack plays the same song or episode again.
+	RepeatTrack Repeat = "track"
 )
 
 func NewClient(httpClient *http.Client) *Client {
@@ -248,8 +271,16 @@ func (c Client) NowPlaying(ctx context.Context) (NowPlaying, error) {
 		return NowPlaying{}, err
 	}
 	device, volume, supportsVolume := resp.deviceVolume()
+	state := NowPlaying{
+		Device:         device,
+		DeviceName:     resp.deviceName(),
+		Volume:         volume,
+		SupportsVolume: supportsVolume,
+		Shuffle:        resp.ShuffleState,
+		Repeat:         resp.RepeatState,
+	}
 	if !resp.IsPlaying {
-		paused := NowPlaying{Device: device, Volume: volume, SupportsVolume: supportsVolume}
+		paused := state
 		if resp.Item != nil {
 			paused.PausedItem = resp.Item.URI
 			paused.PausedProgress = time.Duration(resp.ProgressMs) * time.Millisecond
@@ -257,7 +288,8 @@ func (c Client) NowPlaying(ctx context.Context) (NowPlaying, error) {
 		return paused, nil
 	}
 
-	playing := NowPlaying{Playing: true, Device: device, Volume: volume, SupportsVolume: supportsVolume}
+	playing := state
+	playing.Playing = true
 	if uri, ok := resp.Context.uriOf("playlist", "show", "album", "artist"); ok {
 		playing.Context = uri
 	}
@@ -278,7 +310,13 @@ func (c Client) Playback(ctx context.Context) (Playback, error) {
 		return Playback{}, err
 	}
 
-	playback := Playback{Playing: resp.IsPlaying, Progress: time.Duration(resp.ProgressMs) * time.Millisecond}
+	playback := Playback{
+		Playing:    resp.IsPlaying,
+		Progress:   time.Duration(resp.ProgressMs) * time.Millisecond,
+		DeviceName: resp.deviceName(),
+		Shuffle:    resp.ShuffleState,
+		Repeat:     resp.RepeatState,
+	}
 	playback.Device, playback.Volume, playback.SupportsVolume = resp.deviceVolume()
 	if resp.Item != nil {
 		playback.Item, playback.Name, playback.Artist = resp.Item.URI, resp.Item.Name, resp.Item.artist()
@@ -296,6 +334,13 @@ func (r playerResponse) deviceVolume() (spotify.ID, int, bool) {
 		return d.ID, 0, false
 	}
 	return d.ID, *d.VolumePercent, true
+}
+
+func (r playerResponse) deviceName() string {
+	if r.Device == nil {
+		return ""
+	}
+	return r.Device.Name
 }
 
 func (i playerItem) artist() string {
@@ -323,6 +368,21 @@ func (c Client) SetVolume(ctx context.Context, deviceID spotify.ID, percent int)
 		opt.DeviceID = &deviceID
 	}
 	return c.VolumeOpt(ctx, percent, opt)
+}
+
+// SetShuffle turns shuffle on or off on the device Spotify plays on.
+func (c Client) SetShuffle(ctx context.Context, shuffle bool) error {
+	return c.Shuffle(ctx, shuffle)
+}
+
+// SetRepeat sets the repeat mode on the device Spotify plays on.
+func (c Client) SetRepeat(ctx context.Context, repeat Repeat) error {
+	return c.Repeat(ctx, string(repeat))
+}
+
+// SeekTo moves the playback on the device Spotify plays on to position.
+func (c Client) SeekTo(ctx context.Context, position time.Duration) error {
+	return c.Seek(ctx, int(position.Milliseconds()))
 }
 
 func (c Client) player(ctx context.Context) (playerResponse, error) {

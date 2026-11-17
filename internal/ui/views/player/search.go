@@ -39,7 +39,6 @@ type (
 		err       error
 		results   map[spotify.SearchType]*searchResults
 		playback  playbackStatus
-		volume    volumeLevel
 	}
 
 	searchState int
@@ -326,14 +325,6 @@ func (s searchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.plays == *s.plays {
 			s.playback = s.playback.toggled(msg, time.Now())
 		}
-		return s, nil
-
-	case volumeChanged:
-		s.volume = s.volume.changed(msg)
-		return s, nil
-
-	case volumeHidden:
-		s.volume = s.volume.hidden(msg)
 		return s, nil
 
 	case playbackConfirmed:
@@ -804,13 +795,13 @@ func (s searchModel) rightView() string {
 
 	switch s.state {
 	case stateSearchIdle:
-		return s.rightPane("", "", func() string { return s.notice(searchHelpText) }, s.playback, s.volume, "")
+		return s.rightPane("", "", func() string { return s.notice(searchHelpText) }, "")
 	case stateSearchLoading:
-		return s.rightPane(`Searching for "`+s.query+`"...`, "", func() string { return "" }, s.playback, s.volume, keys)
+		return s.rightPane(`Searching for "`+s.query+`"...`, "", func() string { return "" }, keys)
 	case stateSearchError:
 		return s.rightPane("", "", func() string {
 			return s.notice(fmt.Sprintf("Fail to search:\n%s\n\nPress r to try again.", errorText(s.err)))
-		}, s.playback, s.volume, keys)
+		}, keys)
 	}
 
 	c := searchCategories[s.category]
@@ -834,5 +825,5 @@ func (s searchModel) rightView() string {
 			return s.notice(fmt.Sprintf("No %s found for \"%s\".", c.plural, s.query))
 		}
 		return r.list.View()
-	}, s.playback, s.volume, keys)
+	}, keys)
 }

@@ -229,10 +229,10 @@ func TestPausedStatusFollowsAResumeElsewhere(t *testing.T) {
 
 func TestKeyHelpShowsPlayPause(t *testing.T) {
 	h := newHarness(t, 120, 40)
-	h.wantView("r refresh • space play/pause")
+	h.wantBottomLine("space play/pause")
 
 	h.send(key("right"))
-	h.wantView("r refresh • space play/pause")
+	h.wantBottomLine("space play/pause")
 }
 
 func TestPlayFinishingAroundAToggleReadsTheStateAgain(t *testing.T) {

@@ -32,7 +32,6 @@ type (
 		visible  bool
 		skipping bool
 		playback playbackStatus
-		volume   volumeLevel
 		// confirmEvery is how often a skip reads what Spotify plays, until it
 		// plays the item skipped to.
 		confirmEvery time.Duration
@@ -153,14 +152,6 @@ func (q queueModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmd := q.reload()
 		return q, cmd
-
-	case volumeChanged:
-		q.volume = q.volume.changed(msg)
-		return q, nil
-
-	case volumeHidden:
-		q.volume = q.volume.hidden(msg)
-		return q, nil
 
 	case playbackConfirmed:
 		q.playback = q.playback.followNow(msg.playing, time.Now())
@@ -386,7 +377,7 @@ func (q queueModel) rightView() string {
 		if q.err != nil && !q.loading {
 			text = fmt.Sprintf("Fail to load the queue:\n%s\n\nPress r to try again.", errorText(q.err))
 		}
-		return q.rightPane("", "", func() string { return q.notice(text) }, q.playback, q.volume, keys)
+		return q.rightPane("", "", func() string { return q.notice(text) }, keys)
 	}
 
 	note := ""
@@ -401,5 +392,5 @@ func (q queueModel) rightView() string {
 			return q.notice(queueNothingPlaying)
 		}
 		return q.notice(queueEmptyText)
-	}, q.playback, q.volume, keys)
+	}, keys)
 }

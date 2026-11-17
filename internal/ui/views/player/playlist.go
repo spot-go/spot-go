@@ -29,7 +29,6 @@ type (
 		list            *list.Model
 		songs           map[libspotify.ID]*playlistSongs
 		playback        playbackStatus
-		volume          volumeLevel
 		after           func(time.Duration, tea.Msg) tea.Cmd
 		sortPending     bool
 		pollEvery       time.Duration
@@ -250,14 +249,6 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.plays == *p.plays {
 			p.playback = p.playback.toggled(msg, time.Now())
 		}
-		return p, nil
-
-	case volumeChanged:
-		p.volume = p.volume.changed(msg)
-		return p, nil
-
-	case volumeHidden:
-		p.volume = p.volume.hidden(msg)
 		return p, nil
 
 	case playbackConfirmed:
@@ -697,7 +688,7 @@ func (p playlistModel) rightView() string {
 	if !p.leftFocus {
 		target = "playlists"
 	}
-	return p.rightPane(playlist.title, songsProgress(p.selectedSongs()), p.songsView, p.playback, p.volume, p.keyHelp(p.list.Help.Styles, target))
+	return p.rightPane(playlist.title, songsProgress(p.selectedSongs()), p.songsView, p.keyHelp(p.list.Help.Styles, target))
 }
 
 func (p playlistModel) songsView() string {

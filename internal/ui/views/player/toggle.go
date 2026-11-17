@@ -2,6 +2,7 @@ package player
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -17,11 +18,15 @@ type (
 		at      time.Time
 		settled int
 		skips   int
+		// seek is how far to seek once the change that runs ends, from
+		// presses while it ran.
+		seek time.Duration
 	}
 
 	playbackToggled struct {
 		paused   bool
 		skip     bool
+		seek     bool
 		device   libspotify.ID
 		name     string
 		artist   string
@@ -47,7 +52,10 @@ const (
 const (
 	confirmPollEvery = 250 * time.Millisecond
 	confirmPolls     = 8
+	seekStep         = 10 * time.Second
 )
+
+var errNothingPlaying = errors.New("nothing is playing")
 
 var mediaChanges = map[media.Command]playbackChange{
 	media.TogglePlayPause: toggleChange,
@@ -70,14 +78,8 @@ func (m Model) changePlayback(change playbackChange) (Model, tea.Cmd) {
 	m.toggle.busy = true
 
 	plays, settled := *m.plays, m.toggle.settled
-	known := m.toggle.known
-	since := time.Since(m.toggle.at)
-	fresh := !m.toggle.at.IsZero() && since < followGrace && known.plays == plays && known.settled == settled
-	progress := known.position(since)
-	var fallback libspotify.ID
-	if m.playerDevice != nil {
-		fallback = m.playerDevice.ID
-	}
+	state, fresh := m.knownPlayback()
+	fallback := m.ownDevice()
 	ctx, client, confirmEvery := m.ctx, m.spotifyClient, m.confirmEvery
 
 	return m, func() tea.Msg {
@@ -88,7 +90,6 @@ func (m Model) changePlayback(change playbackChange) (Model, tea.Cmd) {
 			return skipPlayback(ctx, client, change == nextChange, confirmEvery, plays, settled)
 		}
 
-		state := spotify.Playback{Playing: !known.paused, Device: known.device, Item: known.item, Name: known.name, Artist: known.artist, Progress: progress, Duration: known.duration}
 		if !fresh {
 			var err error
 			if state, err = client.Playback(ctx); err != nil {
@@ -115,6 +116,66 @@ func (m Model) changePlayback(change playbackChange) (Model, tea.Cmd) {
 			}
 			toggled.err = client.ResumePlayback(ctx, target)
 		}
+		return toggled
+	}
+}
+
+// knownPlayback is what Spotify plays, as the last play/pause, skip or seek
+// left it. It is fresh when that change ended a moment ago and nothing
+// started playing since, so a new change can skip reading it again.
+func (m Model) knownPlayback() (spotify.Playback, bool) {
+	known := m.toggle.known
+	since := time.Since(m.toggle.at)
+	fresh := !m.toggle.at.IsZero() && since < followGrace && known.plays == *m.plays && known.settled == m.toggle.settled
+	return spotify.Playback{
+		Playing:  !known.paused,
+		Device:   known.device,
+		Item:     known.item,
+		Name:     known.name,
+		Artist:   known.artist,
+		Progress: known.position(since),
+		Duration: known.duration,
+	}, fresh
+}
+
+// seek moves what Spotify plays delta forward, or back when delta is
+// negative, without going past its start or its end. Presses while another
+// change runs add up, and seek once it ends.
+func (m Model) seek(delta time.Duration) (Model, tea.Cmd) {
+	if m.toggle.busy {
+		m.toggle.seek += delta
+		return m, nil
+	}
+	m.toggle.busy = true
+
+	plays, settled := *m.plays, m.toggle.settled
+	state, fresh := m.knownPlayback()
+	ctx, client := m.ctx, m.spotifyClient
+
+	return m, func() tea.Msg {
+		ctx, cancel := context.WithTimeout(ctx, playbackTimeout)
+		defer cancel()
+
+		failed := playbackToggled{seek: true, plays: plays, settled: settled}
+		if !fresh || state.Item == "" {
+			var err error
+			if state, err = client.Playback(ctx); err != nil {
+				failed.err = err
+				return failed
+			}
+		}
+		if state.Item == "" {
+			failed.err = errNothingPlaying
+			return failed
+		}
+
+		target := max(0, state.Progress+delta)
+		if state.Duration > 0 {
+			target = min(target, state.Duration)
+		}
+		toggled := toggledFrom(state, plays, settled)
+		toggled.paused, toggled.seek, toggled.progress = !state.Playing, true, target
+		toggled.err = client.SeekTo(ctx, target)
 		return toggled
 	}
 }
@@ -168,6 +229,8 @@ func (t playbackToggled) position(since time.Duration) time.Duration {
 	return position
 }
 
+// nextSkip runs the skips and seeks pressed while a change ran: the skips
+// first, one at a time, and then the seeks, added up.
 func (m Model) nextSkip() (Model, tea.Cmd) {
 	switch {
 	case m.toggle.skips > 0:
@@ -178,6 +241,10 @@ func (m Model) nextSkip() (Model, tea.Cmd) {
 		m, cmd := m.changePlayback(previousChange)
 		m.toggle.skips++
 		return m, cmd
+	case m.toggle.seek != 0:
+		delta := m.toggle.seek
+		m.toggle.seek = 0
+		return m.seek(delta)
 	}
 	return m, nil
 }
@@ -208,9 +275,9 @@ func wait(ctx context.Context, d time.Duration) error {
 }
 
 func (m Model) playbackToggled(msg playbackToggled) Model {
-	m.toggle = playbackToggle{settled: m.toggle.settled, skips: m.toggle.skips}
+	m.toggle = playbackToggle{settled: m.toggle.settled, skips: m.toggle.skips, seek: m.toggle.seek}
 	if msg.err != nil {
-		m.toggle.skips = 0
+		m.toggle.skips, m.toggle.seek = 0, 0
 		return m
 	}
 	m.toggle.known, m.toggle.at = msg, time.Now()

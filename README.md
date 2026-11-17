@@ -50,9 +50,12 @@ The API key is passed to Soloist on its command line, so other users of the same
 - `r` reloads the list on the right.
 - `s` changes the order of the list on the left: playlists (see [Playlist order](#playlist-order)), podcasts (see [Podcasts](#podcasts)), artists (see [Artists](#artists)) or albums (see [Albums](#albums)).
 - `space` or `k` pauses what Spotify is playing, or resumes it on the device it was paused on, whether that is spot-go or another device. When Spotify has no active device, it resumes on spot-go.
-- `+` (or `=`) and `-` raise and lower the Spotify volume by 5% on the device Spotify is playing on, whether that is spot-go or another device. They don't change the volume of the computer. The new volume, or why it couldn't change, shows next to the status for 3 seconds. Some devices, such as some TVs and speakers, don't let Spotify change their volume.
+- `n` and `p` skip to the next and the previous song or episode, like the next and previous media keys.
+- `>` (or `.`) and `<` (or `,`) move 10 seconds forward and back in the song or episode, without going past its start or its end. A pause stays paused.
+- `+` (or `=`) and `-` raise and lower the Spotify volume by 5% on the device Spotify is playing on, whether that is spot-go or another device. They don't change the volume of the computer. Some devices, such as some TVs and speakers, don't let Spotify change their volume.
+- `ctrl+s` turns shuffle on and off, and `ctrl+r` goes through the repeat modes as in the Spotify app: repeat the playlist, album or podcast, repeat the song or episode, and no repeat.
 
-The status under the list shows what Spotify is playing on any device: ⏸ while it plays and ▶ while it is paused, the song or episode with its artist or podcast, a progress bar and the elapsed and total time. The time counts every second and follows Spotify every 5 seconds.
+These keys control Spotify on the device it is playing on, from every tab. Presses made while Spotify is still taking a change add up, and run once it ends.
 
 On macOS, the play/pause, next and previous keys of the keyboard, and the Now Playing controls in Control Center, work too, even when the terminal is in the background. spot-go shows macOS what Spotify is playing, so it takes over these keys while Spotify plays. If another app, such as Music, plays after it, the keys go to that app until Spotify plays again.
 
@@ -60,17 +63,36 @@ On Linux, spot-go shows up as an MPRIS media player on the D-Bus session bus, so
 
 Spotify may only list the songs of playlists you own or collaborate on, depending on the mode of the Spotify app. Other playlists still play with `enter`.
 
+## Player
+
+The player at the bottom of the window shows what Spotify is playing on any device, on every tab:
+
+```
+├──────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ▃▇▅ ⏸ So What — Miles Davis                                                           on Pixel 7 │
+│     ━━━━━╸─────────────────────────────────────────────── 1:01 / 9:22   ⇄  ↻   🔉 ━━━━━━──── 60% │
+└─ space play/pause • n/p next/previous • +/- volume • </> seek • ctrl+s shuffle • ctrl+r repeat ──┘
+```
+
+- The first row has the song or episode with its artist or podcast, after ⏸ while it plays and ▶ while it is paused. The equalizer next to it dances while Spotify plays and lies flat while it is paused. When Spotify plays on another device, its name shows on the right.
+- The second row has a progress bar with the elapsed and total time. The time counts every second and follows Spotify every 5 seconds. On the right are shuffle (`⇄`) and repeat (`↻`, or `↻¹` while it repeats one song), lit while they are on, and the volume of the device, which follows the volume keys and changes made on other devices.
+- The bottom line lists the keys that control Spotify. The keys that don't fit a narrow window are left out.
+
+A change made with these keys, such as a new repeat mode or why the volume couldn't change, shows on the right of the first row for 3 seconds. While a tab starts something, the first row says so, and if it fails, why.
+
+In windows shorter than 16 lines, the player shrinks to the bottom line of the frame: the song or episode with a shorter progress bar, shuffle, repeat and the volume.
+
 ## Queue
 
 The Queue tab, right of Search, shows what Spotify plays on any device: the song or episode playing now on the left, and what plays next on the right, in order. The tab loads the queue when you open it, follows Spotify every 5 seconds while it is open, and loads it again right after a skip. `r` loads it again too.
 
-`enter` plays the selected song or episode by skipping to it, as in the Spotify app: Spotify skips the songs before it, and the songs after it stay in the queue. The Web API can't play an item of the queue directly, so spot-go reads the queue again, to find where the selected item is now, and asks Spotify to skip once for each item before it. If the item left the queue in the meantime, nothing is skipped. The status then shows what Spotify plays: from where, such as where you stopped an episode, and whether it plays or stays paused.
+`enter` plays the selected song or episode by skipping to it, as in the Spotify app: Spotify skips the songs before it, and the songs after it stay in the queue. The Web API can't play an item of the queue directly, so spot-go reads the queue again, to find where the selected item is now, and asks Spotify to skip once for each item before it. If the item left the queue in the meantime, nothing is skipped. The player then shows what Spotify plays: from where, such as where you stopped an episode, and whether it plays or stays paused.
 
 The Web API only returns the first part of the queue, usually 20 songs or episodes, and doesn't say which ones you added to the queue and which ones come from the playlist, album or podcast playing, so spot-go lists them together.
 
 ## Search
 
-The Search tab, where spot-go opens, searches the Spotify catalog. Press `/`, type what you want to listen to and press `enter`. While you type, every key goes to the search, so `space`, `k`, `+`, `-`, `←` and `→` don't control Spotify or switch tabs. `esc` goes back to the results without searching.
+The Search tab, where spot-go opens, searches the Spotify catalog. Press `/`, type what you want to listen to and press `enter`. While you type, every key goes to the search, so `space`, `k`, `n`, `p`, `<`, `>`, `+`, `-`, `←` and `→` don't control Spotify or switch tabs. `esc` goes back to the results without searching.
 
 The left side lists the kinds of results: all, songs, artists, albums, playlists, podcasts and episodes. Next to each kind is how many Spotify found, and next to All is how many results it mixes. The right side lists the results of the selected kind, in Spotify's order. `tab` moves between the two sides, and `r` searches again. The Web API returns at most 10 results of each kind per request, so spot-go loads more as you move down the list, up to the first 1000.
 

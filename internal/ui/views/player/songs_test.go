@@ -672,7 +672,7 @@ func TestPlaybackStatusIsShownWhenNoSongRowFits(t *testing.T) {
 func TestSongsThatFitAreOnOnePage(t *testing.T) {
 	api := newFakeAPI()
 	api.songs["p0"] = manySongsJSON(11)
-	h := newHarnessWith(t, api, 120, 24)
+	h := newHarnessWith(t, api, 120, 25)
 
 	l := h.songs().list
 	if want := l.Height() - 2; len(l.Items()) != want {
@@ -684,18 +684,18 @@ func TestSongsThatFitAreOnOnePage(t *testing.T) {
 	h.wantView("11  Song 11 - Cartola")
 }
 
-func TestBlankLinesSeparateTheStatus(t *testing.T) {
+func TestBlankLineSeparatesTheKeys(t *testing.T) {
 	api := newFakeAPI()
 	api.songs["p0"] = manySongsJSON(40)
 	h := newHarnessWith(t, api, 120, 24)
 	h.send(key("enter"))
 
 	lines := strings.Split(ansi.Strip(h.playlists().rightView()), "\n")
-	bottom := lines[len(lines)-5:]
-	if !strings.Contains(bottom[0], "Song ") || strings.TrimSpace(bottom[1]) != "" || !strings.Contains(bottom[2], "⏸ Rock") ||
-		strings.TrimSpace(bottom[3]) != "" || !strings.Contains(bottom[4], "enter play") {
-		t.Fatalf("bottom of the right pane = %q, want a song, a blank line, the status, a blank line and the keys", bottom)
+	bottom := lines[len(lines)-3:]
+	if !strings.Contains(bottom[0], "Song ") || strings.TrimSpace(bottom[1]) != "" || !strings.Contains(bottom[2], "enter play") {
+		t.Fatalf("bottom of the right pane = %q, want a song, a blank line and the keys", bottom)
 	}
+	h.wantPlayerRow(0, "⏸ Rock")
 }
 
 func TestFit(t *testing.T) {

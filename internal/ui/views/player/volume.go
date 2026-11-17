@@ -3,7 +3,6 @@ package player
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -17,27 +16,14 @@ type (
 		pending []int
 		known   volumeChanged
 		at      time.Time
-		seq     int
 	}
 
 	volumeChanged struct {
-		seq     int
 		device  libspotify.ID
 		percent int
 		plays   int
 		settled int
 		err     error
-	}
-
-	volumeHidden struct {
-		seq int
-	}
-
-	volumeLevel struct {
-		seq     int
-		percent int
-		err     error
-		shown   bool
 	}
 
 	volumeSaver struct {
@@ -48,10 +34,9 @@ type (
 )
 
 const (
-	volumeStep     = 5
-	maxVolume      = 100
-	volumeShownFor = 3 * time.Second
-	unsavedVolume  = -1
+	volumeStep    = 5
+	maxVolume     = 100
+	unsavedVolume = -1
 )
 
 var (
@@ -109,16 +94,16 @@ func stepVolume(percent int, deltas []int) int {
 }
 
 func (m Model) volumeChanged(msg volumeChanged) (Model, tea.Cmd) {
-	m.volume.seq++
-	msg.seq = m.volume.seq
+	var cmds []tea.Cmd
 	if msg.err != nil {
-		m.volume = volumeControl{seq: msg.seq}
+		m.volume = volumeControl{}
+		var notice tea.Cmd
+		m, notice = m.notify("Fail to change the volume: "+errorText(msg.err), true)
+		cmds = append(cmds, notice)
 	} else {
 		m.volume.busy = false
 		m.volume.known, m.volume.at = msg, time.Now()
-	}
-	cmds := []tea.Cmd{m.broadcast(msg), m.after(volumeShownFor, volumeHidden{seq: msg.seq})}
-	if msg.err == nil {
+		m.playerBar.volume, m.playerBar.hasVolume = msg.percent, true
 		cmds = append(cmds, m.rememberVolume(msg.device, msg.percent))
 	}
 
@@ -131,9 +116,14 @@ func (m Model) volumeChanged(msg volumeChanged) (Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+// changing reports whether spot-go is changing the volume, or changed it a
+// moment ago, so what Spotify reports may not show the change yet.
+func (v volumeControl) changing() bool {
+	return v.busy || !v.at.IsZero() && time.Since(v.at) < followGrace
+}
+
 func (m Model) rememberPolledVolume(msg playbackPolled) tea.Cmd {
-	changingHere := m.volume.busy || !m.volume.at.IsZero() && time.Since(m.volume.at) < followGrace
-	if msg.err != nil || !msg.playing.SupportsVolume || changingHere {
+	if msg.err != nil || !msg.playing.SupportsVolume || m.volume.changing() {
 		return nil
 	}
 	return m.rememberVolume(msg.playing.Device, msg.playing.Volume)
@@ -175,22 +165,4 @@ func (s *volumeSaver) write() tea.Msg {
 		s.percent = unsavedVolume
 	}
 	return nil
-}
-
-func (v volumeLevel) changed(msg volumeChanged) volumeLevel {
-	return volumeLevel{seq: msg.seq, percent: msg.percent, err: msg.err, shown: true}
-}
-
-func (v volumeLevel) hidden(msg volumeHidden) volumeLevel {
-	if msg.seq != v.seq {
-		return v
-	}
-	return volumeLevel{}
-}
-
-func (v volumeLevel) text() string {
-	if v.err != nil {
-		return "Fail to change the volume: " + errorText(v.err)
-	}
-	return fmt.Sprintf("Volume: %d%%", v.percent)
 }

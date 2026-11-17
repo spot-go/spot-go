@@ -174,6 +174,8 @@ func TestPlayback(t *testing.T) {
 			Playback{Playing: true, Device: "tv"}, false},
 		{"unknown volume", http.StatusOK, `{"is_playing":true,"device":{"id":"tv","volume_percent":null,"supports_volume":true}}`,
 			Playback{Playing: true, Device: "tv"}, false},
+		{"device name and modes", http.StatusOK, `{"is_playing":true,"shuffle_state":true,"repeat_state":"track","device":{"id":"phone","name":"Pixel 7"}}`,
+			Playback{Playing: true, Device: "phone", DeviceName: "Pixel 7", Shuffle: true, Repeat: RepeatTrack}, false},
 		{"no device", http.StatusOK, `{"is_playing":false,"device":null}`, Playback{}, false},
 		{"nothing plays", http.StatusNoContent, ``, Playback{}, false},
 		{"error", http.StatusUnauthorized, `{"error":{"status":401,"message":"The access token expired"}}`, Playback{}, true},
@@ -214,6 +216,10 @@ func TestNowPlayingDeviceVolume(t *testing.T) {
 			NowPlaying{Device: "tv"}},
 		{"no device", `{"is_playing":true,"device":null}`,
 			NowPlaying{Playing: true}},
+		{"playing with the device name and modes", `{"is_playing":true,"shuffle_state":true,"repeat_state":"context","device":{"id":"phone","name":"Pixel 7","volume_percent":20,"supports_volume":true}}`,
+			NowPlaying{Playing: true, Device: "phone", DeviceName: "Pixel 7", Volume: 20, SupportsVolume: true, Shuffle: true, Repeat: RepeatContext}},
+		{"paused with the device name and modes", `{"is_playing":false,"shuffle_state":false,"repeat_state":"off","device":{"id":"tv","name":"Living Room TV"}}`,
+			NowPlaying{Device: "tv", DeviceName: "Living Room TV", Repeat: RepeatOff}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -301,6 +307,57 @@ func TestSetVolume(t *testing.T) {
 				t.Fatalf("request = %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestPlayerModesAndSeek(t *testing.T) {
+	type request struct {
+		path, query string
+	}
+	var got request
+	c := testClient(func(r *http.Request) *http.Response {
+		got = request{path: r.Method + " " + r.URL.Path, query: r.URL.RawQuery}
+		return jsonResponse(r, http.StatusNoContent, ``)
+	})
+
+	for _, tt := range []struct {
+		name string
+		call func() error
+		want request
+	}{
+		{"shuffle on", func() error { return c.SetShuffle(context.Background(), true) }, request{"PUT /v1/me/player/shuffle", "state=true"}},
+		{"shuffle off", func() error { return c.SetShuffle(context.Background(), false) }, request{"PUT /v1/me/player/shuffle", "state=false"}},
+		{"repeat the context", func() error { return c.SetRepeat(context.Background(), RepeatContext) }, request{"PUT /v1/me/player/repeat", "state=context"}},
+		{"repeat the track", func() error { return c.SetRepeat(context.Background(), RepeatTrack) }, request{"PUT /v1/me/player/repeat", "state=track"}},
+		{"repeat off", func() error { return c.SetRepeat(context.Background(), RepeatOff) }, request{"PUT /v1/me/player/repeat", "state=off"}},
+		{"seek", func() error { return c.SeekTo(context.Background(), 90*time.Second+500*time.Millisecond) }, request{"PUT /v1/me/player/seek", "position_ms=90500"}},
+		{"seek to the start", func() error { return c.SeekTo(context.Background(), 0) }, request{"PUT /v1/me/player/seek", "position_ms=0"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.call(); err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Fatalf("request = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPlayerModesError(t *testing.T) {
+	c := testClient(func(r *http.Request) *http.Response {
+		return jsonResponse(r, http.StatusNotFound, `{"error":{"status":404,"message":"Player command failed: No active device found"}}`)
+	})
+
+	for name, call := range map[string]func() error{
+		"shuffle": func() error { return c.SetShuffle(context.Background(), true) },
+		"repeat":  func() error { return c.SetRepeat(context.Background(), RepeatContext) },
+		"seek":    func() error { return c.SeekTo(context.Background(), time.Second) },
+	} {
+		var apiErr spotify.Error
+		if err := call(); !errors.As(err, &apiErr) || apiErr.Status != http.StatusNotFound {
+			t.Errorf("%s error = %v, want the 404 from Spotify", name, err)
+		}
 	}
 }
 

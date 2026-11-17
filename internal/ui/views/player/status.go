@@ -127,15 +127,24 @@ func (t trackTitle) String() string {
 }
 
 func (t trackTitle) fit(room int) string {
-	if full := t.String(); lipgloss.Width(full) <= room {
-		return full
+	return t.cut(room).String()
+}
+
+// cut cuts the title to room columns: the artist first, down to
+// minArtistWidth, and then the name without the artist.
+func (t trackTitle) cut(room int) trackTitle {
+	if lipgloss.Width(t.String()) <= room {
+		return t
 	}
 	if t.name != "" && t.artist != "" {
 		if artist := clip(t.artist, room-lipgloss.Width(t.name+artistSeparator)); lipgloss.Width(artist) >= minArtistWidth {
-			return t.name + artistSeparator + artist
+			return trackTitle{name: t.name, artist: artist}
 		}
 	}
-	return clip(cmp.Or(t.name, t.artist), room)
+	if t.name == "" {
+		return trackTitle{artist: clip(t.artist, room)}
+	}
+	return trackTitle{name: clip(t.name, room)}
 }
 
 func clip(s string, width int) string {
@@ -258,6 +267,8 @@ func (s playbackStatus) toggled(msg playbackToggled, now time.Time) playbackStat
 	switch {
 	case msg.err != nil && msg.skip:
 		return playbackStatus{seq: s.seq, text: "Fail to skip: " + errorText(msg.err), err: true}
+	case msg.err != nil && msg.seek:
+		return playbackStatus{seq: s.seq, text: "Fail to seek: " + errorText(msg.err), err: true}
 	case msg.err != nil:
 		return playbackStatus{seq: s.seq, text: "Fail to play/pause: " + errorText(msg.err), err: true}
 	}

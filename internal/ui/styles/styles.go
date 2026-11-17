@@ -10,6 +10,8 @@ var (
 	LipglossColorDarkGreen              = lipgloss.Color("#2B532F")
 	LipglossColorDarkGreenShade         = lipgloss.Color("#2A4430")
 
+	LipglossColorGrey = lipgloss.Color("#626262")
+
 	LipglossColorRed   = lipgloss.Color("#FF0000")
 	LipglossColorBlack = lipgloss.Color("#000000")
 

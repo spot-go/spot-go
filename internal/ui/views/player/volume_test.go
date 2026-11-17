@@ -45,26 +45,15 @@ func (h *harness) forgetVolume() {
 	h.model = m
 }
 
-func (h *harness) statusLine() string {
-	h.t.Helper()
-
-	for line := range strings.SplitSeq(h.view(), "\n") {
-		if strings.Contains(line, "Volume:") {
-			return line
-		}
-	}
-	h.t.Fatalf("view does not show the volume:\n%s", h.view())
-	return ""
-}
-
 func TestVolumeKeys(t *testing.T) {
 	for _, tt := range []struct {
-		key  string
-		want string
+		key     string
+		want    string
+		percent int
 	}{
-		{"+", "55"},
-		{"=", "55"},
-		{"-", "45"},
+		{"+", "55", 55},
+		{"=", "55", 55},
+		{"-", "45", 45},
 	} {
 		t.Run(tt.key, func(t *testing.T) {
 			h := newHarnessWith(t, playingOnPhoneAt(50), 120, 40)
@@ -73,7 +62,7 @@ func TestVolumeKeys(t *testing.T) {
 			h.send(key(tt.key))
 
 			h.wantVolumes("phone", tt.want)
-			h.wantView("Volume: " + tt.want + "%")
+			h.wantVolumeMeter(tt.percent)
 			h.wantPauses()
 			h.wantPlays(0)
 		})
@@ -86,12 +75,12 @@ func TestVolumeStopsAtTheLimits(t *testing.T) {
 		volume int
 		key    string
 		want   []string
-		shown  string
+		shown  int
 	}{
-		{"up to 100", 98, "+", []string{"100"}, "100"},
-		{"at 100", 100, "+", nil, "100"},
-		{"down to 0", 3, "-", []string{"0"}, "0"},
-		{"at 0", 0, "-", nil, "0"},
+		{"up to 100", 98, "+", []string{"100"}, 100},
+		{"at 100", 100, "+", nil, 100},
+		{"down to 0", 3, "-", []string{"0"}, 0},
+		{"at 0", 0, "-", nil, 0},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			h := newHarnessWith(t, playingOnPhoneAt(tt.volume), 120, 40)
@@ -100,7 +89,7 @@ func TestVolumeStopsAtTheLimits(t *testing.T) {
 			h.send(key(tt.key))
 
 			h.wantVolumes("phone", tt.want...)
-			h.wantView("Volume: " + tt.shown + "%")
+			h.wantVolumeMeter(tt.shown)
 		})
 	}
 }
@@ -115,7 +104,7 @@ func TestPressRightAfterAVolumeChangeUsesTheKnownVolume(t *testing.T) {
 
 	h.wantPlayerReads(1)
 	h.wantVolumes("phone", "55", "60", "55")
-	h.wantView("Volume: 55%")
+	h.wantVolumeMeter(55)
 }
 
 func TestVolumePressLaterReadsTheVolumeAgain(t *testing.T) {
@@ -129,7 +118,7 @@ func TestVolumePressLaterReadsTheVolumeAgain(t *testing.T) {
 
 	h.wantPlayerReads(2)
 	h.wantVolumes("phone", "55", "25")
-	h.wantView("Volume: 25%")
+	h.wantVolumeMeter(25)
 }
 
 func TestVolumePressesWhileChangingAddUp(t *testing.T) {
@@ -149,7 +138,7 @@ func TestVolumePressesWhileChangingAddUp(t *testing.T) {
 
 	h.wantPlayerReads(1)
 	h.wantVolumes("phone", "55", "65")
-	h.wantView("Volume: 65%")
+	h.wantVolumeMeter(65)
 }
 
 func TestPlayAfterAVolumeChangeReadsTheVolumeAgain(t *testing.T) {
@@ -164,51 +153,30 @@ func TestPlayAfterAVolumeChangeReadsTheVolumeAgain(t *testing.T) {
 	h.wantVolumes("phone", "55", "60")
 }
 
-func TestVolumeHidesAfterAFewSeconds(t *testing.T) {
+func TestVolumeStaysInThePlayer(t *testing.T) {
 	h := newHarnessWith(t, playingOnPhoneAt(50), 120, 40)
 	h.holdTimers = true
 
 	h.send(key("+"))
-	h.wantView("Volume: 55%")
-	if !slices.Contains(h.delays, volumeShownFor) {
-		t.Fatalf("delays = %v, want the volume hidden after %v", h.delays, volumeShownFor)
+	h.wantVolumeMeter(55)
+	if slices.Contains(h.delays, noticeShownFor) {
+		t.Fatalf("delays = %v, want no timer to hide the volume", h.delays)
 	}
 
 	h.holdTimers = false
 	h.send()
-
-	h.dontWantView("Volume:")
+	h.wantVolumeMeter(55)
 }
 
-func TestOlderVolumeTimerKeepsTheNewVolume(t *testing.T) {
-	h := newHarnessWith(t, playingOnPhoneAt(50), 120, 40)
-	h.holdTimers = true
-
-	h.send(key("+"))
-	first := h.timers
-	h.timers = nil
-	h.send(key("+"))
-	h.send(first...)
-
-	h.wantView("Volume: 60%")
-
-	h.holdTimers = false
-	h.send()
-
-	h.dontWantView("Volume:")
-}
-
-func TestVolumeShowsNextToThePlaybackStatus(t *testing.T) {
+func TestVolumeShowsUnderThePlaybackStatus(t *testing.T) {
 	h := newHarnessWith(t, playingOnPhoneAt(50), 120, 40)
 	h.holdTimers = true
 
 	h.send(key("space"))
 	h.send(key("+"))
 
-	line := h.statusLine()
-	if !strings.Contains(line, "▶ So What") || !strings.HasSuffix(strings.TrimRight(line, " │"), "Volume: 55%") {
-		t.Fatalf("status line = %q, want the paused song with the volume at the end", line)
-	}
+	h.wantPlayerRow(0, "▶ So What")
+	h.wantVolumeMeter(55)
 }
 
 func TestVolumeFitsANarrowWindow(t *testing.T) {
@@ -220,13 +188,11 @@ func TestVolumeFitsANarrowWindow(t *testing.T) {
 	h.send(key("space"))
 	h.send(key("+"))
 
-	line := h.statusLine()
-	if !strings.Contains(line, "…") || !strings.Contains(line, "Volume: 55%") {
-		t.Fatalf("status line = %q, want the cut song name and the volume", line)
-	}
+	h.wantPlayerRow(0, "…")
+	h.wantVolumeMeter(55)
 	for row := range strings.SplitSeq(h.view(), "\n") {
-		if got := ansi.StringWidth(row); got > 60 {
-			t.Fatalf("row is %d columns wide, want at most 60: %q", got, row)
+		if got := ansi.StringWidth(row); got != 60 {
+			t.Fatalf("row is %d columns wide, want 60: %q", got, row)
 		}
 	}
 }
@@ -240,11 +206,11 @@ func TestVolumeWorksOnEveryTab(t *testing.T) {
 
 	for range 4 {
 		h.send(key("right"))
-		h.wantView("Volume: 55%")
+		h.wantVolumeMeter(55)
 	}
 }
 
-func TestVolumeShowsAndHidesOnEveryTab(t *testing.T) {
+func TestVolumeErrorsShowAndHideOnEveryTab(t *testing.T) {
 	for tab := playlistsTab; tab <= albumsTab; tab++ {
 		t.Run(strconv.Itoa(tab), func(t *testing.T) {
 			h := newHarnessWith(t, playingOnPhoneAt(50), 120, 40)
@@ -254,10 +220,10 @@ func TestVolumeShowsAndHidesOnEveryTab(t *testing.T) {
 			h.holdTimers = true
 
 			h.send(key("+"))
-			h.wantView("Volume: 55%")
+			h.wantVolumeMeter(55)
 			h.holdTimers = false
 			h.send()
-			h.dontWantView("Volume:")
+			h.wantVolumeMeter(55)
 
 			h.api.set(func(f *fakeAPI) { f.volumeStatus = http.StatusForbidden })
 			h.holdTimers = true
@@ -323,8 +289,7 @@ func TestVolumeFailure(t *testing.T) {
 
 	h.wantPlayerReads(2)
 	h.wantVolumes("phone", "55", "55")
-	h.wantView("Volume: 55%")
-	h.dontWantView("Fail to change the volume")
+	h.wantVolumeMeter(55)
 }
 
 func TestVolumeErrorKeepsThePlaybackStatus(t *testing.T) {
@@ -353,7 +318,7 @@ func TestFailureAfterAVolumeChangeReadsTheVolumeAgain(t *testing.T) {
 	h.api.set(func(f *fakeAPI) { f.volumeStatus = http.StatusForbidden })
 	h.send(key("+"))
 	h.wantView("Fail to change the volume")
-	h.dontWantView("Volume: 55%")
+	h.wantVolumeMeter(55)
 
 	h.api.set(func(f *fakeAPI) { f.volumeStatus = 0 })
 	h.send(key("+"))
@@ -361,7 +326,7 @@ func TestFailureAfterAVolumeChangeReadsTheVolumeAgain(t *testing.T) {
 
 	h.wantPlayerReads(2)
 	h.wantVolumes("phone", "55", "60", "60")
-	h.wantView("Volume: 60%")
+	h.wantVolumeMeter(60)
 }
 
 func TestVolumePressesPastTheLimitKeepLaterPresses(t *testing.T) {
@@ -376,7 +341,7 @@ func TestVolumePressesPastTheLimitKeepLaterPresses(t *testing.T) {
 	h.run(change)
 
 	h.wantVolumes("phone", "95")
-	h.wantView("Volume: 95%")
+	h.wantVolumeMeter(95)
 }
 
 func TestPlayFinishingAroundAVolumeChangeReadsTheVolumeAgain(t *testing.T) {
@@ -423,24 +388,6 @@ func TestReadFailureOfTheVolume(t *testing.T) {
 
 	h.wantVolumes("")
 	h.wantView("Fail to change the volume: Unauthorized")
-}
-
-func TestKeyHelpShowsVolume(t *testing.T) {
-	h := newHarness(t, 120, 40)
-	h.wantView("space play/pause • +/- volume")
-
-	h.send(key("right"))
-	h.wantView("space play/pause • +/- volume")
-}
-
-func TestKeyHelpLeavesOutVolumeWhenItDoesNotFit(t *testing.T) {
-	h := newHarness(t, 80, 24)
-	h.wantView("space play/pause")
-	h.dontWantView("+/-", "…")
-
-	h.send(key("tab"))
-	h.wantView("tab playlists • enter play • r refresh • space play/pause")
-	h.dontWantView("+/-")
 }
 
 type fakeVolumeFile struct {

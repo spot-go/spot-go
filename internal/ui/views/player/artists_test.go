@@ -130,7 +130,7 @@ func (h *harness) settleArtists() {
 func newArtistHarness(t *testing.T, api *fakeAPI) *harness {
 	t.Helper()
 
-	h := newHarnessWith(t, api, 120, 42)
+	h := newHarnessWith(t, api, 120, 43)
 	h.send(keys("right", "right")...)
 	return h
 }
