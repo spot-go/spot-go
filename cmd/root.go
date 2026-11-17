@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
+	"github.com/spot-go/spot-go/internal/background"
 	"github.com/spot-go/spot-go/internal/config"
 	"github.com/spot-go/spot-go/internal/media"
 	"github.com/spot-go/spot-go/internal/program"
@@ -34,6 +35,10 @@ func run(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	// Before spot-go reads the Spotify token, which the spot-go an earlier
+	// run left in the background could refresh meanwhile.
+	followed := background.Stop()
+
 	if err := loadSettings(); err != nil {
 		fmt.Println("fatal:", err)
 		os.Exit(1)
@@ -54,16 +59,37 @@ func run(cmd *cobra.Command, args []string) {
 	media.Listen(func(c media.Command) { p.Send(c) })
 	stopHangup := quitOnHangup(p)
 	final, err := p.Run()
-	if keepPlaying(final) {
-		soloist.Detach()
-	} else {
-		soloist.Stop()
-	}
+	quitSoloist(keepPlaying(final), followed)
 	// Until Soloist stopped, a hang-up only quits spot-go, which already
 	// quit, and doesn't end spot-go before it stopped Soloist.
 	stopHangup()
 	if err != nil && !errors.Is(err, tea.ErrInterrupted) {
 		log.Fatal(err)
+	}
+}
+
+// quitSoloist stops Soloist as spot-go quits, or leaves it playing when keep
+// is true. A Soloist left playing gets spot-go again, in the background, to
+// keep Now Playing and the media keys on it: the one this run leaves, or
+// followed, the one spot-go in the background followed as this run started,
+// when this run quit before it took it over. The Soloist another run of
+// spot-go plays on, which no spot-go in the background followed, gets none.
+func quitSoloist(keep bool, followed int) {
+	// Before Detach or Stop, while this run may still know the device.
+	device := soloist.DeviceID()
+	detached := 0
+	if keep {
+		detached = soloist.Detach()
+	} else {
+		soloist.Stop()
+	}
+
+	left, ok := soloist.LeftRunning()
+	if !ok || left != detached && left != followed {
+		return
+	}
+	if err := background.Start(left, device); err != nil {
+		fmt.Fprintln(os.Stderr, "spot-go: the media keys won't reach the music left playing:", err)
 	}
 }
 

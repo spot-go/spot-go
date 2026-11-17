@@ -175,8 +175,13 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 	clientResp <- ClientResponse{client, nil}
 }
 
+// newSessionClient is a client that refreshes the token t with the HTTP
+// client of ctx, when it has one (oauth2.HTTPClient), and saves it. The
+// timeout of that client stays on the refresh: Web API requests end with
+// their context.
 func newSessionClient(ctx context.Context, t *oauth2.Token) *Client {
 	httpClient := auth.Client(ctx, t)
+	httpClient.Timeout = 0
 	if transport, ok := httpClient.Transport.(*oauth2.Transport); ok {
 		transport.Source = &savingTokenSource{src: transport.Source, accessToken: t.AccessToken, save: config.SaveToken}
 	}

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -300,9 +301,20 @@ func TestDetachLeavesSoloistPlayingForResume(t *testing.T) {
 	}
 	pid := savedPid(t)
 
-	Detach()
+	if got := Detach(); got != pid {
+		t.Fatalf("Detach() = %d, want %d", got, pid)
+	}
 	if !command.Running(pid) {
 		t.Fatal("Detach() stopped Soloist")
+	}
+	if got := Detach(); got != 0 {
+		t.Fatalf("Detach() with no Soloist in use = %d, want 0", got)
+	}
+	if got, ok := LeftRunning(); !ok || got != pid {
+		t.Fatalf("LeftRunning() = %d, %t after Detach(), want %d, true", got, ok, pid)
+	}
+	if !StillLeft(pid) {
+		t.Fatal("StillLeft() = false after Detach()")
 	}
 	if Adopted() {
 		t.Fatal("Adopted() = true with no Soloist in use")
@@ -339,6 +351,12 @@ func TestDetachLeavesSoloistPlayingForResume(t *testing.T) {
 	if LeftPlaying() {
 		t.Fatal("LeftPlaying() = true after Stop()")
 	}
+	if StillLeft(pid) {
+		t.Fatal("StillLeft() = true after Stop()")
+	}
+	if _, ok := LeftRunning(); ok {
+		t.Fatal("LeftRunning() = true after Stop()")
+	}
 	if Adopted() {
 		t.Fatal("Adopted() = true after Stop()")
 	}
@@ -373,8 +391,8 @@ func TestResumeStartsSoloistWhenNoneWasLeftPlaying(t *testing.T) {
 				if err := os.WriteFile(pidFile, []byte(tt.pid(t)+"\n"), 0600); err != nil {
 					t.Fatal(err)
 				}
-				if pid, ok := leftRunning(); ok {
-					t.Fatalf("leftRunning() = %d, true for a pid file with %s", pid, tt.pid(t))
+				if pid, ok := LeftRunning(); ok {
+					t.Fatalf("LeftRunning() = %d, true for a pid file with %s", pid, tt.pid(t))
 				}
 			}
 
@@ -563,14 +581,46 @@ func TestLeftRunningNeedsTheDataFolder(t *testing.T) {
 		t.Fatalf("Login() = %v", resp.Err)
 	}
 	pid := savedPid(t)
-	if got, ok := leftRunning(); !ok || got != pid {
-		t.Fatalf("leftRunning() = %d, %t, want %d, true", got, ok, pid)
+	if got, ok := LeftRunning(); !ok || got != pid {
+		t.Fatalf("LeftRunning() = %d, %t, want %d, true", got, ok, pid)
 	}
 
 	other := dataDir
 	dataDir += "-other"
 	defer func() { dataDir = other }()
-	if got, ok := leftRunning(); ok {
-		t.Fatalf("leftRunning() = %d, true for a Soloist on another data folder", got)
+	if got, ok := LeftRunning(); ok {
+		t.Fatalf("LeftRunning() = %d, true for a Soloist on another data folder", got)
+	}
+}
+
+func TestStillLeftFollowsTheSoloistLeftPlaying(t *testing.T) {
+	useTempFolder(t)
+	countingScript(t, loggedInDaemon)
+	if resp := Login(nil); resp.Err != nil {
+		t.Fatalf("Login() = %v", resp.Err)
+	}
+	pid := savedPid(t)
+	Detach()
+
+	other := exec.Command("sleep", "30")
+	if err := other.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = other.Process.Kill()
+		_ = other.Wait()
+	})
+	if StillLeft(other.Process.Pid) {
+		t.Fatal("StillLeft() = true for a process the pid file doesn't name")
+	}
+	if !StillLeft(pid) {
+		t.Fatal("StillLeft() = false for the Soloist left playing")
+	}
+
+	// As when Soloist crashes, or the user ends it: the pid file stays.
+	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	waitStopped(t, pid)
+	if StillLeft(pid) {
+		t.Fatal("StillLeft() = true once the Soloist left playing ended")
 	}
 }

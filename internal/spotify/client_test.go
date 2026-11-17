@@ -751,3 +751,11 @@ func TestRefreshedTokensAreSaved(t *testing.T) {
 		t.Fatal("a failed refresh did not return the error")
 	}
 }
+
+func TestSessionClientLeavesTheRefreshTimeoutToTheRefresh(t *testing.T) {
+	refresh := &http.Client{Timeout: time.Second}
+	c := newSessionClient(context.WithValue(context.Background(), oauth2.HTTPClient, refresh), &oauth2.Token{AccessToken: "token", Expiry: time.Now().Add(time.Hour)})
+	if c.httpClient.Timeout != 0 {
+		t.Fatalf("Web API requests time out after %v, want them to end with their context", c.httpClient.Timeout)
+	}
+}

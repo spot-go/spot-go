@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -135,6 +137,22 @@ func Attach(pid int, logFile string, onPast, onLine func(line string)) (*Process
 // Running reports whether pid is a process that runs as this user.
 func Running(pid int) bool {
 	return pid > 0 && syscall.Kill(pid, 0) == nil
+}
+
+// Line is the command line pid runs with, its arguments split by spaces.
+func Line(pid int) (string, bool) {
+	if runtime.GOOS == "linux" {
+		b, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+		if err != nil {
+			return "", false
+		}
+		return strings.TrimSpace(strings.ReplaceAll(string(b), "\x00", " ")), true
+	}
+	out, err := exec.Command("ps", "-ww", "-o", "command=", "-p", strconv.Itoa(pid)).Output()
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(string(out)), true
 }
 
 func (p *Process) Pid() int {

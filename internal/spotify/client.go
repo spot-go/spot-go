@@ -400,6 +400,16 @@ func (c Client) ResumePlayback(ctx context.Context, deviceID spotify.ID) error {
 	return c.PlayOpt(ctx, opt)
 }
 
+// PauseOn pauses Spotify on deviceID, or on the device it plays on when
+// deviceID is empty.
+func (c Client) PauseOn(ctx context.Context, deviceID spotify.ID) error {
+	opt := &spotify.PlayOptions{}
+	if deviceID != "" {
+		opt.DeviceID = &deviceID
+	}
+	return c.PauseOpt(ctx, opt)
+}
+
 func (c Client) SetVolume(ctx context.Context, deviceID spotify.ID, percent int) error {
 	opt := &spotify.PlayOptions{}
 	if deviceID != "" {
