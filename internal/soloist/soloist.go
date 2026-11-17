@@ -183,8 +183,8 @@ func adopt() *process {
 }
 
 // LeftRunning is the process ID of the Soloist spot-go started last, when it
-// still runs with spot-go's data folder: after Detach, or when this run of
-// spot-go didn't take over the one an earlier run left playing.
+// still runs with spot-go's data folder: after Detach, or when no run of
+// spot-go took over the one an earlier run left playing.
 func LeftRunning() (int, bool) {
 	pid, ok := pidInFile()
 	if !ok || !command.Running(pid) {
@@ -254,8 +254,9 @@ func Stop() {
 }
 
 // Detach leaves Soloist running when spot-go quits, so what it plays keeps
-// playing. The next run of spot-go finds it with Resume.
-func Detach() {
+// playing. The next run of spot-go finds it with Resume. Detach returns the
+// process ID of the Soloist it left running, or 0 when none runs.
+func Detach() int {
 	startMu.Lock()
 	defer startMu.Unlock()
 
@@ -264,9 +265,14 @@ func Detach() {
 	current = nil
 	mu.Unlock()
 
-	if p != nil {
-		p.detach()
+	if p == nil {
+		return 0
 	}
+	p.detach()
+	if pid := p.pid(); command.Running(pid) {
+		return pid
+	}
+	return 0
 }
 
 // Adopted reports whether the Soloist in use is one an earlier run of

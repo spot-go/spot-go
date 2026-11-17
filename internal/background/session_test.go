@@ -388,9 +388,59 @@ func TestPlayPauseRightAfterAnotherGoesBack(t *testing.T) {
 	h.wantCalls("resume ")
 	h.wantShown(shown(soWhat, time.Minute, true))
 
-	h.advance(followGrace)
+	h.advance(time.Second)
 	h.press(media.TogglePlayPause)
-	h.wantCalls("playback", "pause")
+	h.wantCalls("pause")
+	h.wantShown(shown(soWhat, time.Minute+time.Second, false))
+
+	// While Spotify doesn't follow, the keys go by what Now Playing shows.
+	h.advance(followGrace + time.Second)
+	h.wantNextPoll(h.poll(), settleEvery)
+	h.press(media.TogglePlayPause)
+	h.wantCalls("playback", "resume ")
+	h.wantShown(shown(soWhat, time.Minute+time.Second, true))
+
+	// Once Spotify agrees, they go by what it says.
+	h.advance(followGrace)
+	h.wantNextPoll(h.poll(), playingEvery)
+	h.wantShown(shown(soWhat, time.Minute, true))
+	h.press(media.TogglePlayPause)
+	h.wantCalls("playback", "playback", "pause")
+}
+
+func TestKeyAfterAPlaySpotifyIsSlowToReport(t *testing.T) {
+	h := newHarness(t, spotify.Playback{})
+	h.session.shown, h.session.shownAt = soWhat, h.clock
+	h.session.shown.Playing = false
+	h.spotify.follows = false
+
+	h.press(media.Play)
+	h.wantCalls("playback", "resume "+string(soloistDevice))
+	h.wantShown(shown(soWhat, time.Minute, true))
+	h.advance(followGrace)
+	h.wantNextPoll(h.poll(), settleEvery)
+	h.advance(1500 * time.Millisecond)
+
+	// Now Playing shows the play, so pause pauses, though Spotify doesn't
+	// report the play yet.
+	h.spotify.takeCalls()
+	h.press(media.Pause)
+	h.wantCalls("pause")
+	h.wantShown(shown(soWhat, time.Minute+4500*time.Millisecond, false))
+}
+
+func TestPollAfterASkipRightAfterAPlayPause(t *testing.T) {
+	h := newHarness(t, soWhat)
+	h.press(media.TogglePlayPause)
+	h.spotify.skipTo = &freddie
+	h.press(media.NextTrack)
+	h.spotify.takeCalls()
+	h.wantShown(shown(soWhat, time.Minute, false))
+
+	// The skip ends the wait for the pause to show.
+	h.wantNextPoll(h.poll(), playingEvery)
+	h.wantCalls("playback")
+	h.wantShown(shown(freddie, 0, true))
 }
 
 func TestPollRightAfterAPlayPauseWaitsForSpotify(t *testing.T) {
@@ -564,6 +614,16 @@ func TestErrorsThatRepeatAreLoggedOnce(t *testing.T) {
 	}
 }
 
+func TestOtherLoginErrorsDontEndTheSession(t *testing.T) {
+	h := newHarness(t, soWhat)
+	h.spotify.err = &url.Error{Op: "Get", URL: "https://api.spotify.com/v1/me/player", Err: &oauth2.RetrieveError{ErrorCode: "server_error"}}
+
+	h.wantNextPoll(h.poll(), pausedEvery)
+	h.press(media.TogglePlayPause)
+	h.spotify.err = &url.Error{Op: "Get", URL: "https://api.spotify.com/v1/me/player", Err: &oauth2.RetrieveError{}}
+	h.wantNextPoll(h.poll(), 2*pausedEvery)
+}
+
 func TestLoggedOutEndsTheSession(t *testing.T) {
 	h := newHarness(t, soWhat)
 	h.spotify.err = revoked
@@ -610,6 +670,23 @@ func TestRunRunsTheKeysUntilSoloistStops(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("run() went on after Soloist stopped")
+	}
+}
+
+func TestRunPollsOnlyWhenItIsTime(t *testing.T) {
+	h := newHarness(t, soWhat)
+	h.session.now = time.Now
+	h.session.aliveEvery = time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error)
+	go func() { done <- h.session.run(ctx, nil) }()
+
+	// Many checks that Soloist runs, and a single poll.
+	time.Sleep(200 * time.Millisecond)
+	cancel()
+	<-done
+	if calls := h.spotify.takeCalls(); len(calls) != 1 {
+		t.Fatalf("Spotify got %q in 200ms, want one poll", calls)
 	}
 }
 

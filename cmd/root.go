@@ -37,7 +37,7 @@ func run(cmd *cobra.Command, args []string) {
 
 	// Before spot-go reads the Spotify token, which the spot-go an earlier
 	// run left in the background could refresh meanwhile.
-	background.Stop()
+	followed := background.Stop()
 
 	if err := loadSettings(); err != nil {
 		fmt.Println("fatal:", err)
@@ -59,7 +59,7 @@ func run(cmd *cobra.Command, args []string) {
 	media.Listen(func(c media.Command) { p.Send(c) })
 	stopHangup := quitOnHangup(p)
 	final, err := p.Run()
-	quitSoloist(keepPlaying(final))
+	quitSoloist(keepPlaying(final), followed)
 	// Until Soloist stopped, a hang-up only quits spot-go, which already
 	// quit, and doesn't end spot-go before it stopped Soloist.
 	stopHangup()
@@ -70,22 +70,25 @@ func run(cmd *cobra.Command, args []string) {
 
 // quitSoloist stops Soloist as spot-go quits, or leaves it playing when keep
 // is true. A Soloist left playing gets spot-go again, in the background, to
-// keep Now Playing and the media keys on it: the one this run leaves, or one
-// an earlier run left, when this run quit before it took it over.
-func quitSoloist(keep bool) {
+// keep Now Playing and the media keys on it: the one this run leaves, or
+// followed, the one spot-go in the background followed as this run started,
+// when this run quit before it took it over. The Soloist another run of
+// spot-go plays on, which no spot-go in the background followed, gets none.
+func quitSoloist(keep bool, followed int) {
 	// Before Detach or Stop, while this run may still know the device.
 	device := soloist.DeviceID()
+	detached := 0
 	if keep {
-		soloist.Detach()
+		detached = soloist.Detach()
 	} else {
 		soloist.Stop()
 	}
 
-	pid, ok := soloist.LeftRunning()
-	if !ok {
+	left, ok := soloist.LeftRunning()
+	if !ok || left != detached && left != followed {
 		return
 	}
-	if err := background.Start(pid, device); err != nil {
+	if err := background.Start(left, device); err != nil {
 		fmt.Fprintln(os.Stderr, "spot-go: the media keys won't reach the music left playing:", err)
 	}
 }

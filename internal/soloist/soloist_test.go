@@ -301,9 +301,14 @@ func TestDetachLeavesSoloistPlayingForResume(t *testing.T) {
 	}
 	pid := savedPid(t)
 
-	Detach()
+	if got := Detach(); got != pid {
+		t.Fatalf("Detach() = %d, want %d", got, pid)
+	}
 	if !command.Running(pid) {
 		t.Fatal("Detach() stopped Soloist")
+	}
+	if got := Detach(); got != 0 {
+		t.Fatalf("Detach() with no Soloist in use = %d, want 0", got)
 	}
 	if got, ok := LeftRunning(); !ok || got != pid {
 		t.Fatalf("LeftRunning() = %d, %t after Detach(), want %d, true", got, ok, pid)

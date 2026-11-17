@@ -90,25 +90,11 @@ func (s *Settings) save() error {
 		return fmt.Errorf("fail to marshal json: %+v", err)
 	}
 
-	// The new file takes the place of the old one at once, so a spot-go
-	// killed while it saves, as spot-go in the background can be, leaves
-	// the old one whole. It holds the Spotify token, so only the user reads
-	// it.
-	f, err := os.CreateTemp(Path, "settings-*.json")
+	err = os.WriteFile(configFile, b, os.ModePerm)
 	if err != nil {
 		return fmt.Errorf("fail to write file: %+v", err)
 	}
-	defer os.Remove(f.Name())
-	if _, err := f.Write(b); err != nil {
-		f.Close()
-		return fmt.Errorf("fail to write file: %+v", err)
-	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("fail to write file: %+v", err)
-	}
-	if err := os.Rename(f.Name(), configFile); err != nil {
-		return fmt.Errorf("fail to write file: %+v", err)
-	}
+
 	return nil
 }
 

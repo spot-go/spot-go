@@ -87,12 +87,14 @@ func TestStartSavesThePidAndStopStopsIt(t *testing.T) {
 	if got, ok := pidInFile(); !ok || got != pid {
 		t.Fatalf("pid file = %d, %t, want %d", got, ok, pid)
 	}
-	if !runsInBackground(pid) {
+	if got, ok := followed(pid); !ok || got != 4242 {
 		line, _ := command.Line(pid)
-		t.Fatalf("runsInBackground(%d) = false for %q", pid, line)
+		t.Fatalf("followed(%d) = %d, %t for %q, want the Soloist 4242", pid, got, ok, line)
 	}
 
-	Stop()
+	if got := Stop(); got != 4242 {
+		t.Fatalf("Stop() = %d, want the Soloist it followed, 4242", got)
+	}
 	waitStopped(t, pid)
 	if _, err := os.Stat(pidFile); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("the pid file is still there after Stop(): %v", err)
@@ -127,7 +129,9 @@ func TestStopLeavesOtherProgramsAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	Stop()
+	if got := Stop(); got != 0 {
+		t.Fatalf("Stop() = %d for another program, want 0", got)
+	}
 	if !command.Running(other.Process.Pid) {
 		t.Fatal("Stop() stopped another program")
 	}
@@ -139,11 +143,15 @@ func TestStopLeavesOtherProgramsAlone(t *testing.T) {
 func TestStopWithNothingInTheBackground(t *testing.T) {
 	useTempFolder(t)
 
-	Stop()
+	if got := Stop(); got != 0 {
+		t.Fatalf("Stop() = %d with no pid file, want 0", got)
+	}
 	if err := os.WriteFile(pidFile, []byte("not a pid\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	Stop()
+	if got := Stop(); got != 0 {
+		t.Fatalf("Stop() = %d with a broken pid file, want 0", got)
+	}
 }
 
 func TestStartKillsWhatItCouldNotSave(t *testing.T) {

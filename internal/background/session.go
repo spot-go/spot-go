@@ -39,7 +39,7 @@ const (
 	// next.
 	pollSlack = time.Second
 	// pollTimeout is short, as a media key pressed meanwhile waits for the
-	// poll to end.
+	// poll to end. A token refresh can take longer: see refreshTimeout.
 	pollTimeout    = 5 * time.Second
 	commandTimeout = 15 * time.Second
 	commandQueue   = 4
@@ -275,10 +275,10 @@ func (s *session) playPause(ctx context.Context, c media.Command) error {
 	return nil
 }
 
-// state is what Spotify plays: as the last play or pause left it, when it
-// ended a moment ago, as Spotify may not report it yet, or as Spotify says.
+// state is what Spotify plays: as the last play or pause left it, while
+// Spotify may not report it yet and Now Playing shows it, or as Spotify says.
 func (s *session) state(ctx context.Context) (spotify.Playback, error) {
-	if since := s.now().Sub(s.changedAt); s.settling && since < followGrace {
+	if since := s.now().Sub(s.changedAt); s.settling && since < settleTimeout {
 		return at(s.changed, since), nil
 	}
 	return s.spotify.Playback(ctx)

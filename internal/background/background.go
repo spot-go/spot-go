@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -22,6 +23,7 @@ import (
 	"github.com/spot-go/spot-go/internal/soloist"
 	"github.com/spot-go/spot-go/internal/spotify"
 	libspotify "github.com/zmb3/spotify/v2"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -33,12 +35,16 @@ const (
 	DeviceFlag  = "device"
 
 	stopEvery = 20 * time.Millisecond
+	// refreshTimeout is how long a refresh of the Spotify token can take.
+	refreshTimeout = 8 * time.Second
 )
 
 var (
 	// stopTimeout is how long Stop waits for spot-go in the background to
-	// end before it kills it.
-	stopTimeout = 2 * time.Second
+	// end before it kills it. It usually ends at once, but a token refresh
+	// it runs ends first, so the new token gets saved. A refresh can try
+	// twice.
+	stopTimeout = 2 * refreshTimeout
 	// pidFile has the process ID of the spot-go that runs in the
 	// background, so the next run of spot-go can stop it.
 	pidFile = filepath.Join(soloist.Folder, "background.pid")
@@ -90,15 +96,17 @@ func start(name string, args []string) (*command.Process, error) {
 
 // Stop stops the spot-go an earlier run left in the background, so it
 // neither answers the media keys nor refreshes the Spotify token along with
-// this run.
-func Stop() {
+// this run. It returns the process ID of the Soloist that one followed, or 0
+// when none ran.
+func Stop() int {
 	pid, ok := pidInFile()
 	if !ok {
-		return
+		return 0
 	}
 	defer os.Remove(pidFile)
-	if !runsInBackground(pid) {
-		return
+	soloistPid, ok := followed(pid)
+	if !ok {
+		return 0
 	}
 
 	_ = syscall.Kill(pid, syscall.SIGTERM)
@@ -106,10 +114,11 @@ func Stop() {
 	for command.Running(pid) {
 		if time.Now().After(deadline) {
 			_ = syscall.Kill(pid, syscall.SIGKILL)
-			return
+			break
 		}
 		time.Sleep(stopEvery)
 	}
+	return soloistPid
 }
 
 func pidInFile() (int, bool) {
@@ -121,14 +130,22 @@ func pidInFile() (int, bool) {
 	return pid, err == nil
 }
 
-// runsInBackground reports whether pid is spot-go in the background, and not
-// a program that got its process ID since.
-func runsInBackground(pid int) bool {
+// followed is the process ID of the Soloist pid follows, when pid is spot-go
+// in the background, and not a program that got its process ID since.
+func followed(pid int) (int, bool) {
 	if !command.Running(pid) {
-		return false
+		return 0, false
 	}
 	line, ok := command.Line(pid)
-	return ok && strings.Contains(line, " "+Command+" --"+SoloistFlag+" ")
+	if !ok {
+		return 0, false
+	}
+	_, rest, ok := strings.Cut(line, " "+Command+" --"+SoloistFlag+" ")
+	if !ok {
+		return 0, false
+	}
+	soloistPid, _ := strconv.Atoi(strings.Fields(rest + " ")[0])
+	return soloistPid, true
 }
 
 // Run keeps Now Playing and the media keys on what Spotify plays, while the
@@ -172,8 +189,9 @@ func Run(ctx context.Context, soloistPid int, device string) error {
 	}
 	// A token refresh doesn't end with ctx, as when the next run of spot-go
 	// stops this one: Spotify may have given a new token, which only the
-	// end of the refresh saves.
-	resp := spotify.Login(context.Background())
+	// end of the refresh saves. It can't take forever either, as nothing
+	// else runs meanwhile.
+	resp := spotify.Login(context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Timeout: refreshTimeout}))
 	if resp.Err != nil {
 		if errors.Is(resp.Err, spotify.ErrNeedsAuth) {
 			return errLoggedOut
