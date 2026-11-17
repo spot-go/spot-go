@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -186,37 +185,34 @@ func adopt() *process {
 // leftRunning is the process ID of the Soloist spot-go started last, when it
 // still runs with spot-go's data folder.
 func leftRunning() (int, bool) {
-	b, err := os.ReadFile(pidFile)
-	if err != nil {
-		return 0, false
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
-	if err != nil || !command.Running(pid) {
+	pid, ok := pidInFile()
+	if !ok || !command.Running(pid) {
 		return 0, false
 	}
 
 	// The process ID may have gone to another program since.
-	line, ok := commandLine(pid)
+	line, ok := command.Line(pid)
 	if !ok || !regexp.MustCompile(stalePattern(dataDir)).MatchString(line) {
 		return 0, false
 	}
 	return pid, true
 }
 
-// commandLine is the command line pid runs with.
-func commandLine(pid int) (string, bool) {
-	if runtime.GOOS == "linux" {
-		b, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-		if err != nil {
-			return "", false
-		}
-		return strings.TrimSpace(strings.ReplaceAll(string(b), "\x00", " ")), true
-	}
-	out, err := exec.Command("ps", "-ww", "-o", "command=", "-p", strconv.Itoa(pid)).Output()
+// StillLeft reports whether pid, a Soloist Detach left playing, still runs,
+// and no run of spot-go started another one since.
+func StillLeft(pid int) bool {
+	saved, ok := pidInFile()
+	return ok && saved == pid && command.Running(pid)
+}
+
+// pidInFile is the process ID of the Soloist spot-go started last.
+func pidInFile() (int, bool) {
+	b, err := os.ReadFile(pidFile)
 	if err != nil {
-		return "", false
+		return 0, false
 	}
-	return strings.TrimSpace(string(out)), true
+	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	return pid, err == nil
 }
 
 func DeviceID() string {
@@ -257,8 +253,9 @@ func Stop() {
 }
 
 // Detach leaves Soloist running when spot-go quits, so what it plays keeps
-// playing. The next run of spot-go finds it with Resume.
-func Detach() {
+// playing. The next run of spot-go finds it with Resume. Detach returns the
+// process ID of the Soloist it left running, or 0 when none runs.
+func Detach() int {
 	startMu.Lock()
 	defer startMu.Unlock()
 
@@ -267,9 +264,14 @@ func Detach() {
 	current = nil
 	mu.Unlock()
 
-	if p != nil {
-		p.detach()
+	if p == nil {
+		return 0
 	}
+	p.detach()
+	if pid := p.pid(); command.Running(pid) {
+		return pid
+	}
+	return 0
 }
 
 // Adopted reports whether the Soloist in use is one an earlier run of

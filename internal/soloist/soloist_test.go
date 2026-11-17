@@ -300,9 +300,20 @@ func TestDetachLeavesSoloistPlayingForResume(t *testing.T) {
 	}
 	pid := savedPid(t)
 
-	Detach()
+	if got := Detach(); got != pid {
+		t.Fatalf("Detach() = %d, want %d", got, pid)
+	}
 	if !command.Running(pid) {
 		t.Fatal("Detach() stopped Soloist")
+	}
+	if !StillLeft(pid) {
+		t.Fatal("StillLeft() = false after Detach()")
+	}
+	if StillLeft(pid + 1) {
+		t.Fatal("StillLeft() = true for another process")
+	}
+	if got := Detach(); got != 0 {
+		t.Fatalf("Detach() with no Soloist in use = %d, want 0", got)
 	}
 	if Adopted() {
 		t.Fatal("Adopted() = true with no Soloist in use")
@@ -338,6 +349,9 @@ func TestDetachLeavesSoloistPlayingForResume(t *testing.T) {
 	}
 	if LeftPlaying() {
 		t.Fatal("LeftPlaying() = true after Stop()")
+	}
+	if StillLeft(pid) {
+		t.Fatal("StillLeft() = true after Stop()")
 	}
 	if Adopted() {
 		t.Fatal("Adopted() = true after Stop()")

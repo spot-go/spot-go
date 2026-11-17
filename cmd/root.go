@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
+	"github.com/spot-go/spot-go/internal/background"
 	"github.com/spot-go/spot-go/internal/config"
 	"github.com/spot-go/spot-go/internal/media"
 	"github.com/spot-go/spot-go/internal/program"
@@ -34,6 +35,10 @@ func run(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	// Before spot-go reads the Spotify token, which the spot-go an earlier
+	// run left in the background could refresh meanwhile.
+	background.Stop()
+
 	if err := loadSettings(); err != nil {
 		fmt.Println("fatal:", err)
 		os.Exit(1)
@@ -55,7 +60,7 @@ func run(cmd *cobra.Command, args []string) {
 	stopHangup := quitOnHangup(p)
 	final, err := p.Run()
 	if keepPlaying(final) {
-		soloist.Detach()
+		keepInBackground()
 	} else {
 		soloist.Stop()
 	}
@@ -64,6 +69,20 @@ func run(cmd *cobra.Command, args []string) {
 	stopHangup()
 	if err != nil && !errors.Is(err, tea.ErrInterrupted) {
 		log.Fatal(err)
+	}
+}
+
+// keepInBackground leaves Soloist playing as spot-go quits, and starts
+// spot-go again in the background to keep Now Playing and the media keys on
+// it.
+func keepInBackground() {
+	device := soloist.DeviceID()
+	pid := soloist.Detach()
+	if pid == 0 {
+		return
+	}
+	if err := background.Start(pid, device); err != nil {
+		fmt.Fprintln(os.Stderr, "spot-go: the media keys won't reach the music left playing:", err)
 	}
 }
 

@@ -97,7 +97,7 @@ In windows shorter than 16 lines, the player shrinks to the bottom line of the f
 
 When you quit while Spotify plays on spot-go's device, spot-go asks whether the music keeps playing after you quit:
 
-- **Keep playing** (`k`) quits and leaves Soloist playing in the background. Control it from the Spotify app on your phone or computer, where it is still the `spot-go@<hostname>` device. The media keys and the Now Playing controls of the system don't reach it until spot-go runs again.
+- **Keep playing** (`k`) quits and leaves Soloist playing in the background. The media keys and the Now Playing controls of the system keep working (see [Media keys after quitting](#media-keys-after-quitting)), and the Spotify app on your phone or computer controls it too, where it is still the `spot-go@<hostname>` device.
 - **Stop** (`s`) stops Soloist and quits, as spot-go did before it asked.
 - **Cancel** (`esc`) goes back to spot-go.
 
@@ -106,6 +106,15 @@ When you quit while Spotify plays on spot-go's device, spot-go asks whether the 
 The next time spot-go starts, it finds the Soloist left playing and goes on with it, without stopping the music, so you can come back to what plays. If you quit before the player shows, or close the terminal then, that Soloist keeps playing as spot-go found it. The Soloist left playing keeps its build: when the build gets old, spot-go downloads a newer one the next time it starts Soloist. If the Soloist left playing stops working, spot-go starts a new one instead. If spot-go itself crashes or is killed, Soloist can keep playing too, and the next run finds it the same way.
 
 Soloist writes what it does to `soloist.log` next to its binary, in spot-go's config folder, so it can keep playing after spot-go quits. spot-go empties the file each time it starts Soloist.
+
+### Media keys after quitting
+
+Soloist plays the music, but it is spot-go that shows it in Now Playing and takes the media keys. So when you keep the music playing, spot-go starts itself again in the background, with no window, as `spot-go background`, and keeps doing that:
+
+- Now Playing on macOS, and the MPRIS player on Linux, show what Spotify plays, as while spot-go runs. spot-go checks it every 5 seconds while it plays, and every 15 seconds while it is paused.
+- The play/pause, next and previous keys, and the Now Playing controls, control Spotify. When Spotify has no active device, as a while after a pause, play resumes on Soloist.
+
+spot-go in the background ends when the Soloist left playing stops, and when spot-go runs again, which takes over the keys. It writes the errors it hits, such as a key Spotify refused, to `background.log`, next to `soloist.log`.
 
 ## Queue
 
