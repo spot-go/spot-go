@@ -65,13 +65,13 @@ On Linux, spot-go shows up as an MPRIS media player on the D-Bus session bus, so
 
 Spotify may only list the songs of playlists you own or collaborate on, depending on the mode of the Spotify app. Other playlists still play with `enter`.
 
+Since November 2024 the Web API no longer gives apps in development mode, like spot-go, the playlists Spotify makes, such as Discover Weekly, Release Radar, the Daily Mixes and Spotify's editorial playlists, so they don't show in the Playlists tab.
+
 ## Liked Songs
 
-The Playlists tab starts with Liked Songs: the songs you liked, newest first, as in the Spotify app. It stays at the top in every order. `enter` plays Liked Songs from the start, or from the selected song, and the Spotify app shows it plays from Liked Songs.
+The Playlists tab starts with Liked Songs: the songs you liked, newest first, as in the Spotify app. It stays at the top in every order. Liked Songs is often long, so spot-go loads its songs when you open the Playlists tab, not at the start. `enter` plays Liked Songs from the start, or from the selected song, and the Spotify app shows it plays from Liked Songs.
 
-The Web API doesn't document Liked Songs as something to play, and may refuse to start it from a song. Then spot-go plays the songs it loaded instead, from the selected one, up to 100 songs that can play. Spotify then plays them on their own, not from Liked Songs, and stops after the last one.
-
-Since November 2024 the Web API no longer gives new apps, such as spot-go, the playlists Spotify makes for you, like Discover Weekly, Release Radar and the Daily Mixes, so they don't show in the Playlists tab.
+The Web API doesn't document Liked Songs as something to play, and may refuse to play it, or to start it from a song. Then spot-go plays the songs it loaded instead, from the selected one or the first one, up to 100 songs that can play. Spotify then plays them on their own, not from Liked Songs, and stops after the last one unless repeat is on.
 
 ## Player
 

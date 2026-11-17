@@ -196,19 +196,6 @@ func TestEnterOnALikedSongPlaysLikedSongsFromIt(t *testing.T) {
 	h.wantView("⏸ Aquarela")
 }
 
-func TestRelinkedLikedSongStartsFromTheSongYouLiked(t *testing.T) {
-	api := withLikedSongs()
-	api.liked[1] = `{"added_at":"2026-11-01T10:00:00Z","track":{"type":"track","name":"Aquarela","uri":"spotify:track:here","duration_ms":279000,"is_playable":true,"linked_from":{"uri":"spotify:track:liked"},"artists":[{"name":"Toquinho"}]}}`
-	h := newHarnessWith(t, api, 120, 40)
-
-	h.send(keys("tab", "down", "enter")...)
-
-	h.wantPlayBody(0, map[string]any{
-		"context_uri": testLikedSongs,
-		"offset":      map[string]any{"uri": "spotify:track:liked"},
-	})
-}
-
 func TestRefusedLikedSongPlaysTheLoadedSongsFromIt(t *testing.T) {
 	api := withLikedSongs()
 	api.refuseLikedOffset = true
@@ -217,7 +204,10 @@ func TestRefusedLikedSongPlaysTheLoadedSongsFromIt(t *testing.T) {
 	h.send(keys("tab", "down", "enter")...)
 
 	h.wantPlays(2)
-	h.wantPlayBody(1, map[string]any{"uris": songURIs("Aquarela", "Trem das Onze")})
+	h.wantPlayBody(1, map[string]any{
+		"uris":   songURIs("Aquarela", "Trem das Onze"),
+		"offset": map[string]any{"position": float64(0)},
+	})
 	h.wantView("⏸ Aquarela")
 	h.dontWantView("Fail to play")
 }
@@ -230,7 +220,10 @@ func TestRefusedLikedSongsPlaysTheLoadedSongsFromTheStart(t *testing.T) {
 	h.send(key("enter"))
 
 	h.wantPlays(2)
-	h.wantPlayBody(1, map[string]any{"uris": songURIs("Baby", "Aquarela", "Trem das Onze")})
+	h.wantPlayBody(1, map[string]any{
+		"uris":   songURIs("Baby", "Aquarela", "Trem das Onze"),
+		"offset": map[string]any{"position": float64(0)},
+	})
 	h.wantView("⏸ Liked Songs")
 	h.dontWantView("Fail to play")
 }
@@ -309,6 +302,90 @@ func TestLikedSongsPlayIsConfirmed(t *testing.T) {
 	wantInfo(t, published, media.Info{ID: trackURI("Baby"), Title: "Baby", Artist: "Gal Costa", Duration: 211 * time.Second, Playing: true})
 	h.wantView("⏸ Baby")
 	h.wantPlayerReads(1)
+}
+
+// TestRefusedLikedSongPlayIsConfirmed checks that spot-go waits for a song
+// without a context after it plays the loaded songs: the progress Spotify
+// reports only shows once the start is confirmed.
+func TestRefusedLikedSongPlayIsConfirmed(t *testing.T) {
+	api := withLikedSongs()
+	api.refuseLikedOffset = true
+	api.onPlay = func(f *fakeAPI) {
+		f.playing, f.playingType, f.playingItem, f.playingName = trackURI("Aquarela"), "none", trackURI("Aquarela"), "Aquarela"
+		f.playingArtist, f.progressMs, f.durationMs, f.paused = "Toquinho", 1000, 279000, false
+	}
+	h := newHarnessWith(t, api, 120, 40)
+	h.confirmStarts()
+	published := h.recordNowPlaying()
+
+	h.send(keys("tab", "down", "enter")...)
+
+	h.wantPlays(2)
+	wantInfo(t, published, media.Info{ID: trackURI("Aquarela"), Title: "Aquarela", Artist: "Toquinho", Duration: 279 * time.Second, Elapsed: time.Second, Playing: true})
+	h.wantPlayerReads(1)
+}
+
+func TestRefusedLikedSongsPlayIsConfirmed(t *testing.T) {
+	api := withLikedSongs()
+	api.refuseLikedSongs = true
+	api.onPlay = func(f *fakeAPI) {
+		likedBabyPlays(f)
+		f.playingType = "none"
+	}
+	h := newHarnessWith(t, api, 120, 40)
+	h.confirmStarts()
+	published := h.recordNowPlaying()
+
+	h.send(key("enter"))
+
+	h.wantPlays(2)
+	wantInfo(t, published, media.Info{ID: trackURI("Baby"), Title: "Baby", Artist: "Gal Costa", Duration: 211 * time.Second, Playing: true})
+	h.wantView("⏸ Baby")
+	h.wantPlayerReads(1)
+}
+
+func TestLikedSongsLoadOnceThePlaylistsTabShows(t *testing.T) {
+	api := withLikedSongs()
+	m := newModelWith(api, 120, 40)
+	m.activeTab = searchTab
+	playlists := m.tabs[playlistsTab].content.(playlistModel)
+	playlists.visible = false
+	m.tabs[playlistsTab].content = playlists
+	h := &harness{t: t, api: api, model: m}
+	h.run(m.Init())
+
+	if h.playlistLoads != 1 {
+		t.Fatalf("playlist loads = %d, want 1: the Playlists tab loads at the start", h.playlistLoads)
+	}
+	if got := api.requestsFor(likedSongsKey); len(got) != 0 {
+		t.Fatalf("Liked Songs requests = %v before the Playlists tab showed, want none", got)
+	}
+
+	h.send(keys("right", "right")...)
+	if got := api.requestsFor(likedSongsKey); !reflect.DeepEqual(got, []string{"liked@0"}) {
+		t.Fatalf("Liked Songs requests = %v, want liked@0 once the tab shows", got)
+	}
+	h.wantView("Baby - Gal Costa")
+
+	h.send(keys("left", "right")...)
+	if got := api.requestsFor(likedSongsKey); len(got) != 1 {
+		t.Fatalf("Liked Songs requests = %v, want 1: showing the tab again reloaded the songs", got)
+	}
+}
+
+func TestPlaylistSongsStillLoadOnAnotherTab(t *testing.T) {
+	api := newFakeAPI()
+	m := newModelWith(api, 120, 40)
+	m.activeTab = searchTab
+	playlists := m.tabs[playlistsTab].content.(playlistModel)
+	playlists.visible = false
+	m.tabs[playlistsTab].content = playlists
+	h := &harness{t: t, api: api, model: m}
+	h.run(m.Init())
+
+	if got := api.requestsFor("p0"); len(got) != 1 {
+		t.Fatalf("song requests for p0 = %v, want 1: the first playlist loads at the start, as before", got)
+	}
 }
 
 func TestLikedSongsIsNotKeptInTheHistory(t *testing.T) {

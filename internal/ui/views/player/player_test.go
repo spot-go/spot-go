@@ -319,6 +319,9 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		switch f.playingType {
 		case "show", "album", "artist", "collection":
 			context = fmt.Sprintf(`{"type":%q,"uri":%q}`, f.playingType, f.playing)
+		case "none":
+			// A song played on its own, without a context.
+			context = "null"
 		case "episode":
 			context = "null"
 			item = fmt.Sprintf(`{"type":"episode","uri":%q,"name":%q,"duration_ms":%d,"show":{"uri":%q}}`, f.playingItem, f.playingName, f.durationMs, f.playing)
@@ -746,6 +749,7 @@ func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model
 	playlists := m.tabs[playlistsTab].content.(playlistModel)
 	playlists.after = testAfter
 	playlists.pollEvery = 0
+	playlists.visible = true
 	m.tabs[playlistsTab].content = playlists
 	podcasts := m.tabs[podcastsTab].content.(podcastModel)
 	podcasts.after = testAfter

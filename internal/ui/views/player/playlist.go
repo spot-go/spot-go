@@ -35,6 +35,10 @@ type (
 		pollEvery       time.Duration
 		polling         bool
 		playingURI      libspotify.URI
+		// visible is true while the Playlists tab is the active tab. The
+		// tab loads at the start, on another tab, but Liked Songs, often a
+		// long list, only loads its songs once the tab shows.
+		visible bool
 	}
 
 	item struct {
@@ -186,6 +190,19 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		p.paneSize = paneSize(msg)
 		p.resizeSongs()
 
+	case tabShown:
+		p.visible = true
+		if selected, ok := p.selectedPlaylist(); ok {
+			if _, loaded := p.songs[selected.id]; !loaded {
+				return p, p.loadSongs(selected.id)
+			}
+		}
+		return p, nil
+
+	case tabHidden:
+		p.visible = false
+		return p, nil
+
 	case playlistsLoadFailed:
 		p.state = statePlaylistError
 		p.msg = fmt.Sprintf("Fail to load playlists:\n%s\n\nPress r to try again.", errorText(msg.err))
@@ -232,7 +249,7 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.polling = true
 			cmds = append(cmds, p.fetchPlaying())
 		}
-		if selected, ok := p.selectedPlaylist(); ok {
+		if selected, ok := p.selectedPlaylist(); ok && (p.visible || !selected.liked) {
 			cmds = append(cmds, p.loadSongs(selected.id))
 		}
 		return p, tea.Batch(cmds...)
@@ -695,9 +712,10 @@ func (p playlistModel) startPlayback(started playbackStarted, position int) tea.
 // startLikedSongs plays Liked Songs from the start, or from song. The Web API
 // only documents albums, artists and playlists as contexts, but plays Liked
 // Songs too, as spotify:user:<id>:collection, and then Spotify shows it plays
-// from Liked Songs. It may refuse a song to start from in it, as it only
-// documents that for albums and playlists. When it refuses, spot-go plays the
-// songs it loaded instead, from the one to start from, without a context.
+// from Liked Songs. It may refuse Liked Songs, or a song to start from in it,
+// as it only documents that for albums and playlists. When it refuses,
+// spot-go plays the songs it loaded instead, from song or from the first one,
+// without a context.
 func (p playlistModel) startLikedSongs(started playbackStarted, song *spotify.PlaylistItem) tea.Cmd {
 	var deviceID libspotify.ID
 	if p.playerDevice != nil {
@@ -705,7 +723,7 @@ func (p playlistModel) startLikedSongs(started playbackStarted, song *spotify.Pl
 	}
 	var item libspotify.URI
 	if song != nil {
-		item = cmp.Or(song.LinkedFrom, song.URI)
+		item = song.URI
 	}
 	songs := p.likedSongsFrom(song)
 

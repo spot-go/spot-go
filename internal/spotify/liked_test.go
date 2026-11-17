@@ -25,7 +25,7 @@ func TestLikedSongsPage(t *testing.T) {
 			return jsonResponse(r, http.StatusOK, `{"total":52,"items":[
 				{"added_at":"2026-11-01T10:00:00Z","track":{"type":"track","name":"Baby","uri":"spotify:track:t1","duration_ms":211000,"is_local":false,"is_playable":true,"artists":[{"name":"Gal Costa"},{"name":"Caetano Veloso"}]}},
 				{"added_at":"2026-10-01T10:00:00Z","track":null},
-				{"added_at":"2026-09-01T10:00:00Z","track":{"type":"track","name":"Aquarela","uri":"spotify:track:here","duration_ms":279000,"is_playable":true,"linked_from":{"uri":"spotify:track:liked"},"artists":[{"name":"Toquinho"}]}},
+				{"added_at":"2026-09-01T10:00:00Z","track":{"type":"track","name":"Aquarela","uri":"spotify:track:t3","duration_ms":279000,"is_playable":true,"artists":[{"name":"Toquinho"}]}},
 				{"added_at":"2026-08-01T10:00:00Z","track":{"type":"track","name":"Gone","uri":"spotify:track:gone","duration_ms":1000,"is_playable":false,"artists":[]}},
 				{"added_at":"2026-07-01T10:00:00Z","track":{"type":"track","name":"Demo","uri":"spotify:local:::Demo:100","duration_ms":100000,"is_local":true,"artists":[]}}
 			]}`)
@@ -46,7 +46,7 @@ func TestLikedSongsPage(t *testing.T) {
 	}
 	want := []PlaylistItem{
 		{Position: 0, Name: "Baby", Artists: []string{"Gal Costa", "Caetano Veloso"}, Duration: 211 * time.Second, URI: "spotify:track:t1", Playable: true},
-		{Position: 2, Name: "Aquarela", Artists: []string{"Toquinho"}, Duration: 279 * time.Second, URI: "spotify:track:here", LinkedFrom: "spotify:track:liked", Playable: true},
+		{Position: 2, Name: "Aquarela", Artists: []string{"Toquinho"}, Duration: 279 * time.Second, URI: "spotify:track:t3", Playable: true},
 		{Position: 3, Name: "Gone", Artists: []string{}, Duration: time.Second, URI: "spotify:track:gone"},
 		{Position: 4, Name: "Demo", Artists: []string{}, Duration: 100 * time.Second, URI: "spotify:local:::Demo:100", IsLocal: true},
 	}
@@ -113,7 +113,7 @@ func TestPlayContextFromAndPlaySongs(t *testing.T) {
 	if err := c.PlaySongs(context.Background(), "d1", []spotify.URI{"spotify:track:t1", "spotify:track:t2"}); err != nil {
 		t.Fatal(err)
 	}
-	if want := `{"uris":["spotify:track:t1","spotify:track:t2"]}`; body != want || deviceID != "d1" {
-		t.Fatalf("body = %s on %q, want %s on d1", body, deviceID, want)
+	if want := `{"uris":["spotify:track:t1","spotify:track:t2"],"offset":{"position":0}}`; body != want || deviceID != "d1" {
+		t.Fatalf("body = %s on %q, want %s on d1: the first song must be where it starts", body, deviceID, want)
 	}
 }

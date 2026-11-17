@@ -39,12 +39,8 @@ type (
 		Artists  []string
 		Duration time.Duration
 		URI      spotify.URI
-		// LinkedFrom is the song URI replaced, when Spotify plays another
-		// copy of the song where you live (Track Relinking). The playlist,
-		// album or Liked Songs still has the song under this URI.
-		LinkedFrom spotify.URI
-		IsLocal    bool
-		Playable   bool
+		IsLocal  bool
+		Playable bool
 	}
 
 	PlaylistItemsPage struct {
@@ -77,9 +73,6 @@ type (
 		IsLocal    bool        `json:"is_local"`
 		Artists    []named     `json:"artists"`
 		Show       *named      `json:"show"`
-		LinkedFrom *struct {
-			URI spotify.URI `json:"uri"`
-		} `json:"linked_from"`
 	}
 
 	savedTracksResponse struct {
@@ -452,9 +445,11 @@ func (c Client) PlayContextFrom(ctx context.Context, deviceID spotify.ID, playba
 	return c.play(ctx, deviceID, playbackContext, offset)
 }
 
-// PlaySongs plays songs, in order, without a context.
+// PlaySongs plays songs, in order, without a context. It says to start from
+// the first one: given only the songs, Spotify may start from another one.
 func (c Client) PlaySongs(ctx context.Context, deviceID spotify.ID, songs []spotify.URI) error {
-	opt := &spotify.PlayOptions{URIs: songs}
+	first := 0
+	opt := &spotify.PlayOptions{URIs: songs, PlaybackOffset: &spotify.PlaybackOffset{Position: &first}}
 	if deviceID != "" {
 		opt.DeviceID = &deviceID
 	}
@@ -583,7 +578,7 @@ func (p playable) playlistItem(position int, isLocal bool) PlaylistItem {
 		artists = append(artists, p.Show.Name)
 	}
 
-	item := PlaylistItem{
+	return PlaylistItem{
 		Position: position,
 		Name:     p.Name,
 		Artists:  artists,
@@ -592,8 +587,4 @@ func (p playable) playlistItem(position int, isLocal bool) PlaylistItem {
 		IsLocal:  isLocal,
 		Playable: !isLocal && (p.IsPlayable == nil || *p.IsPlayable),
 	}
-	if p.LinkedFrom != nil {
-		item.LinkedFrom = p.LinkedFrom.URI
-	}
-	return item
 }
