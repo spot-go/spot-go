@@ -19,7 +19,10 @@ import (
 	"golang.org/x/oauth2"
 )
 
-const soloistDevice = libspotify.ID("soloist-device")
+const (
+	soloistDevice = libspotify.ID("soloist-device")
+	pauseSoloist  = "pause " + string(soloistDevice)
+)
 
 var (
 	soWhat = spotify.Playback{
@@ -85,8 +88,18 @@ func (f *fakeSpotify) Playback(ctx context.Context) (spotify.Playback, error) {
 	return f.state, nil
 }
 
-func (f *fakeSpotify) Pause(context.Context) error {
-	return f.command("pause", func() {
+// errNoActiveDevice is how Spotify refuses a command with no device while no
+// device is active.
+var errNoActiveDevice = errors.New("No active device found")
+
+func (f *fakeSpotify) PauseOn(_ context.Context, device libspotify.ID) error {
+	f.mu.Lock()
+	noDevice := device == "" && f.state.Device == ""
+	f.mu.Unlock()
+	if noDevice {
+		return f.command("pause", func() {}, errNoActiveDevice)
+	}
+	return f.command("pause "+string(device), func() {
 		if f.follows {
 			f.state.Playing = false
 		}
@@ -116,7 +129,7 @@ func (f *fakeSpotify) skip() {
 	}
 }
 
-func (f *fakeSpotify) command(name string, change func()) error {
+func (f *fakeSpotify) command(name string, change func(), refused ...error) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -126,6 +139,9 @@ func (f *fakeSpotify) command(name string, change func()) error {
 	}
 	if f.commandErr != nil {
 		return f.commandErr
+	}
+	if len(refused) > 0 {
+		return refused[0]
 	}
 	change()
 	return nil
@@ -332,8 +348,8 @@ func TestPlayPauseKeys(t *testing.T) {
 		calls   []string
 		playing bool
 	}{
-		{name: "toggle while playing", state: soWhat, key: media.TogglePlayPause, calls: []string{"pause"}},
-		{name: "pause while playing", state: soWhat, key: media.Pause, calls: []string{"pause"}},
+		{name: "toggle while playing", state: soWhat, key: media.TogglePlayPause, calls: []string{pauseSoloist}},
+		{name: "pause while playing", state: soWhat, key: media.Pause, calls: []string{pauseSoloist}},
 		{name: "play while playing", state: soWhat, key: media.Play, playing: true},
 		{name: "toggle while paused", state: paused, key: media.TogglePlayPause, calls: []string{"resume "}, playing: true},
 		{name: "play while paused", state: paused, key: media.Play, calls: []string{"resume "}, playing: true},
@@ -370,7 +386,7 @@ func TestPlayWithNoActiveDeviceResumesTheLastSong(t *testing.T) {
 	// A press right after it pauses on Soloist.
 	h.advance(time.Second)
 	h.press(media.TogglePlayPause)
-	h.wantCalls("pause")
+	h.wantCalls(pauseSoloist)
 	h.wantShown(shown(soWhat, 2*time.Minute+time.Second, false))
 }
 
@@ -380,7 +396,7 @@ func TestPlayPauseRightAfterAnotherGoesBack(t *testing.T) {
 	h.spotify.follows = false
 
 	h.press(media.TogglePlayPause)
-	h.wantCalls("playback", "pause")
+	h.wantCalls("playback", pauseSoloist)
 	h.wantShown(shown(soWhat, time.Minute, false))
 
 	h.advance(time.Second)
@@ -390,22 +406,46 @@ func TestPlayPauseRightAfterAnotherGoesBack(t *testing.T) {
 
 	h.advance(time.Second)
 	h.press(media.TogglePlayPause)
-	h.wantCalls("pause")
+	h.wantCalls(pauseSoloist)
 	h.wantShown(shown(soWhat, time.Minute+time.Second, false))
 
-	// While Spotify doesn't follow, the keys go by what Now Playing shows.
-	h.advance(followGrace + time.Second)
-	h.wantNextPoll(h.poll(), settleEvery)
-	h.press(media.TogglePlayPause)
-	h.wantCalls("playback", "resume ")
-	h.wantShown(shown(soWhat, time.Minute+time.Second, true))
-
-	// Once Spotify agrees, they go by what it says.
+	// Once the grace ends, what Spotify reports on a device wins.
 	h.advance(followGrace)
 	h.wantNextPoll(h.poll(), playingEvery)
 	h.wantShown(shown(soWhat, time.Minute, true))
 	h.press(media.TogglePlayPause)
-	h.wantCalls("playback", "playback", "pause")
+	h.wantCalls("playback", "playback", pauseSoloist)
+}
+
+func TestKeyAfterAPlayFromThePhone(t *testing.T) {
+	h := newHarness(t, soWhat)
+	h.press(media.TogglePlayPause)
+	h.wantCalls("playback", pauseSoloist)
+	h.wantShown(shown(soWhat, time.Minute, false))
+
+	// The music plays again from the Spotify app on the phone.
+	h.spotify.state.Playing = true
+	h.advance(followGrace)
+	h.poll()
+	h.wantShown(shown(soWhat, time.Minute, true))
+	h.advance(time.Second)
+	h.press(media.TogglePlayPause)
+	h.wantCalls("playback", "playback", pauseSoloist)
+	h.wantShown(shown(soWhat, time.Minute, false))
+}
+
+func TestKeyThatChangesNothingKeepsTheWait(t *testing.T) {
+	h := newHarness(t, soWhat)
+	h.press(media.Pause)
+	h.spotify.takeCalls()
+
+	// A second pause sends nothing, so the poll doesn't wait longer for
+	// Spotify to report the first one.
+	h.advance(time.Second)
+	h.press(media.Pause)
+	h.wantCalls()
+	h.advance(time.Second)
+	h.wantNextPoll(h.poll(), followGrace-2*time.Second)
 }
 
 func TestKeyAfterAPlaySpotifyIsSlowToReport(t *testing.T) {
@@ -425,7 +465,7 @@ func TestKeyAfterAPlaySpotifyIsSlowToReport(t *testing.T) {
 	// report the play yet.
 	h.spotify.takeCalls()
 	h.press(media.Pause)
-	h.wantCalls("pause")
+	h.wantCalls(pauseSoloist)
 	h.wantShown(shown(soWhat, time.Minute+4500*time.Millisecond, false))
 }
 
@@ -485,9 +525,9 @@ func TestPollWaitsForSpotifyToPlayAfterALongPause(t *testing.T) {
 }
 
 func TestPollShowsWhatSpotifySaysOnceItDoesntFollowAPlay(t *testing.T) {
-	paused := soWhat
-	paused.Playing = false
-	h := newHarness(t, paused)
+	h := newHarness(t, spotify.Playback{})
+	h.session.shown, h.session.shownAt = soWhat, h.clock
+	h.session.shown.Playing = false
 	h.spotify.follows = false
 	h.press(media.Play)
 	h.wantShown(shown(soWhat, time.Minute, true))
@@ -496,6 +536,20 @@ func TestPollShowsWhatSpotifySaysOnceItDoesntFollowAPlay(t *testing.T) {
 	h.wantNextPoll(h.poll(), settleEvery)
 	h.wantShown()
 	h.advance(time.Second)
+	h.wantNextPoll(h.poll(), pausedEvery)
+	h.wantShown(shown(soWhat, time.Minute+settleTimeout, false))
+}
+
+func TestPollShowsAPlayPauseSpotifyReportsOtherwise(t *testing.T) {
+	paused := soWhat
+	paused.Playing = false
+	h := newHarness(t, paused)
+	h.spotify.follows = false
+	h.press(media.Play)
+	h.wantShown(shown(soWhat, time.Minute, true))
+
+	// Spotify reports the device paused after the grace: it wins.
+	h.advance(followGrace)
 	h.wantNextPoll(h.poll(), pausedEvery)
 	h.wantShown(shown(soWhat, time.Minute, false))
 }
@@ -575,7 +629,7 @@ func TestPlayPauseAfterASkipAsksSpotify(t *testing.T) {
 	h.spotify.skipTo = &freddie
 	h.press(media.NextTrack)
 	h.press(media.TogglePlayPause)
-	h.wantCalls("playback", "next", "playback", "pause")
+	h.wantCalls("playback", "next", "playback", pauseSoloist)
 }
 
 func TestFailedKeys(t *testing.T) {
@@ -583,7 +637,7 @@ func TestFailedKeys(t *testing.T) {
 	h.spotify.commandErr = errors.New("Restriction violated")
 	h.press(media.TogglePlayPause)
 	h.press(media.NextTrack)
-	h.wantCalls("playback", "pause", "playback", "next")
+	h.wantCalls("playback", pauseSoloist, "playback", "next")
 	h.wantShown()
 
 	// A key that can't read what plays does nothing.
@@ -658,7 +712,7 @@ func TestRunRunsTheKeysUntilSoloistStops(t *testing.T) {
 	go func() { done <- h.session.run(context.Background(), commands) }()
 
 	commands <- media.TogglePlayPause
-	waitFor(t, func() bool { return h.spotify.called("pause") })
+	waitFor(t, func() bool { return h.spotify.called(pauseSoloist) })
 
 	stopped.Lock()
 	running = false

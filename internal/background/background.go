@@ -36,15 +36,16 @@ const (
 
 	stopEvery = 20 * time.Millisecond
 	// refreshTimeout is how long a refresh of the Spotify token can take.
-	refreshTimeout = 8 * time.Second
+	// It is long, as Spotify may have given a new token by then, and an
+	// answer cut short loses it.
+	refreshTimeout = 30 * time.Second
 )
 
 var (
 	// stopTimeout is how long Stop waits for spot-go in the background to
 	// end before it kills it. It usually ends at once, but a token refresh
-	// it runs ends first, so the new token gets saved. A refresh can try
-	// twice.
-	stopTimeout = 2 * refreshTimeout
+	// it runs ends first, so the new token gets saved.
+	stopTimeout = 10 * time.Second
 	// pidFile has the process ID of the spot-go that runs in the
 	// background, so the next run of spot-go can stop it.
 	pidFile = filepath.Join(soloist.Folder, "background.pid")

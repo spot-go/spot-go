@@ -30,8 +30,8 @@ const (
 	skipPolls = 6
 	// followGrace is how long Spotify can still report what played before a
 	// play or pause. Polls after it wait settleEvery, up to settleTimeout
-	// after the key, for Spotify to agree, as Soloist can take a few seconds
-	// to play again after a long pause.
+	// after the key, while Spotify reports nothing, as when Soloist takes a
+	// few seconds to play again after a long pause.
 	followGrace   = 3 * time.Second
 	settleEvery   = time.Second
 	settleTimeout = 10 * time.Second
@@ -51,7 +51,7 @@ type (
 	// remote is what the session uses of the Spotify Web API.
 	remote interface {
 		Playback(ctx context.Context) (spotify.Playback, error)
-		Pause(ctx context.Context) error
+		PauseOn(ctx context.Context, deviceID libspotify.ID) error
 		ResumePlayback(ctx context.Context, deviceID libspotify.ID) error
 		Next(ctx context.Context) error
 		Previous(ctx context.Context) error
@@ -168,7 +168,9 @@ func (s *session) poll(ctx context.Context) (time.Duration, error) {
 		s.skipPolls = 0
 	}
 	if s.settling {
-		if state.Playing != s.changed.Playing && s.now().Sub(s.changedAt) < settleTimeout {
+		// Spotify reports nothing while Soloist starts to play again after a
+		// long pause, and a device that plays, or not, once it does.
+		if state.Item == "" && state.Playing != s.changed.Playing && s.now().Sub(s.changedAt) < settleTimeout {
 			return settleEvery, nil
 		}
 		s.settling = false
@@ -246,9 +248,12 @@ func (s *session) playPause(ctx context.Context, c media.Command) error {
 	case media.Pause:
 		pause = true
 	}
+	sent := true
 	switch {
 	case pause && state.Playing:
-		err = s.spotify.Pause(ctx)
+		// A play Spotify doesn't report yet has no active device: the
+		// pause goes where the play went.
+		err = s.spotify.PauseOn(ctx, state.Device)
 	case !pause && !state.Playing:
 		var target libspotify.ID
 		if state.Device == "" {
@@ -256,13 +261,17 @@ func (s *session) playPause(ctx context.Context, c media.Command) error {
 			target, state.Device = s.device, s.device
 		}
 		err = s.spotify.ResumePlayback(ctx, target)
+	default:
+		sent = false
 	}
 	if err != nil {
 		return err
 	}
 
 	state.Playing = !pause
-	s.changed, s.changedAt, s.settling = state, s.now(), true
+	if sent {
+		s.changed, s.changedAt, s.settling = state, s.now(), true
+	}
 	if state.Item == "" {
 		last, ok := s.last(state.Playing)
 		if !ok {
@@ -276,7 +285,7 @@ func (s *session) playPause(ctx context.Context, c media.Command) error {
 }
 
 // state is what Spotify plays: as the last play or pause left it, while
-// Spotify may not report it yet and Now Playing shows it, or as Spotify says.
+// Spotify doesn't report it yet and Now Playing shows it, or as Spotify says.
 func (s *session) state(ctx context.Context) (spotify.Playback, error) {
 	if since := s.now().Sub(s.changedAt); s.settling && since < settleTimeout {
 		return at(s.changed, since), nil
