@@ -358,9 +358,17 @@ func TestResumeStartsSoloistWhenNoneWasLeftPlaying(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			useTempFolder(t)
 			starts := countingScript(t, loggedInDaemon)
+			// A log as a Soloist left playing has, so only the process ID
+			// tells this isn't one.
+			if err := os.WriteFile(logFile, []byte("2026-11-07 16:55:44.529: logged in as me\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
 			if tt.pid != nil {
 				if err := os.WriteFile(pidFile, []byte(tt.pid(t)+"\n"), 0600); err != nil {
 					t.Fatal(err)
+				}
+				if pid, ok := leftRunning(); ok {
+					t.Fatalf("leftRunning() = %d, true for a pid file with %s", pid, tt.pid(t))
 				}
 			}
 
@@ -432,5 +440,131 @@ fi
 	}
 	if Adopted() {
 		t.Fatal("Adopted() = true for the new Soloist")
+	}
+}
+
+func TestResumeGoesOnFromWhereTheLoginGot(t *testing.T) {
+	useTempFolder(t)
+	starts := countingScript(t, `echo "2026-11-07 16:55:52.825: ready, device_name=spot-go@host device_id=621d8765-e503-4833-bbac-3795c43ae65f"
+echo '2026-11-07 16:55:52.825: waiting for login — connect to "spot-go@host" from your Spotify app'
+sleep 0.2
+echo "2026-11-07 16:56:00.000: logged in as me"
+while true; do sleep 1; done
+`)
+
+	var pairings atomic.Int32
+	if resp := Login(func() { pairings.Add(1) }); resp.Err != nil {
+		t.Fatalf("Login() = %v", resp.Err)
+	}
+	Detach()
+
+	if resp := Resume(func() { pairings.Add(1) }); resp.Err != nil {
+		t.Fatalf("Resume() = %v", resp.Err)
+	}
+	if n := pairings.Load(); n != 1 {
+		t.Fatalf("asked to pair %d times, want only the first login to ask", n)
+	}
+	if n := startCount(t, starts); n != 1 {
+		t.Fatalf("Soloist started %d times, want 1", n)
+	}
+	if id := DeviceID(); id != "621d8765-e503-4833-bbac-3795c43ae65f" {
+		t.Fatalf("DeviceID() = %q", id)
+	}
+}
+
+func TestResumeAsksToPairASoloistLeftWaitingForALogin(t *testing.T) {
+	useTempFolder(t)
+	starts := countingScript(t, `echo '2026-11-07 16:55:52.825: waiting for login — connect to "spot-go@host" from your Spotify app'
+while true; do sleep 1; done
+`)
+
+	p, err := start("key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-p.waiting:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Soloist never waited for a login")
+	}
+	pid := p.pid()
+	Detach()
+
+	paired := make(chan struct{})
+	done := make(chan LoginResponse, 1)
+	go func() { done <- Resume(func() { close(paired) }) }()
+	select {
+	case <-paired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Resume() never asked to pair")
+	}
+
+	// Quitting before the login ends leaves Soloist as spot-go found it.
+	Detach()
+	select {
+	case resp := <-done:
+		if !errors.Is(resp.Err, ErrStopped) {
+			t.Fatalf("Resume() after Detach() = %v, want %v", resp.Err, ErrStopped)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Resume() did not return after Detach()")
+	}
+	time.Sleep(200 * time.Millisecond)
+	if !command.Running(pid) {
+		t.Fatal("Soloist stopped after Detach()")
+	}
+	if n := startCount(t, starts); n != 1 {
+		t.Fatalf("Soloist started %d times, want 1", n)
+	}
+}
+
+func TestResumeRestartsSoloistLeftPlayingThatLoggedOut(t *testing.T) {
+	useTempFolder(t)
+	starts := countingScript(t, `if [ "$(wc -l < "$STARTS")" -eq 1 ]; then
+  echo "2026-11-07 16:55:44.529: logged in as me"
+  echo "2026-11-07 16:58:00.000: login failed: make sure --api-key is valid"
+  while true; do sleep 1; done
+fi
+`+loggedInDaemon)
+	t.Setenv("STARTS", starts)
+
+	p, err := start("key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-p.failed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first Soloist never failed")
+	}
+	old := p.pid()
+	Detach()
+
+	if resp := Resume(nil); resp.Err != nil {
+		t.Fatalf("Resume() = %v", resp.Err)
+	}
+	waitStopped(t, old)
+	if n := startCount(t, starts); n != 2 {
+		t.Fatalf("Soloist started %d times, want Resume() to start a new one", n)
+	}
+}
+
+func TestLeftRunningNeedsTheDataFolder(t *testing.T) {
+	useTempFolder(t)
+	countingScript(t, loggedInDaemon)
+
+	if resp := Login(nil); resp.Err != nil {
+		t.Fatalf("Login() = %v", resp.Err)
+	}
+	pid := savedPid(t)
+	if got, ok := leftRunning(); !ok || got != pid {
+		t.Fatalf("leftRunning() = %d, %t, want %d, true", got, ok, pid)
+	}
+
+	other := dataDir
+	dataDir += "-other"
+	defer func() { dataDir = other }()
+	if got, ok := leftRunning(); ok {
+		t.Fatalf("leftRunning() = %d, true for a Soloist on another data folder", got)
 	}
 }

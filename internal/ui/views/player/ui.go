@@ -51,6 +51,9 @@ type (
 		// keepPlaying is true when the user chose to keep the music playing
 		// after spot-go quits.
 		keepPlaying bool
+		// knowsPlayback is true once spot-go read what Spotify plays, or
+		// changed it.
+		knowsPlayback bool
 	}
 
 	// ModeControl changes shuffle and repeat on spot-go's own device, where
@@ -268,6 +271,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 
 	case playbackToggled:
+		m.knowsPlayback = m.knowsPlayback || msg.err == nil
 		m = m.playbackToggled(msg)
 		if msg.seek && msg.err != nil {
 			// What plays didn't change, so the tabs keep showing it.
@@ -316,6 +320,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, m.broadcast(msg)
 
 	case playbackPolled:
+		m.knowsPlayback = m.knowsPlayback || msg.err == nil
 		if msg.err == nil && msg.plays == *m.plays {
 			m = m.publishPolled(msg.playing)
 			m = m.followPolled(msg.playing)
@@ -325,6 +330,12 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.WindowSizeMsg = msg
 		return m, m.broadcast(m.contentDimension())
+
+	case tea.PasteMsg:
+		if m.quitPrompt.open {
+			// The prompt takes no text, and the tab under it doesn't show.
+			return m, nil
+		}
 
 	case tabFilterMatches:
 		if msg.tab < 0 || msg.tab >= len(m.tabs) {

@@ -70,11 +70,16 @@ func (m Model) quit() (Model, tea.Cmd) {
 // ownPlaying reports whether Spotify plays on spot-go's own device, as far as
 // spot-go knows: from the last poll, or the last change made in spot-go
 // since. When spot-go knows it plays but not where, as right after it
-// resumed with no active device, it plays on spot-go.
+// resumed with no active device, it plays on spot-go. Before spot-go knows
+// what plays, spot-go's device plays when Spotify said it was the active one
+// as spot-go started, as when an earlier run of spot-go left it playing.
 func (m Model) ownPlaying() bool {
 	own := m.ownDevice()
-	if own == "" || !m.nowPlaying.info.Playing {
+	if own == "" {
 		return false
+	}
+	if !m.nowPlaying.info.Playing {
+		return !m.knowsPlayback && m.playerDevice.Active
 	}
 	return m.playerBar.device == "" || m.playerBar.device == own
 }

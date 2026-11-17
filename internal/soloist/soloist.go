@@ -7,11 +7,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
+	"github.com/spot-go/spot-go/internal/command"
 	"github.com/spot-go/spot-go/internal/config"
 )
 
@@ -135,9 +138,12 @@ func Resume(onPairing func()) LoginResponse {
 		if err == nil || errors.Is(err, ErrStopped) {
 			return LoginResponse{err}
 		}
-		if release(p) {
-			stopProcess(p)
+		if !release(p) {
+			// spot-go stopped or left it meanwhile, so it isn't the one to
+			// start another.
+			return LoginResponse{ErrStopped}
 		}
+		stopProcess(p)
 	}
 	return Login(onPairing)
 }
@@ -178,20 +184,32 @@ func leftRunning() (int, bool) {
 		return 0, false
 	}
 	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
-	if err != nil || pid <= 0 {
+	if err != nil || !command.Running(pid) {
 		return 0, false
 	}
 
-	out, err := exec.Command("pgrep", "-f", stalePattern(dataDir)).Output()
-	if err != nil {
+	// The process ID may have gone to another program since.
+	line, ok := commandLine(pid)
+	if !ok || !regexp.MustCompile(stalePattern(dataDir)).MatchString(line) {
 		return 0, false
 	}
-	for _, field := range strings.Fields(string(out)) {
-		if field == strconv.Itoa(pid) {
-			return pid, true
+	return pid, true
+}
+
+// commandLine is the command line pid runs with.
+func commandLine(pid int) (string, bool) {
+	if runtime.GOOS == "linux" {
+		b, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+		if err != nil {
+			return "", false
 		}
+		return strings.TrimSpace(strings.ReplaceAll(string(b), "\x00", " ")), true
 	}
-	return 0, false
+	out, err := exec.Command("ps", "-ww", "-o", "command=", "-p", strconv.Itoa(pid)).Output()
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(string(out)), true
 }
 
 func DeviceID() string {
@@ -261,14 +279,30 @@ func Adopted() bool {
 // crashed.
 func killStale() {
 	pattern := stalePattern(dataDir)
+	// The Soloist spot-go started last is found without pkill and pgrep,
+	// which some Linux systems don't have.
+	left, hasLeft := leftRunning()
+	stopped := func() bool {
+		if hasLeft && command.Running(left) {
+			return false
+		}
+		return exec.Command("pgrep", "-f", pattern).Run() != nil
+	}
+
+	if hasLeft {
+		_ = syscall.Kill(-left, syscall.SIGTERM)
+	}
 	_ = exec.Command("pkill", "-f", pattern).Run()
 
 	deadline := time.Now().Add(staleStopTimeout)
 	for time.Now().Before(deadline) {
-		if exec.Command("pgrep", "-f", pattern).Run() != nil {
+		if stopped() {
 			return
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+	if hasLeft {
+		_ = syscall.Kill(-left, syscall.SIGKILL)
 	}
 	_ = exec.Command("pkill", "-KILL", "-f", pattern).Run()
 }

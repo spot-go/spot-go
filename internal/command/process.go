@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -62,7 +63,12 @@ type (
 )
 
 // Start starts name with args, its output going to logFile, which it empties
-// first. onLine gets each line of the output as name writes it.
+// first. onLine gets each line of the output as name writes it. name runs in
+// the folder of logFile, so it doesn't keep the folder spot-go started in
+// busy after spot-go quits.
+//
+// stdout and stderr share logFile, as in a terminal: a line one of them
+// writes in several parts can take in a line the other writes meanwhile.
 func Start(name string, args []string, logFile string, onLine func(line string)) (*Process, error) {
 	out, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC|os.O_APPEND, 0600)
 	if err != nil {
@@ -77,6 +83,7 @@ func Start(name string, args []string, logFile string, onLine func(line string))
 
 	cmd := exec.Command(name, args...)
 	cmd.Stdout, cmd.Stderr = out, out
+	cmd.Dir = filepath.Dir(logFile)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		in.Close()
@@ -86,15 +93,15 @@ func Start(name string, args []string, logFile string, onLine func(line string))
 	return &Process{
 		pid:      cmd.Process.Pid,
 		cmd:      cmd,
-		output:   follow(in, onLine),
+		output:   follow(in, &lineWriter{onLine: onLine}),
 		released: make(chan struct{}),
 	}, nil
 }
 
 // Attach follows pid, a process Start started in an earlier run of spot-go,
-// whose output goes to logFile. onLine gets the lines already in logFile,
-// and then each new one.
-func Attach(pid int, logFile string, onLine func(line string)) (*Process, error) {
+// whose output goes to logFile. onPast gets the lines already in logFile
+// before Attach returns, and onLine each line after them.
+func Attach(pid int, logFile string, onPast, onLine func(line string)) (*Process, error) {
 	if !Running(pid) {
 		return nil, ErrNotRunning
 	}
@@ -103,9 +110,21 @@ func Attach(pid int, logFile string, onLine func(line string)) (*Process, error)
 		return nil, fmt.Errorf("fail to read %s: %w", logFile, err)
 	}
 
+	lines := &lineWriter{onLine: onPast}
+	buf := make([]byte, readBufSize)
+	for {
+		n, _ := in.Read(buf)
+		if n <= 0 {
+			break
+		}
+		_, _ = lines.Write(buf[:n])
+	}
+	// A line still being written when Attach read the file is a new one.
+	lines.setOnLine(onLine)
+
 	return &Process{
 		pid:      pid,
-		output:   follow(in, onLine),
+		output:   follow(in, lines),
 		released: make(chan struct{}),
 	}, nil
 }
@@ -120,7 +139,8 @@ func (p *Process) Pid() int {
 }
 
 // Wait waits for the process to exit, and for onLine to get the last of its
-// output. A released process doesn't hand out its last lines.
+// output. A released process doesn't hand out its last lines, and Wait on a
+// released attached process returns right away, while it still runs.
 func (p *Process) Wait() error {
 	var err error
 	if p.cmd != nil {
@@ -161,10 +181,10 @@ func (p *Process) Terminate() error {
 	return syscall.Kill(-p.pid, syscall.SIGTERM)
 }
 
-func follow(file *os.File, onLine func(string)) *follower {
+func follow(file *os.File, lines *lineWriter) *follower {
 	f := &follower{
 		file:   file,
-		lines:  &lineWriter{onLine: onLine},
+		lines:  lines,
 		exited: make(chan struct{}),
 		quit:   make(chan struct{}),
 		done:   make(chan struct{}),
@@ -240,6 +260,13 @@ func (w *lineWriter) Write(b []byte) (int, error) {
 		w.emit(w.buf[:i])
 		w.buf = w.buf[i+1:]
 	}
+}
+
+func (w *lineWriter) setOnLine(onLine func(string)) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.onLine = onLine
 }
 
 func (w *lineWriter) flush() {

@@ -67,6 +67,9 @@ const (
 	stateFatal
 
 	deviceWaitAttempts = 20
+	// deviceListTries is how many failures in a row to list the Spotify
+	// devices end the wait.
+	deviceListTries = 3
 
 	webAPILoginMsg = `Let's login to spotify. First we need a token to use the Web API.
 Press enter to open a browser and login.`
@@ -289,21 +292,31 @@ func (m Model) capturesInput() bool {
 	return ok && c.CapturesInput()
 }
 
+// waitForPlayerDevice waits for Soloist to show up in the Spotify devices. A
+// failure to list them is tried again, as giving up stops Soloist, which may
+// be playing since an earlier run of spot-go.
 func (m Model) waitForPlayerDevice() tea.Msg {
+	listErrors := 0
 	for attempt := 0; attempt < deviceWaitAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(1 * time.Second)
+		}
 		if err := soloist.Err(); err != nil {
 			return playerDeviceError{err}
 		}
 
 		devices, err := m.spotifyClient.PlayerDevices(m.ctx)
 		if err != nil {
-			return playerDeviceError{fmt.Errorf("fail to list spotify devices: %w", err)}
+			if listErrors++; listErrors == deviceListTries {
+				return playerDeviceError{fmt.Errorf("fail to list spotify devices: %w", err)}
+			}
+			continue
 		}
+		listErrors = 0
 		idx := slices.IndexFunc(devices, isPlayerDevice)
 		if idx > -1 {
 			return devices[idx]
 		}
-		time.Sleep(1 * time.Second)
 	}
 
 	return playerDeviceError{fmt.Errorf(`the device "%s" did not show up in your spotify devices`, soloist.DeviceName())}

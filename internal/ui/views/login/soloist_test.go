@@ -165,3 +165,12 @@ func TestShortWindowKeepsTheAPIKeyInputVisible(t *testing.T) {
 		t.Fatalf("view does not show the API key input:\n%s", view)
 	}
 }
+
+func TestQuitBeforeThePlayerStopsASoloistThisRunStarted(t *testing.T) {
+	m := soloistModel()
+	m.state = stateSoloistLoggingIn
+
+	if m.KeepPlaying() {
+		t.Fatal("KeepPlaying() = true with no Soloist left playing by an earlier run")
+	}
+}

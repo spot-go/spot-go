@@ -93,9 +93,9 @@ When you quit while Spotify plays on spot-go's device, spot-go asks whether the 
 - **Stop** (`s`) stops Soloist and quits, as spot-go did before it asked.
 - **Cancel** (`esc`) goes back to spot-go.
 
-`←` and `→` choose too, and `enter` confirms. `ctrl+c` or `ctrl+q` again stops the music and quits. When Spotify plays nothing, is paused, or plays on another device, spot-go quits right away and stops Soloist. spot-go knows what plays from the last time it checked, every 5 seconds, and the keys you pressed since. Closing the terminal while spot-go runs also stops the music.
+`←` and `→` choose too, and `enter` confirms. `ctrl+c` or `ctrl+q` again stops the music and quits. When Spotify plays nothing, is paused, or plays on another device, spot-go quits right away and stops Soloist. spot-go knows what plays from the last time it checked, every 5 seconds, and the keys you pressed since. Right after it starts, before it first checked, it asks if Spotify listed spot-go's device as the active one. Closing the terminal while the player shows also stops the music.
 
-The next time spot-go starts, it finds the Soloist left playing and goes on with it, without stopping the music, so you can come back to what plays. When spot-go downloads a newer Soloist, or the Soloist left playing stops working, spot-go starts a new one instead.
+The next time spot-go starts, it finds the Soloist left playing and goes on with it, without stopping the music, so you can come back to what plays. If you quit before the player shows, or close the terminal then, that Soloist keeps playing as spot-go found it. When spot-go downloads a newer Soloist, or the Soloist left playing stops working, spot-go starts a new one instead. If spot-go itself crashes or is killed, Soloist can keep playing too, and the next run finds it the same way.
 
 Soloist writes what it does to `soloist.log` next to its binary, in spot-go's config folder, so it can keep playing after spot-go quits. spot-go empties the file each time it starts Soloist.
 

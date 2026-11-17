@@ -245,3 +245,58 @@ func TestQuitPromptFitsEveryWindow(t *testing.T) {
 	h.send(tea.WindowSizeMsg{Width: 120, Height: 40})
 	h.wantView("╭", quitQuestion, quitDetail, "k keep playing • s stop • esc cancel")
 }
+
+func TestQuitBeforeTheFirstPollAsksWhenSpotGoWasActive(t *testing.T) {
+	h := newHarnessWith(t, soWhatOnSpotGo(), 120, 40)
+	// As when an earlier run of spot-go left Soloist playing: Spotify listed
+	// spot-go's device as the active one, and the first poll didn't end yet.
+	h.player().playerDevice.Active = true
+
+	if h.press("ctrl+c") {
+		t.Fatal("spot-go quit before it knew what plays on its active device")
+	}
+	h.wantQuitPrompt()
+	if !h.press("k") || !h.player().KeepPlaying() {
+		t.Fatal("k did not keep the music playing")
+	}
+}
+
+func TestQuitBeforeTheFirstPollQuitsWhenSpotGoWasNotActive(t *testing.T) {
+	h := newHarnessWith(t, soWhatOnSpotGo(), 120, 40)
+
+	if !h.press("ctrl+c") {
+		t.Fatal("spot-go asked although its device was not active as it started")
+	}
+}
+
+func TestQuitAfterThePollFollowsWhatPlays(t *testing.T) {
+	api := soWhatOnSpotGo()
+	api.paused = true
+	h := newHarnessWith(t, api, 120, 40)
+	h.player().playerDevice.Active = true
+	h.send(pollPlayback{})
+
+	if !h.press("ctrl+c") {
+		t.Fatal("spot-go asked although the poll found it paused")
+	}
+}
+
+func TestQuitPromptDropsPastes(t *testing.T) {
+	h := newHarnessWith(t, soWhatOnSpotGo(), 120, 40)
+	h.send(pollPlayback{})
+	for h.player().activeTab > searchTab {
+		h.send(key("left"))
+	}
+	h.send(key("/"))
+	h.press("ctrl+c")
+
+	h.send(tea.PasteMsg{Content: "pasted"})
+	h.press("esc")
+	if got := h.player().tabs[searchTab].content.(searchModel).input.Value(); got != "" {
+		t.Fatalf("search input = %q after a paste under the quit prompt, want it empty", got)
+	}
+	h.send(tea.PasteMsg{Content: "pasted"})
+	if got := h.player().tabs[searchTab].content.(searchModel).input.Value(); got != "pasted" {
+		t.Fatalf("search input = %q after a paste, want the paste: the test doesn't reach the input", got)
+	}
+}

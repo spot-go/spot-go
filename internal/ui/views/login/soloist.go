@@ -39,6 +39,10 @@ func (m Model) soloistStartupLogin() tea.Msg {
 	if soloist.NeedsDownload() || !soloist.HasAPIKey() {
 		return soloist.LoginResponse{Err: errSoloistNotSetUp}
 	}
+	return m.soloistResume()
+}
+
+func (m Model) soloistResume() tea.Msg {
 	return soloist.Resume(pairingNeeded)
 }
 
@@ -125,7 +129,12 @@ func (m Model) soloistDownloadFinished() (tea.Model, tea.Cmd) {
 func (m Model) soloistDownloadFailed(err error) (tea.Model, tea.Cmd) {
 	m.soloistUpdateTried = true
 	if _, checkErr := soloist.CheckBinary(); checkErr == nil {
-		return m.prepareSoloist()
+		if !soloist.HasAPIKey() {
+			return m.showSoloistAPIKey(nil), nil
+		}
+		// The build in place still works, and so does a Soloist an earlier
+		// run of spot-go left playing with it.
+		return m.startSoloistWith(m.soloistResume)
 	}
 
 	m.state = stateWebAPILogged
@@ -134,10 +143,14 @@ func (m Model) soloistDownloadFailed(err error) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) startSoloist() (tea.Model, tea.Cmd) {
+	return m.startSoloistWith(m.soloistLogin)
+}
+
+func (m Model) startSoloistWith(login tea.Cmd) (tea.Model, tea.Cmd) {
 	m.state = stateSoloistLoggingIn
 	m.activeModel = nil
 	m.msg = m.spinner.View()
-	return m, tea.Batch(m.soloistLogin, m.spinner.Tick)
+	return m, tea.Batch(login, m.spinner.Tick)
 }
 
 func (m Model) showSoloistAPIKey(err error) Model {

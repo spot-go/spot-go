@@ -61,15 +61,43 @@ func startProcess(bin string, args []string, log string) (*process, error) {
 }
 
 // attachProcess follows pid, a Soloist an earlier run of spot-go started and
-// left playing. Its log tells whether it logged in, and its device ID.
+// left playing. Its log tells its device ID and whether it logged in: only
+// where its login got to counts, as it may have waited for a login, or
+// failed one, before it logged in.
 func attachProcess(pid int, log string) (*process, error) {
 	p := newProcess()
 	p.adopted = true
-	cmd, err := command.Attach(pid, log, p.handle)
+	var (
+		last    event
+		failure string
+	)
+	past := func(line string) {
+		p.record(line)
+		switch e := classify(line); e {
+		case ready:
+			p.setDeviceID(line)
+		case failed:
+			last, failure = e, message(line)
+		case waitingForLogin, loggedIn, loginFailed:
+			last = e
+		}
+	}
+	cmd, err := command.Attach(pid, log, past, p.handle)
 	if err != nil {
 		return nil, err
 	}
 	p.cmd = cmd
+
+	switch last {
+	case waitingForLogin:
+		p.waitOnce.Do(func() { close(p.waiting) })
+	case loggedIn:
+		p.loginOnce.Do(func() { close(p.loggedIn) })
+	case loginFailed:
+		p.fail(ErrInvalidAPIKey)
+	case failed:
+		p.fail(errors.New(failure))
+	}
 
 	go p.wait()
 	return p, nil
@@ -92,10 +120,15 @@ func (p *process) waitLoggedIn(timeout time.Duration, onPairing func()) error {
 		case <-waiting:
 			waiting = nil
 			timeoutC = nil
-			if onPairing != nil {
-				onPairing()
+			select {
+			case <-p.loggedIn:
+				// It logged in right after it asked.
+			default:
+				if onPairing != nil {
+					onPairing()
+				}
+				continue
 			}
-			continue
 		case <-timeoutC:
 			err = fmt.Errorf("timed out after %s waiting for Soloist to log in%s", timeout, p.tailText())
 		}
@@ -132,8 +165,12 @@ func (p *process) pid() int {
 	return p.cmd.Pid()
 }
 
-// detach stops following the process and leaves it running.
+// detach stops following the process and leaves it running. For spot-go,
+// it stopped: a login still waiting for it ends with ErrStopped.
 func (p *process) detach() {
+	p.mu.Lock()
+	p.stopped = true
+	p.mu.Unlock()
 	p.cmd.Release()
 }
 
@@ -173,20 +210,11 @@ func (p *process) wait() {
 }
 
 func (p *process) handle(line string) {
-	p.mu.Lock()
-	p.tail = append(p.tail, line)
-	if len(p.tail) > tailSize {
-		p.tail = p.tail[len(p.tail)-tailSize:]
-	}
-	p.mu.Unlock()
+	p.record(line)
 
 	switch classify(line) {
 	case ready:
-		if id, ok := deviceID(line); ok {
-			p.mu.Lock()
-			p.id = id
-			p.mu.Unlock()
-		}
+		p.setDeviceID(line)
 	case waitingForLogin:
 		p.waitOnce.Do(func() { close(p.waiting) })
 	case loggedIn:
@@ -195,6 +223,25 @@ func (p *process) handle(line string) {
 		p.fail(ErrInvalidAPIKey)
 	case failed:
 		p.fail(errors.New(message(line)))
+	}
+}
+
+// record keeps line in the tail of the output.
+func (p *process) record(line string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.tail = append(p.tail, line)
+	if len(p.tail) > tailSize {
+		p.tail = p.tail[len(p.tail)-tailSize:]
+	}
+}
+
+func (p *process) setDeviceID(line string) {
+	if id, ok := deviceID(line); ok {
+		p.mu.Lock()
+		p.id = id
+		p.mu.Unlock()
 	}
 }
 

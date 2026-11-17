@@ -226,12 +226,15 @@ while true; do sleep 0.05; done
 	started.waitFor(t, "first")
 	p.Release()
 
-	attached := newLines()
-	a, err := Attach(p.Pid(), log, attached.add)
+	past, attached := newLines(), newLines()
+	a, err := Attach(p.Pid(), log, past.add, attached.add)
 	if err != nil {
 		t.Fatal(err)
 	}
-	attached.waitFor(t, "first")
+	// The lines already in the log come before Attach returns.
+	if lines := past.all(); len(lines) != 1 || lines[0] != "first" {
+		t.Fatalf("past lines = %q, want [first]", lines)
+	}
 
 	if err := os.WriteFile(marker, nil, 0644); err != nil {
 		t.Fatal(err)
@@ -267,7 +270,7 @@ func TestAttachNotRunning(t *testing.T) {
 	}
 	_ = p.Wait()
 
-	if _, err := Attach(p.Pid(), logPath(t), nil); !errors.Is(err, ErrNotRunning) {
+	if _, err := Attach(p.Pid(), logPath(t), nil, nil); !errors.Is(err, ErrNotRunning) {
 		t.Fatalf("Attach() to an exited process = %v, want %v", err, ErrNotRunning)
 	}
 }
@@ -285,7 +288,7 @@ func TestReleasedAttachedProcessStopsWaiting(t *testing.T) {
 	t.Cleanup(func() { _ = p.Kill() })
 	got.waitFor(t, "started")
 
-	a, err := Attach(p.Pid(), log, nil)
+	a, err := Attach(p.Pid(), log, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,31 +326,70 @@ func TestKill(t *testing.T) {
 	}
 }
 
-func TestKillProcessGroup(t *testing.T) {
-	script := writeScript(t, "sleep 60 &\necho started\nwait\necho never\n")
-
-	started := make(chan struct{})
-	var once sync.Once
-	p, err := Start(script, nil, logPath(t), func(string) {
-		once.Do(func() { close(started) })
-	})
-	if err != nil {
-		t.Fatal(err)
+func TestSignalsReachTheProcessGroup(t *testing.T) {
+	signals := map[string]func(*Process) error{
+		"Kill":      (*Process).Kill,
+		"Terminate": (*Process).Terminate,
 	}
-	<-started
+	for name, signal := range signals {
+		t.Run(name, func(t *testing.T) {
+			script := writeScript(t, "sleep 60 &\necho \"child $!\"\nwait\necho never\n")
 
-	if err := p.Kill(); err != nil {
-		t.Fatal(err)
+			children := make(chan int, 1)
+			p, err := Start(script, nil, logPath(t), func(line string) {
+				if pid, err := strconv.Atoi(strings.TrimPrefix(line, "child ")); err == nil {
+					children <- pid
+				}
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var child int
+			select {
+			case child = <-children:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the script never started its child")
+			}
+			t.Cleanup(func() { _ = syscall.Kill(child, syscall.SIGKILL) })
+
+			if err := signal(p); err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan error, 1)
+			go func() { done <- p.Wait() }()
+			select {
+			case err := <-done:
+				if err == nil {
+					t.Fatalf("Wait() after %s() returned no error", name)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatalf("Wait() blocked after %s()", name)
+			}
+
+			deadline := time.Now().Add(5 * time.Second)
+			for !gone(child) {
+				if time.Now().After(deadline) {
+					t.Fatalf("%s() left the child of the process running", name)
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+		})
 	}
+}
 
-	done := make(chan error, 1)
-	go func() { done <- p.Wait() }()
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatal("Wait() after Kill() returned no error")
+// gone reports whether pid exited, even if nothing reaped it yet.
+func gone(pid int) bool {
+	if !Running(pid) {
+		return true
+	}
+	if runtime.GOOS == "linux" {
+		stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+		if err != nil {
+			return true
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("Wait() blocked: a child process kept the output pipe open after Kill()")
+		fields := strings.Fields(string(stat[strings.LastIndexByte(string(stat), ')')+1:]))
+		return len(fields) > 0 && fields[0] == "Z"
 	}
+	out, err := exec.Command("ps", "-o", "stat=", "-p", strconv.Itoa(pid)).Output()
+	return err != nil || strings.HasPrefix(strings.TrimSpace(string(out)), "Z")
 }
