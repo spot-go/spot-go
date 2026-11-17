@@ -104,6 +104,16 @@ type (
 		soloistErr   error
 		seeks        []string
 		seekStatus   int
+		// user is the ID of the account. Most tests use an account without
+		// one, which has no Liked Songs (see likedSongsItem).
+		user string
+		// liked are the songs in Liked Songs.
+		liked []string
+		// refuseLikedSongs makes Spotify refuse to play Liked Songs as a
+		// context, and refuseLikedOffset only when it starts from a song,
+		// as it can answer to an offset into Liked Songs.
+		refuseLikedSongs  bool
+		refuseLikedOffset bool
 	}
 
 	recentPlay struct {
@@ -307,8 +317,11 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 			item = fmt.Sprintf(`{"uri":%q,"name":%q,"duration_ms":%d,"artists":[%s]}`, f.playingItem, f.playingName, f.durationMs, f.artistsJSON())
 		}
 		switch f.playingType {
-		case "show", "album", "artist":
+		case "show", "album", "artist", "collection":
 			context = fmt.Sprintf(`{"type":%q,"uri":%q}`, f.playingType, f.playing)
+		case "none":
+			// A song played on its own, without a context.
+			context = "null"
 		case "episode":
 			context = "null"
 			item = fmt.Sprintf(`{"type":"episode","uri":%q,"name":%q,"duration_ms":%d,"show":{"uri":%q}}`, f.playingItem, f.playingName, f.durationMs, f.playing)
@@ -452,6 +465,16 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	case path == "search":
 		return f.search(r), nil
 
+	case path == "me/tracks":
+		query := r.URL.Query()
+		if resp, err := f.injected(r, likedSongsKey, query.Get("offset")); resp != nil || err != nil {
+			return resp, err
+		}
+		if query.Get("limit") != "50" || query.Get("market") != "from_token" {
+			return errorResponse(r, http.StatusBadRequest, "missing limit=50 or market=from_token"), nil
+		}
+		return f.page(r, likedSongsKey, f.liked, query), nil
+
 	case path == "me/player/queue" && r.Method == http.MethodGet:
 		return f.queueResponse(r), nil
 
@@ -461,6 +484,14 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		f.plays = append(f.plays, playRequest{deviceID: r.URL.Query().Get("device_id"), body: body})
 		if f.playStatus != 0 {
 			return errorResponse(r, f.playStatus, "Player command failed: Premium required"), nil
+		}
+		if context, _ := body["context_uri"].(string); strings.HasSuffix(context, ":collection") {
+			if f.refuseLikedSongs {
+				return errorResponse(r, http.StatusBadRequest, "Invalid context uri"), nil
+			}
+			if _, offset := body["offset"]; offset && f.refuseLikedOffset {
+				return errorResponse(r, http.StatusBadRequest, "Can't have offset for context type: COLLECTION"), nil
+			}
 		}
 		if len(body) > 0 {
 			f.started = f.onPlay
@@ -524,6 +555,17 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 
 	return errorResponse(r, http.StatusNotFound, "unexpected request "+r.Method+" "+r.URL.Path), nil
+}
+
+// likedSongsKey is how the fake API counts the requests for Liked Songs, with
+// requestsFor, and fails them, with songsStatus and the other maps.
+const likedSongsKey = "liked"
+
+func (f *fakeAPI) account() *libspotify.PrivateUser {
+	if f.user == "" {
+		return &libspotify.PrivateUser{}
+	}
+	return &libspotify.PrivateUser{User: libspotify.User{ID: f.user, URI: libspotify.URI("spotify:user:" + f.user), DisplayName: "Chico"}}
 }
 
 func (f *fakeAPI) artistsJSON() string {
@@ -696,7 +738,7 @@ func newModelWith(api *fakeAPI, width, height int) Model {
 func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model {
 	client := spotify.NewClient(&http.Client{Transport: api})
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: width, Height: height}}
-	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, store, nil, nil, api)
+	m := NewModel(size, context.Background(), client, api.account(), &libspotify.PlayerDevice{ID: testDeviceID}, store, nil, nil, api)
 	// spot-go opens on the Search tab (see TestSpotGoOpensOnTheSearchTab),
 	// but most tests start on the Playlists tab, which loads at the start.
 	m.activeTab = playlistsTab
@@ -707,6 +749,7 @@ func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model
 	playlists := m.tabs[playlistsTab].content.(playlistModel)
 	playlists.after = testAfter
 	playlists.pollEvery = 0
+	playlists.visible = true
 	m.tabs[playlistsTab].content = playlists
 	podcasts := m.tabs[podcastsTab].content.(podcastModel)
 	podcasts.after = testAfter

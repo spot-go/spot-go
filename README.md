@@ -31,7 +31,7 @@ mise exec -- go run .
 
 On the first run spot-go:
 
-1. Asks you to log in to the Spotify Web API in the browser. spot-go uses it to read your playlists, the podcasts you follow, the artists you follow, the albums you saved, what you played recently and where you stopped in each episode, and to control playback.
+1. Asks you to log in to the Spotify Web API in the browser. spot-go uses it to read your playlists, the songs you liked, the podcasts you follow, the artists you follow, the albums you saved, what you played recently and where you stopped in each episode, and to control playback.
 2. Downloads Soloist. On macOS it only installs a binary signed by Spotify.
 3. Asks for a Soloist API key. Create one at the [Soloist dashboard](https://developer.spotify.com/dashboard/soloist) and paste it. spot-go saves it only on your computer, in its config folder.
 4. Shows the device name, `spot-go@<hostname>`. Open Spotify on a phone or computer on the same network, open the list of devices and select it. Soloist remembers the login, so you only do this once.
@@ -65,6 +65,14 @@ On macOS, the play/pause, next and previous keys of the keyboard, and the Now Pl
 On Linux, spot-go shows up as an MPRIS media player on the D-Bus session bus, so the media keys of desktops such as GNOME and KDE, their media controls and `playerctl` work too. Desktops usually send the keys to the player that played last.
 
 Spotify may only list the songs of playlists you own or collaborate on, depending on the mode of the Spotify app. Other playlists still play with `enter`.
+
+Since November 2024 the Web API no longer gives apps in development mode, like spot-go, the playlists Spotify makes, such as Discover Weekly, Release Radar, the Daily Mixes and Spotify's editorial playlists, so they don't show in the Playlists tab.
+
+## Liked Songs
+
+The Playlists tab starts with Liked Songs: the songs you liked, newest first, as in the Spotify app. It stays at the top in every order. Liked Songs is often long, so spot-go loads its songs when you open the Playlists tab, not at the start. `enter` plays Liked Songs from the start, or from the selected song, and the Spotify app shows it plays from Liked Songs.
+
+The Web API doesn't document Liked Songs as something to play, and may refuse to play it, or to start it from a song. Then spot-go plays the songs it loaded instead, from the selected one or the first one, up to 100 songs that can play. Spotify then plays them on their own, not from Liked Songs, and stops after the last one unless repeat is on.
 
 ## Player
 
