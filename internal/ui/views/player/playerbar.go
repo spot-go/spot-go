@@ -19,7 +19,9 @@ type (
 	// the song or episode of the active tab: the device Spotify plays on, its
 	// volume, shuffle and repeat, and a notice about the last change.
 	playerBar struct {
-		polled     bool
+		// idle is true when the last poll found Spotify playing on no
+		// device, and spot-go started nothing since.
+		idle       bool
 		device     libspotify.ID
 		deviceName string
 		volume     int
@@ -168,7 +170,7 @@ func (m Model) headlineRow(status playbackStatus, width int, now time.Time) stri
 // the tab has nothing to show and Spotify plays nothing, it says so.
 func (m Model) statusLine(status playbackStatus, width int, now time.Time) string {
 	if !status.showsTrack() && status.text == "" {
-		if !m.playerBar.polled || m.playerBar.device != "" {
+		if !m.playerBar.idle {
 			return ""
 		}
 		return dimStyle.Render(fit(nothingPlaying, width))
@@ -354,6 +356,15 @@ func (b playerBar) compactExtras(width int) string {
 	return ""
 }
 
+// started shows that spot-go started playing on its own device.
+func (b playerBar) started(own libspotify.ID) playerBar {
+	b.idle = false
+	if own != "" {
+		b.device = own
+	}
+	return b
+}
+
 func (m Model) ownDevice() libspotify.ID {
 	if m.playerDevice == nil {
 		return ""
@@ -430,10 +441,12 @@ func (m Model) noticeHidden(msg noticeHidden) Model {
 
 // followPolled shows the device, volume, shuffle and repeat Spotify polled.
 // A volume, shuffle or repeat changed from spot-go a moment ago keeps what
-// spot-go set, as Spotify can take a moment to report it.
+// spot-go set, as Spotify can take a moment to report it. Spotify can also
+// take a moment to report a play spot-go started, so the player doesn't say
+// nothing is playing right after one.
 func (m Model) followPolled(playing spotify.NowPlaying) Model {
 	b := &m.playerBar
-	b.polled = true
+	b.idle = playing.Device == "" && time.Since(m.nowPlaying.commandAt) >= followGrace
 	b.device, b.deviceName = playing.Device, playing.DeviceName
 	if !m.volume.changing() {
 		b.volume, b.hasVolume = playing.Volume, playing.SupportsVolume

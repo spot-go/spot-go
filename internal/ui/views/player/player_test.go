@@ -824,17 +824,17 @@ func (h *harness) selected() string {
 func tabSize(content tea.Model) contentDimension {
 	switch c := content.(type) {
 	case playlistModel:
-		return contentDimension{width: c.width, height: c.height}
+		return contentDimension(c.paneSize)
 	case podcastModel:
-		return contentDimension{width: c.width, height: c.height}
+		return contentDimension(c.paneSize)
 	case artistModel:
-		return contentDimension{width: c.width, height: c.height}
+		return contentDimension(c.paneSize)
 	case albumModel:
-		return contentDimension{width: c.width, height: c.height}
+		return contentDimension(c.paneSize)
 	case searchModel:
-		return contentDimension{width: c.width, height: c.height}
+		return contentDimension(c.paneSize)
 	case queueModel:
-		return contentDimension{width: c.width, height: c.height}
+		return contentDimension(c.paneSize)
 	}
 	return contentDimension{}
 }

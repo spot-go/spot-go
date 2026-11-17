@@ -14,8 +14,9 @@ import (
 )
 
 type paneSize struct {
-	width  int
-	height int
+	width       int
+	height      int
+	spotifyKeys bool
 }
 
 const (
@@ -187,7 +188,8 @@ func (s paneSize) notice(text string) string {
 
 // keyHelp shows the keys of the right pane. tab, which moves to target, is
 // left out when target is empty, as on tabs with only one list. The keys
-// that control Spotify on every tab show in the player.
+// that control Spotify on every tab show in the player, or here, as many as
+// fit, when the compact player has no room for them.
 func (s paneSize) keyHelp(h help.Styles, target string) string {
 	hint := func(key, desc string) string {
 		return h.ShortKey.Inline(true).Render(key) + " " + h.ShortDesc.Inline(true).Render(desc)
@@ -196,7 +198,17 @@ func (s paneSize) keyHelp(h help.Styles, target string) string {
 	if target != "" {
 		hints = append([]string{hint("tab", target)}, hints...)
 	}
-	text := strings.Join(hints, h.ShortSeparator.Inline(true).Render(" • "))
+	separator := h.ShortSeparator.Inline(true).Render(" • ")
+	text := strings.Join(hints, separator)
+	if s.spotifyKeys {
+		for _, ph := range playerHints {
+			next := separator + hint(ph.key, ph.desc)
+			if lipgloss.Width(text+next) > s.rightWidth() {
+				break
+			}
+			text += next
+		}
+	}
 	return lipgloss.NewStyle().
 		Width(s.rightWidth()).
 		AlignHorizontal(lipgloss.Center).

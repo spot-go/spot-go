@@ -250,7 +250,33 @@ func TestPlayerFitsEveryWidth(t *testing.T) {
 						t.Fatalf("%dx%d notice %q: line %d is %d columns wide, want %d:\n%s", width, height, notice, i, got, width, v)
 					}
 				}
+				wantFrameEdges(t, v, width)
 			}
+		}
+	}
+}
+
+// wantFrameEdges fails unless every line of the view v, from the tab row to
+// the bottom line of the frame, ends with the right edge of the frame at
+// column width. The view pads lines to the widest one, so a line that is too
+// short still has the right width, with spaces after its edge.
+func wantFrameEdges(t *testing.T, v string, width int) {
+	t.Helper()
+
+	lines := strings.Split(v, "\n")
+	bottom := -1
+	for i, line := range lines {
+		if strings.HasPrefix(line, "└") {
+			bottom = i
+		}
+	}
+	if bottom < 0 {
+		t.Fatalf("view has no bottom line:\n%s", v)
+	}
+	for i := 2; i <= bottom; i++ {
+		line := strings.TrimRight(lines[i], " ")
+		if got := ansi.StringWidth(line); got != width || !strings.ContainsAny(line[len(line)-len("│"):], "│┤┘┐") {
+			t.Fatalf("line %d ends at column %d, want the edge of the frame at %d:\n%s", i, got, width, v)
 		}
 	}
 }
@@ -419,6 +445,50 @@ func TestPlayerSaysWhenNothingPlays(t *testing.T) {
 	h.wantBottomLine(nothingPlaying)
 }
 
+func TestPlayerDoesNotSayNothingPlaysRightAfterAPlayStarts(t *testing.T) {
+	api := newFakeAPI()
+	api.deviceName = "Pixel 7"
+	h := newHarnessWith(t, api, 120, 40)
+	h.send(pollPlayback{})
+	h.wantPlayerRow(0, nothingPlaying)
+
+	h.send(key("enter"))
+	for range playlistsTab - searchTab {
+		h.send(key("left"))
+	}
+	h.dontWantPlayerRow(0, nothingPlaying, " on ")
+
+	// Spotify can take a moment to report the play.
+	h.send(playbackPolled{plays: *h.player().plays})
+	h.dontWantPlayerRow(0, nothingPlaying)
+
+	m := h.player()
+	m.nowPlaying.commandAt = m.nowPlaying.commandAt.Add(-followGrace)
+	h.model = m
+	h.send(playbackPolled{plays: *h.player().plays})
+	h.wantPlayerRow(0, nothingPlaying)
+}
+
+func TestPlayerFollowsWhatAConfirmedPlayReports(t *testing.T) {
+	api := soWhatOnPixel()
+	h := newHarnessWith(t, api, 120, 40)
+	h.confirmStarts()
+	h.send(pollPlayback{})
+	h.wantPlayerRow(0, "on Pixel 7")
+
+	api.onPlay = func(f *fakeAPI) {
+		backInBlackPlays(f)
+		f.device, f.deviceName, f.shuffle, f.repeat = testDeviceID, "spot-go", true, "context"
+	}
+	h.send(key("enter"))
+
+	h.wantPlayerRow(0, "Back in Black")
+	h.dontWantPlayerRow(0, " on ")
+	if got := h.player().playerBar; !got.shuffle || got.repeat != spotify.RepeatContext {
+		t.Fatalf("player = %+v, want shuffle and repeat as the confirmation reports them", got)
+	}
+}
+
 func TestPlayerHidesWhatSpotifyNoLongerReports(t *testing.T) {
 	api := soWhatOnPixel()
 	api.shuffle = true
@@ -482,6 +552,24 @@ func TestPlayerShowsTheKeysOfEveryTab(t *testing.T) {
 		}
 		h.send(key("right"))
 	}
+}
+
+func TestCompactPlayerLeavesTheKeysToThePane(t *testing.T) {
+	h := newHarness(t, 120, 15)
+
+	h.wantView("enter play • r refresh • space play/pause • n/p next/previous")
+	if got := h.bottomLine(); strings.Contains(got, "play/pause") {
+		t.Fatalf("bottom line = %q, want no keys in the compact player", got)
+	}
+	for _, line := range strings.Split(h.view(), "\n") {
+		if strings.Contains(line, "r refresh") && strings.Contains(line, "…") {
+			t.Fatalf("keys line = %q, want the keys that fit, without cutting one", line)
+		}
+	}
+
+	h.send(tea.WindowSizeMsg{Width: 120, Height: 16})
+	h.wantBottomLine("space play/pause")
+	h.dontWantView("r refresh • space")
 }
 
 func TestPlayerLeavesOutKeysThatDoNotFit(t *testing.T) {
@@ -557,7 +645,7 @@ func TestSeekStopsAtTheStartAndTheEnd(t *testing.T) {
 		want       string
 	}{
 		{4000, "<", "0"},
-		{559000, ">", "562000"},
+		{559000, ">", "561000"},
 	} {
 		api := soWhatOnPhone()
 		api.progressMs = tt.progressMs
@@ -643,8 +731,8 @@ func TestSeekAfterSkipsPressedWhileChanging(t *testing.T) {
 	h.confirmStarts()
 
 	model, toggle := h.model.Update(key("space"))
-	model, _ = model.Update(key(">"))
 	model, _ = model.Update(key("n"))
+	model, _ = model.Update(key(">"))
 	h.model = model
 	h.run(toggle)
 
@@ -653,19 +741,94 @@ func TestSeekAfterSkipsPressedWhileChanging(t *testing.T) {
 	h.wantPlayerRow(0, "Paranoid")
 }
 
+func TestSeekPressedBeforeASkipIsDropped(t *testing.T) {
+	api := soWhatOnPhone()
+	api.nextItem, api.nextName = "spotify:track:paranoid", "Paranoid"
+	h := newHarnessWith(t, api, 120, 40)
+
+	model, toggle := h.model.Update(key("space"))
+	for _, k := range []string{">", ">", "n", "<"} {
+		model, _ = model.Update(key(k))
+	}
+	h.model = model
+	h.run(toggle)
+
+	h.wantSkips("next")
+	h.wantSeeks("0")
+}
+
+func TestPlayStartedAfterPressesWhileChangingDropsThem(t *testing.T) {
+	h := newHarnessWith(t, playingOnPhone(), 120, 40)
+
+	model, toggle := h.model.Update(key("space"))
+	for _, k := range []string{"n", ">"} {
+		model, _ = model.Update(key(k))
+	}
+	h.model = model
+	h.send(key("enter"))
+	h.run(toggle)
+
+	h.wantSkips()
+	h.wantSeeks()
+	h.wantPlayerRow(0, "⏸ Rock")
+}
+
+func TestSeekNearTheEndStopsShortOfTheNextSong(t *testing.T) {
+	api := soWhatOnPhone()
+	api.progressMs = 555000
+	api.nextItem, api.nextName = "spotify:track:paranoid", "Paranoid"
+	h := newHarnessWith(t, api, 120, 40)
+
+	h.send(key(">"))
+	h.wantSeeks("561000")
+
+	// A second later, the song ended, so the next seek reads what plays.
+	m := h.player()
+	m.toggle.at = m.toggle.at.Add(-1500 * time.Millisecond)
+	h.model = m
+	api.set(func(f *fakeAPI) {
+		f.playingItem, f.playingName, f.progressMs = "spotify:track:paranoid", "Paranoid", 1000
+	})
+	h.send(key(">"))
+
+	h.wantPlayerReads(2)
+	h.wantSeeks("561000", "11000")
+	h.wantPlayerRow(0, "Paranoid")
+}
+
+func TestSeekAfterASkipSpotifyDidNotReportReadsThePositionAgain(t *testing.T) {
+	api := playingOnPhone()
+	h := newHarnessWith(t, api, 120, 40)
+
+	h.send(media.NextTrack)
+	h.wantPlayerReads(1 + confirmPolls)
+	api.set(func(f *fakeAPI) { f.progressMs = 3000 })
+	h.send(key(">"))
+
+	h.wantPlayerReads(2 + confirmPolls)
+	h.wantSeeks("13000")
+}
+
 func TestSeekWithNothingPlaying(t *testing.T) {
 	h := newHarness(t, 120, 40)
+	h.holdTimers = true
 
 	h.send(key(">"))
 
 	h.wantSeeks()
 	h.wantPlayerRow(0, "Fail to seek: nothing is playing")
+
+	h.holdTimers = false
+	h.send()
+	h.dontWantPlayerRow(0, "Fail to seek")
 }
 
 func TestSeekFailure(t *testing.T) {
 	api := soWhatOnPhone()
 	api.seekStatus = http.StatusForbidden
 	h := newHarnessWith(t, api, 120, 40)
+	h.holdTimers = true
+	h.send(pollPlayback{})
 
 	model, seek := h.model.Update(key(">"))
 	model, _ = model.Update(key(">"))
@@ -673,7 +836,16 @@ func TestSeekFailure(t *testing.T) {
 	h.run(seek)
 
 	h.wantSeeks("70000")
+	h.wantPlayerRow(0, "⏸ So What")
 	h.wantPlayerRow(0, "Fail to seek: Player command failed: Restriction violated")
+	h.send(key("right"))
+	h.wantPlayerRow(0, "Fail to seek")
+	h.holdTimers = false
+	h.send()
+	h.dontWantPlayerRow(0, "Fail to seek")
+	h.send(key("left"))
+	h.wantPlayerRow(0, "⏸ So What")
+	h.dontWantPlayerRow(0, "Fail to seek")
 
 	api.set(func(f *fakeAPI) { f.seekStatus = 0 })
 	h.send(key(">"))

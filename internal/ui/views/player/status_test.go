@@ -644,6 +644,7 @@ func TestNowPlayingLineFitsEveryWidth(t *testing.T) {
 					t.Fatalf("%dx24 volume %t: line %d is %d columns wide, want %d:\n%s", width, volume, i, got, width, v)
 				}
 			}
+			wantFrameEdges(t, v, width)
 		}
 	}
 }

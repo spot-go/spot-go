@@ -267,8 +267,6 @@ func (s playbackStatus) toggled(msg playbackToggled, now time.Time) playbackStat
 	switch {
 	case msg.err != nil && msg.skip:
 		return playbackStatus{seq: s.seq, text: "Fail to skip: " + errorText(msg.err), err: true}
-	case msg.err != nil && msg.seek:
-		return playbackStatus{seq: s.seq, text: "Fail to seek: " + errorText(msg.err), err: true}
 	case msg.err != nil:
 		return playbackStatus{seq: s.seq, text: "Fail to play/pause: " + errorText(msg.err), err: true}
 	}

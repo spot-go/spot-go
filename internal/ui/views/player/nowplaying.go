@@ -81,6 +81,7 @@ func (m Model) playbackStarted(msg tea.Msg, uri, item libspotify.URI, info media
 	m.toggle.settled++
 	before := m.nowPlaying
 	m = m.publishCommand(item, info)
+	m.playerBar = m.playerBar.started(m.ownDevice())
 	return m, tea.Batch(m.broadcast(msg), m.confirmStart(before, uri, item, info.Elapsed))
 }
 
@@ -122,6 +123,7 @@ func (m Model) playbackConfirmed(msg playbackConfirmed) (Model, tea.Cmd) {
 		return m, nil
 	}
 	m = m.publishNowPlaying(msg.playing.Item, playingInfo(msg.playing), time.Now())
+	m = m.followPolled(msg.playing)
 	return m, m.broadcast(msg)
 }
 
@@ -132,6 +134,7 @@ func (m Model) skippedTo(msg queuePlaybackStarted) (Model, tea.Cmd) {
 	m.toggle.settled++
 	if msg.plays == *m.plays {
 		m = m.publishCommand(msg.item, msg.info())
+		m.playerBar.idle = false
 	}
 	return m, m.broadcast(msg)
 }

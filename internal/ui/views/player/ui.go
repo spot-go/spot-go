@@ -57,6 +57,9 @@ type (
 	contentDimension struct {
 		width  int
 		height int
+		// spotifyKeys is true when the tab shows the keys that control
+		// Spotify, as the compact player has no room for them.
+		spotifyKeys bool
 	}
 
 	inputCapturer interface {
@@ -249,8 +252,13 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case playbackToggled:
 		m = m.playbackToggled(msg)
+		if msg.seek && msg.err != nil {
+			// What plays didn't change, so the tabs keep showing it.
+			return m.notify("Fail to seek: "+errorText(msg.err), true)
+		}
 		if msg.err == nil && msg.plays == *m.plays {
 			m = m.publishToggled(msg)
+			m.playerBar.idle = false
 		}
 		broadcast := m.broadcast(msg)
 		m, skip := m.nextSkip()
@@ -422,8 +430,9 @@ func (m Model) layout() (string, contentDimension, bool) {
 		chrome = fullPlayerChrome
 	}
 	return row, contentDimension{
-		width:  lipgloss.Width(row) - windowStyle.GetHorizontalFrameSize(),
-		height: m.Height - lipgloss.Height(row) - chrome,
+		width:       lipgloss.Width(row) - windowStyle.GetHorizontalFrameSize(),
+		height:      m.Height - lipgloss.Height(row) - chrome,
+		spotifyKeys: !full,
 	}, full
 }
 
