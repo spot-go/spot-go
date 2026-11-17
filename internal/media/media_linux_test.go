@@ -4,7 +4,9 @@ package media
 
 import (
 	"bufio"
+	"context"
 	"encoding/hex"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -102,6 +104,15 @@ func TestPlayerMethodsSendCommands(t *testing.T) {
 func privateBus(t *testing.T) string {
 	t.Helper()
 
+	address, _ := privateBusDaemon(t)
+	return address
+}
+
+// privateBusDaemon starts a session bus for the test, and returns its address
+// and the process that runs it.
+func privateBusDaemon(t *testing.T) (string, *os.Process) {
+	t.Helper()
+
 	daemon, err := exec.LookPath("dbus-daemon")
 	if err != nil {
 		t.Skip("dbus-daemon is not installed")
@@ -122,7 +133,7 @@ func privateBus(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return strings.TrimSpace(address)
+	return strings.TrimSpace(address), cmd.Process
 }
 
 func connectTo(t *testing.T, address string) *dbus.Conn {
@@ -142,6 +153,7 @@ func resetMPRIS(t *testing.T) {
 	t.Cleanup(func() {
 		mprisMu.Lock()
 		props, published, publishedAt = nil, Info{}, time.Time{}
+		connected, connectErr, lost = make(chan struct{}), nil, nil
 		mprisMu.Unlock()
 	})
 }
@@ -427,5 +439,39 @@ func TestNoSessionBusStartsNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("dbus-launch was started")
+	}
+	if _, err := Connected(context.Background()); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("Connected() = %v, want %v", err, ErrUnsupported)
+	}
+}
+
+func TestConnectedEndsWithTheBus(t *testing.T) {
+	address, daemon := privateBusDaemon(t)
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", address)
+	resetMPRIS(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err := Connected(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Connected() before connecting = %v, want it to wait", err)
+	}
+
+	connect()
+	gone, err := Connected(context.Background())
+	if err != nil {
+		t.Fatalf("Connected() = %v", err)
+	}
+	select {
+	case <-gone:
+		t.Fatal("the bus is gone while it runs")
+	default:
+	}
+
+	// As when the user logs out.
+	_ = daemon.Kill()
+	select {
+	case <-gone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the bus went away and Connected() didn't say so")
 	}
 }

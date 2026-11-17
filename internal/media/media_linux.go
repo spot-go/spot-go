@@ -3,6 +3,7 @@
 package media
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"maps"
@@ -40,10 +41,16 @@ var (
 	playerMethods = map[string]string{"SeekTo": "Seek"}
 
 	connectOnce sync.Once
+
 	mprisMu     sync.Mutex
 	props       *mprisProperties
 	published   Info
 	publishedAt time.Time
+	// connected closes once Listen tried to connect to the session bus;
+	// connectErr says why it couldn't, and lost closes when it disconnects.
+	connected  = make(chan struct{})
+	connectErr error
+	lost       <-chan struct{}
 )
 
 func Main(run func()) {
@@ -66,25 +73,57 @@ func Publish(info Info) {
 	}
 }
 
-func connect() {
-	conn, err := sessionBus()
-	if err != nil {
-		return
+// Connected waits until Listen connected to the session bus, and returns a
+// channel closed when it disconnects, as when the user logs out. It fails
+// when there is no session bus, as over SSH.
+func Connected(ctx context.Context) (<-chan struct{}, error) {
+	mprisMu.Lock()
+	done := connected
+	mprisMu.Unlock()
+
+	select {
+	case <-done:
+		mprisMu.Lock()
+		defer mprisMu.Unlock()
+		return lost, connectErr
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
-	p, err := serve(conn, fmt.Sprintf("%s.spotgo.instance%d", rootInterface, os.Getpid()))
+}
+
+func connect() {
+	p, err := connectBus()
 	if err != nil {
-		_ = conn.Close()
+		mprisMu.Lock()
+		connectErr = err
+		close(connected)
+		mprisMu.Unlock()
 		return
 	}
 
 	mprisMu.Lock()
 	props = p
 	info, at := published, publishedAt
+	lost = p.conn.Context().Done()
+	close(connected)
 	mprisMu.Unlock()
 	if !at.IsZero() {
 		p.update(info, at, time.Now())
 	}
 	go p.trackPosition()
+}
+
+func connectBus() (*mprisProperties, error) {
+	conn, err := sessionBus()
+	if err != nil {
+		return nil, fmt.Errorf("%w: no D-Bus session bus: %w", ErrUnsupported, err)
+	}
+	p, err := serve(conn, fmt.Sprintf("%s.spotgo.instance%d", rootInterface, os.Getpid()))
+	if err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("fail to serve MPRIS: %w", err)
+	}
+	return p, nil
 }
 
 func sessionBus() (*dbus.Conn, error) {

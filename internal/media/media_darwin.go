@@ -84,6 +84,7 @@ static void mediaPublish(const char *title, const char *artist, double duration,
 import "C"
 
 import (
+	"context"
 	"runtime"
 	"unsafe"
 )
@@ -103,6 +104,13 @@ func Main(run func()) {
 func Listen(fn func(Command)) {
 	setHandler(fn)
 	C.mediaListen()
+}
+
+// Connected waits until Listen reached the media controls of the system, and
+// returns a channel closed when it loses them. On macOS they are always
+// there, so the channel never closes.
+func Connected(context.Context) (<-chan struct{}, error) {
+	return nil, nil
 }
 
 func Publish(info Info) {

@@ -150,7 +150,7 @@ func Resume(onPairing func()) LoginResponse {
 // LeftPlaying reports whether a Soloist an earlier run of spot-go left
 // playing still runs.
 func LeftPlaying() bool {
-	_, ok := leftRunning()
+	_, ok := LeftRunning()
 	return ok
 }
 
@@ -167,7 +167,7 @@ func adopt() *process {
 		return nil
 	}
 
-	pid, ok := leftRunning()
+	pid, ok := LeftRunning()
 	if !ok {
 		return nil
 	}
@@ -182,9 +182,10 @@ func adopt() *process {
 	return p
 }
 
-// leftRunning is the process ID of the Soloist spot-go started last, when it
-// still runs with spot-go's data folder.
-func leftRunning() (int, bool) {
+// LeftRunning is the process ID of the Soloist spot-go started last, when it
+// still runs with spot-go's data folder: after Detach, or when this run of
+// spot-go didn't take over the one an earlier run left playing.
+func LeftRunning() (int, bool) {
 	pid, ok := pidInFile()
 	if !ok || !command.Running(pid) {
 		return 0, false
@@ -198,8 +199,8 @@ func leftRunning() (int, bool) {
 	return pid, true
 }
 
-// StillLeft reports whether pid, a Soloist Detach left playing, still runs,
-// and no run of spot-go started another one since.
+// StillLeft reports whether pid, which LeftRunning found, still runs, and no
+// run of spot-go started another Soloist since.
 func StillLeft(pid int) bool {
 	saved, ok := pidInFile()
 	return ok && saved == pid && command.Running(pid)
@@ -253,9 +254,8 @@ func Stop() {
 }
 
 // Detach leaves Soloist running when spot-go quits, so what it plays keeps
-// playing. The next run of spot-go finds it with Resume. Detach returns the
-// process ID of the Soloist it left running, or 0 when none runs.
-func Detach() int {
+// playing. The next run of spot-go finds it with Resume.
+func Detach() {
 	startMu.Lock()
 	defer startMu.Unlock()
 
@@ -264,14 +264,9 @@ func Detach() int {
 	current = nil
 	mu.Unlock()
 
-	if p == nil {
-		return 0
+	if p != nil {
+		p.detach()
 	}
-	p.detach()
-	if pid := p.pid(); command.Running(pid) {
-		return pid
-	}
-	return 0
 }
 
 // Adopted reports whether the Soloist in use is one an earlier run of
@@ -290,7 +285,7 @@ func killStale() {
 	pattern := stalePattern(dataDir)
 	// The Soloist spot-go started last is found without pkill and pgrep,
 	// which some Linux systems don't have.
-	left, hasLeft := leftRunning()
+	left, hasLeft := LeftRunning()
 	stopped := func() bool {
 		if hasLeft && command.Running(left) {
 			return false

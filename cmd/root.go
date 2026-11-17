@@ -59,11 +59,7 @@ func run(cmd *cobra.Command, args []string) {
 	media.Listen(func(c media.Command) { p.Send(c) })
 	stopHangup := quitOnHangup(p)
 	final, err := p.Run()
-	if keepPlaying(final) {
-		keepInBackground()
-	} else {
-		soloist.Stop()
-	}
+	quitSoloist(keepPlaying(final))
 	// Until Soloist stopped, a hang-up only quits spot-go, which already
 	// quit, and doesn't end spot-go before it stopped Soloist.
 	stopHangup()
@@ -72,13 +68,21 @@ func run(cmd *cobra.Command, args []string) {
 	}
 }
 
-// keepInBackground leaves Soloist playing as spot-go quits, and starts
-// spot-go again in the background to keep Now Playing and the media keys on
-// it.
-func keepInBackground() {
+// quitSoloist stops Soloist as spot-go quits, or leaves it playing when keep
+// is true. A Soloist left playing gets spot-go again, in the background, to
+// keep Now Playing and the media keys on it: the one this run leaves, or one
+// an earlier run left, when this run quit before it took it over.
+func quitSoloist(keep bool) {
+	// Before Detach or Stop, while this run may still know the device.
 	device := soloist.DeviceID()
-	pid := soloist.Detach()
-	if pid == 0 {
+	if keep {
+		soloist.Detach()
+	} else {
+		soloist.Stop()
+	}
+
+	pid, ok := soloist.LeftRunning()
+	if !ok {
 		return
 	}
 	if err := background.Start(pid, device); err != nil {

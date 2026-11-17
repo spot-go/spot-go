@@ -2,12 +2,14 @@ package background
 
 import (
 	"context"
+	"errors"
 	"log"
 	"time"
 
 	"github.com/spot-go/spot-go/internal/media"
 	"github.com/spot-go/spot-go/internal/spotify"
 	libspotify "github.com/zmb3/spotify/v2"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -15,6 +17,10 @@ const (
 	// does, and pausedEvery how often while nothing plays.
 	playingEvery = 5 * time.Second
 	pausedEvery  = 15 * time.Second
+	// maxFailedEvery is how long spot-go waits at most between polls that
+	// fail, as while offline: each failure doubles the wait from
+	// pausedEvery.
+	maxFailedEvery = 2 * time.Minute
 	// aliveEvery is how often spot-go checks that the Soloist it follows
 	// still runs.
 	aliveEvery = time.Second
@@ -23,14 +29,23 @@ const (
 	skipEvery = 500 * time.Millisecond
 	skipPolls = 6
 	// followGrace is how long Spotify can still report what played before a
-	// play or pause.
-	followGrace = 3 * time.Second
+	// play or pause. Polls after it wait settleEvery, up to settleTimeout
+	// after the key, for Spotify to agree, as Soloist can take a few seconds
+	// to play again after a long pause.
+	followGrace   = 3 * time.Second
+	settleEvery   = time.Second
+	settleTimeout = 10 * time.Second
 	// pollSlack is how long after a song ends Spotify is asked what plays
 	// next.
-	pollSlack      = time.Second
-	requestTimeout = 15 * time.Second
+	pollSlack = time.Second
+	// pollTimeout is short, as a media key pressed meanwhile waits for the
+	// poll to end.
+	pollTimeout    = 5 * time.Second
+	commandTimeout = 15 * time.Second
 	commandQueue   = 4
 )
+
+var errLoggedOut = errors.New("spot-go needs to log in to Spotify again: run spot-go")
 
 type (
 	// remote is what the session uses of the Spotify Web API.
@@ -61,13 +76,17 @@ type (
 		shown   spotify.Playback
 		shownAt time.Time
 		// changed is what Spotify plays as the last play or pause from a
-		// media key left it, at changedAt.
+		// media key left it, at changedAt. settling is true until a poll
+		// agrees with it, or settleTimeout passed.
 		changed   spotify.Playback
 		changedAt time.Time
-		// skippedFrom is what played before a skip, and where, while
-		// skipPolls more polls wait for Spotify to play something else.
+		settling  bool
+		// skippedFrom is what Spotify played right before a skip, while
+		// skipPolls more polls wait for it to play something else.
 		skippedFrom spotify.Playback
 		skipPolls   int
+		// failures counts the polls that failed in a row.
+		failures int
 		// failure is the error logged last, so an error that repeats, as
 		// while offline, is logged once.
 		failure string
@@ -89,53 +108,70 @@ func newSession(r remote, device libspotify.ID, publish func(media.Info), runnin
 }
 
 // run runs the media keys from commands, and polls Spotify, until the
-// Soloist stops or ctx ends.
-func (s *session) run(ctx context.Context, commands <-chan media.Command) {
+// Soloist stops or ctx ends. It fails when Spotify logged spot-go out.
+func (s *session) run(ctx context.Context, commands <-chan media.Command) error {
 	poll := time.NewTimer(0)
 	defer poll.Stop()
 	alive := time.NewTicker(s.aliveEvery)
 	defer alive.Stop()
 
 	for {
+		var (
+			next time.Duration
+			err  error
+		)
 		select {
 		case <-ctx.Done():
-			return
+			return nil
 		case <-alive.C:
 			if !s.running() {
-				return
+				return nil
 			}
+			continue
 		case c := <-commands:
-			if next, ok := s.command(ctx, c); ok {
-				poll.Reset(next)
-			}
+			next, err = s.command(ctx, c)
 		case <-poll.C:
-			poll.Reset(s.poll(ctx))
+			next, err = s.poll(ctx)
 		}
+		if err != nil {
+			return err
+		}
+		poll.Reset(next)
 	}
 }
 
 // poll shows what Spotify plays, and returns when to poll next.
-func (s *session) poll(ctx context.Context) time.Duration {
-	if wait := s.changedAt.Add(followGrace).Sub(s.now()); !s.changedAt.IsZero() && wait > 0 {
+func (s *session) poll(ctx context.Context) (time.Duration, error) {
+	if wait := s.changedAt.Add(followGrace).Sub(s.now()); s.settling && wait > 0 {
 		// Spotify may still report what played before the play or pause.
-		return wait
+		return wait, nil
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	ctx, cancel := context.WithTimeout(ctx, pollTimeout)
 	defer cancel()
 	state, err := s.spotify.Playback(ctx)
 	if err != nil {
+		if loggedOut(err) {
+			return 0, errLoggedOut
+		}
 		s.fail("read what Spotify plays", err)
-		return s.pausedEvery
+		s.failures = min(s.failures+1, 8)
+		return min(s.pausedEvery<<(s.failures-1), maxFailedEvery), nil
 	}
-	s.failure = ""
+	s.failures, s.failure = 0, ""
 
 	if s.skipPolls > 0 {
 		s.skipPolls--
 		if s.skipPolls > 0 && !s.skipped(state) {
-			return s.skipEvery
+			return s.skipEvery, nil
 		}
 		s.skipPolls = 0
+	}
+	if s.settling {
+		if state.Playing != s.changed.Playing && s.now().Sub(s.changedAt) < settleTimeout {
+			return settleEvery, nil
+		}
+		s.settling = false
 	}
 
 	switch {
@@ -152,14 +188,15 @@ func (s *session) poll(ctx context.Context) time.Duration {
 			s.show(last)
 		}
 	}
-	return s.nextPoll(state)
+	return s.nextPoll(state), nil
 }
 
 // skipped reports whether state shows the skip took place: something else
-// plays, or the same song from its start again.
+// plays, or the same song from its start again. Spotify can report nothing
+// in between.
 func (s *session) skipped(state spotify.Playback) bool {
 	from := s.skippedFrom
-	return state.Item != from.Item || state.Progress < from.Progress
+	return state.Item != "" && (state.Item != from.Item || state.Progress < from.Progress)
 }
 
 func (s *session) nextPoll(state spotify.Playback) time.Duration {
@@ -172,26 +209,34 @@ func (s *session) nextPoll(state spotify.Playback) time.Duration {
 	return s.playingEvery
 }
 
-// command runs a media key. It returns when to poll next, or false to keep
-// the time of the next poll.
-func (s *session) command(ctx context.Context, c media.Command) (time.Duration, bool) {
-	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+// command runs a media key, and returns when to poll next.
+func (s *session) command(ctx context.Context, c media.Command) (time.Duration, error) {
+	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
 
+	var err error
 	switch c {
 	case media.TogglePlayPause, media.Play, media.Pause:
-		return s.playPause(ctx, c), true
+		err = s.playPause(ctx, c)
 	case media.NextTrack, media.PreviousTrack:
-		return s.skip(ctx, c == media.NextTrack), true
+		err = s.skip(ctx, c == media.NextTrack)
 	}
-	return 0, false
+	switch {
+	case err == nil:
+		s.failure = ""
+	case loggedOut(err):
+		return 0, errLoggedOut
+	default:
+		s.fail("run a media key", err)
+	}
+	// After a play or pause, the poll waits for the grace to end.
+	return s.skipEvery, nil
 }
 
-func (s *session) playPause(ctx context.Context, c media.Command) time.Duration {
+func (s *session) playPause(ctx context.Context, c media.Command) error {
 	state, err := s.state(ctx)
 	if err != nil {
-		s.fail("read what Spotify plays", err)
-		return s.skipEvery
+		return err
 	}
 
 	pause := state.Playing
@@ -213,51 +258,51 @@ func (s *session) playPause(ctx context.Context, c media.Command) time.Duration 
 		err = s.spotify.ResumePlayback(ctx, target)
 	}
 	if err != nil {
-		s.fail("play or pause", err)
-		return s.skipEvery
+		return err
 	}
-	s.failure = ""
 
 	state.Playing = !pause
-	now := s.now()
-	s.changed, s.changedAt = state, now
+	s.changed, s.changedAt, s.settling = state, s.now(), true
 	if state.Item == "" {
 		last, ok := s.last(state.Playing)
 		if !ok {
-			return followGrace
+			return nil
 		}
 		last.Device = state.Device
 		state = last
 	}
 	s.show(state)
-	return followGrace
+	return nil
 }
 
 // state is what Spotify plays: as the last play or pause left it, when it
 // ended a moment ago, as Spotify may not report it yet, or as Spotify says.
 func (s *session) state(ctx context.Context) (spotify.Playback, error) {
-	if since := s.now().Sub(s.changedAt); !s.changedAt.IsZero() && since < followGrace {
+	if since := s.now().Sub(s.changedAt); s.settling && since < followGrace {
 		return at(s.changed, since), nil
 	}
 	return s.spotify.Playback(ctx)
 }
 
-func (s *session) skip(ctx context.Context, next bool) time.Duration {
+func (s *session) skip(ctx context.Context, next bool) error {
+	// What plays right before the skip, as Spotify says, tells when it
+	// took place.
+	before, err := s.spotify.Playback(ctx)
+	if err != nil {
+		return err
+	}
 	skip := s.spotify.Previous
 	if next {
 		skip = s.spotify.Next
 	}
 	if err := skip(ctx); err != nil {
-		s.fail("skip", err)
-		return s.skipEvery
+		return err
 	}
-	s.failure = ""
 
-	s.skippedFrom = at(s.shown, s.now().Sub(s.shownAt))
-	s.skipPolls = skipPolls
+	s.skippedFrom, s.skipPolls = before, skipPolls
 	// What a play or pause left changed with the skip.
-	s.changedAt = time.Time{}
-	return s.skipEvery
+	s.settling = false
+	return nil
 }
 
 // last is the song Now Playing shows, where it is now, playing or not.
@@ -287,6 +332,13 @@ func (s *session) fail(what string, err error) {
 		s.failure = msg
 		log.Printf("fail to %s: %v", what, err)
 	}
+}
+
+// loggedOut reports whether err is Spotify refusing the saved login, as
+// when the user removed spot-go's access: only a new login in spot-go helps.
+func loggedOut(err error) bool {
+	var retrieve *oauth2.RetrieveError
+	return errors.As(err, &retrieve) && retrieve.ErrorCode == "invalid_grant"
 }
 
 // at is state since later, when it plays on.

@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -53,7 +54,7 @@ func Start(soloistPid int, device string) error {
 	if err != nil {
 		return fmt.Errorf("fail to find spot-go: %w", err)
 	}
-	p, err := start(exe, args(soloistPid, device))
+	p, err := start(exe, Args(soloistPid, device))
 	if err != nil {
 		return err
 	}
@@ -61,11 +62,16 @@ func Start(soloistPid int, device string) error {
 	return nil
 }
 
-func args(soloistPid int, device string) []string {
+// Args are the arguments of spot-go in the background.
+func Args(soloistPid int, device string) []string {
 	return []string{Command, "--" + SoloistFlag, strconv.Itoa(soloistPid), "--" + DeviceFlag, device}
 }
 
 func start(name string, args []string) (*command.Process, error) {
+	// Another run of spot-go may have left one, as when two ran at once:
+	// once its pid file names this one, nothing could stop it.
+	Stop()
+
 	// Its output goes to the log file, in a session of its own, so it
 	// outlives spot-go and the terminal.
 	p, err := command.Start(name, args, logFile, nil)
@@ -135,16 +141,6 @@ func Run(ctx context.Context, soloistPid int, device string) error {
 	if !running() {
 		return nil
 	}
-	if err := config.Load(); err != nil {
-		return err
-	}
-	resp := spotify.Login(ctx)
-	if resp.Err != nil {
-		if errors.Is(resp.Err, spotify.ErrNeedsAuth) {
-			return errors.New("spot-go needs to log in to Spotify again")
-		}
-		return resp.Err
-	}
 
 	commands := make(chan media.Command, commandQueue)
 	media.Listen(func(c media.Command) {
@@ -154,8 +150,37 @@ func Run(ctx context.Context, soloistPid int, device string) error {
 			// Presses that come faster than Spotify takes them are dropped.
 		}
 	})
-	newSession(resp.Client, libspotify.ID(device), media.Publish, running).run(ctx, commands)
-	return nil
+	// Without the media controls, as over SSH on Linux, there is nothing to
+	// do.
+	lost, err := media.Connected(ctx)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		select {
+		case <-lost:
+			log.Print("the media controls went away, as when you log out")
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	if err := config.Load(); err != nil {
+		return err
+	}
+	// A token refresh doesn't end with ctx, as when the next run of spot-go
+	// stops this one: Spotify may have given a new token, which only the
+	// end of the refresh saves.
+	resp := spotify.Login(context.Background())
+	if resp.Err != nil {
+		if errors.Is(resp.Err, spotify.ErrNeedsAuth) {
+			return errLoggedOut
+		}
+		return resp.Err
+	}
+	return newSession(resp.Client, libspotify.ID(device), media.Publish, running).run(ctx, commands)
 }
 
 // forget removes the pid file when it still names this process.

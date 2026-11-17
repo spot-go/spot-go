@@ -1,6 +1,7 @@
 package media
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
@@ -27,6 +28,10 @@ const (
 )
 
 var (
+	// ErrUnsupported is why spot-go has no media controls, on a system or
+	// a build where it can't reach them.
+	ErrUnsupported = errors.New("spot-go has no media controls here")
+
 	handlerMu sync.Mutex
 	handler   func(Command)
 )

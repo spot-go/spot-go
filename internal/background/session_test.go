@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +16,7 @@ import (
 	"github.com/spot-go/spot-go/internal/media"
 	"github.com/spot-go/spot-go/internal/spotify"
 	libspotify "github.com/zmb3/spotify/v2"
+	"golang.org/x/oauth2"
 )
 
 const soloistDevice = libspotify.ID("soloist-device")
@@ -36,73 +39,95 @@ var (
 		Artist:   "Miles Davis",
 		Duration: 10 * time.Minute,
 	}
+	// revoked is how a request fails once the user removed spot-go's access:
+	// the token refresh fails inside the HTTP client.
+	revoked = &url.Error{Op: "Get", URL: "https://api.spotify.com/v1/me/player", Err: &oauth2.RetrieveError{
+		ErrorCode:        "invalid_grant",
+		ErrorDescription: "Refresh token revoked",
+	}}
 )
 
-// fakeSpotify is Spotify for a session. Pause and resume change what it
-// reports only with follows, as Spotify takes a moment to report them.
+// fakeSpotify is Spotify for a session. It reports state, after the answers
+// it was given for the next polls. Pause and resume change state only with
+// follows, as Spotify can take a moment to report them.
 type fakeSpotify struct {
 	mu      sync.Mutex
 	state   spotify.Playback
+	answers []spotify.Playback
 	follows bool
-	// skipTo is what plays after a skip, once polls more polls asked.
-	skipTo     spotify.Playback
-	polls      int
-	skipped    bool
+	// skipTo is what plays after a skip, once Spotify reported lag first.
+	skipTo *spotify.Playback
+	lag    []spotify.Playback
+	// err fails every request, and commandErr the commands.
 	err        error
 	commandErr error
-	calls      []string
+	// timeout is how long the last read could take.
+	timeout time.Duration
+	calls   []string
 }
 
-func (f *fakeSpotify) Playback(context.Context) (spotify.Playback, error) {
+func (f *fakeSpotify) Playback(ctx context.Context) (spotify.Playback, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.calls = append(f.calls, "playback")
+	if deadline, ok := ctx.Deadline(); ok {
+		f.timeout = time.Until(deadline)
+	}
 	if f.err != nil {
 		return spotify.Playback{}, f.err
 	}
-	if f.skipped {
-		if f.polls > 0 {
-			f.polls--
-		} else {
-			f.state, f.skipped = f.skipTo, false
-		}
+	if len(f.answers) > 0 {
+		answer := f.answers[0]
+		f.answers = f.answers[1:]
+		return answer, nil
 	}
 	return f.state, nil
 }
 
 func (f *fakeSpotify) Pause(context.Context) error {
-	return f.command("pause", func() { f.state.Playing = false })
+	return f.command("pause", func() {
+		if f.follows {
+			f.state.Playing = false
+		}
+	})
 }
 
 func (f *fakeSpotify) ResumePlayback(_ context.Context, device libspotify.ID) error {
 	return f.command("resume "+string(device), func() {
-		f.state.Playing = true
-		if device != "" {
-			f.state.Device = device
+		if f.follows {
+			f.state.Playing = true
 		}
 	})
 }
 
 func (f *fakeSpotify) Next(context.Context) error {
-	return f.command("next", func() { f.skipped = true })
+	return f.command("next", f.skip)
 }
 
 func (f *fakeSpotify) Previous(context.Context) error {
-	return f.command("previous", func() { f.skipped = true })
+	return f.command("previous", f.skip)
 }
 
-func (f *fakeSpotify) command(name string, follow func()) error {
+func (f *fakeSpotify) skip() {
+	f.answers = append(f.answers, f.lag...)
+	if f.skipTo != nil {
+		f.state = *f.skipTo
+	}
+}
+
+func (f *fakeSpotify) command(name string, change func()) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.calls = append(f.calls, name)
+	if f.err != nil {
+		return f.err
+	}
 	if f.commandErr != nil {
 		return f.commandErr
 	}
-	if f.follows || name == "next" || name == "previous" {
-		follow()
-	}
+	change()
 	return nil
 }
 
@@ -113,6 +138,13 @@ func (f *fakeSpotify) takeCalls() []string {
 	calls := f.calls
 	f.calls = nil
 	return calls
+}
+
+func (f *fakeSpotify) called(call string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return slices.Contains(f.calls, call)
 }
 
 type harness struct {
@@ -147,17 +179,25 @@ func (h *harness) advance(d time.Duration) {
 }
 
 func (h *harness) poll() time.Duration {
-	return h.session.poll(context.Background())
-}
-
-func (h *harness) press(c media.Command) time.Duration {
 	h.t.Helper()
 
-	next, ok := h.session.command(context.Background(), c)
-	if !ok {
-		h.t.Fatalf("command(%d) kept the time of the next poll", c)
+	next, err := h.session.poll(context.Background())
+	if err != nil {
+		h.t.Fatalf("poll() = %v", err)
 	}
 	return next
+}
+
+func (h *harness) press(c media.Command) {
+	h.t.Helper()
+
+	next, err := h.session.command(context.Background(), c)
+	if err != nil {
+		h.t.Fatalf("command(%d) = %v", c, err)
+	}
+	if next != skipEvery {
+		h.t.Fatalf("next poll in %v after a key, want %v", next, skipEvery)
+	}
 }
 
 // wantShown checks what Now Playing got since the last check.
@@ -168,22 +208,24 @@ func (h *harness) wantShown(want ...media.Info) {
 	got := h.published
 	h.published = nil
 	h.mu.Unlock()
-	if len(got) != len(want) {
+	if !slices.Equal(got, want) {
 		h.t.Fatalf("published %+v, want %+v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			h.t.Fatalf("published %+v, want %+v", got[i], want[i])
-		}
 	}
 }
 
 func (h *harness) wantCalls(want ...string) {
 	h.t.Helper()
 
-	got := h.spotify.takeCalls()
-	if strings.Join(got, ", ") != strings.Join(want, ", ") {
+	if got := h.spotify.takeCalls(); !slices.Equal(got, want) {
 		h.t.Fatalf("Spotify got %q, want %q", got, want)
+	}
+}
+
+func (h *harness) wantNextPoll(got, want time.Duration) {
+	h.t.Helper()
+
+	if got != want {
+		h.t.Fatalf("next poll in %v, want %v", got, want)
 	}
 }
 
@@ -201,11 +243,12 @@ func shown(state spotify.Playback, elapsed time.Duration, playing bool) media.In
 func TestPollShowsWhatPlays(t *testing.T) {
 	h := newHarness(t, soWhat)
 
-	if next := h.poll(); next != playingEvery {
-		t.Fatalf("next poll in %v, want %v", next, playingEvery)
-	}
+	h.wantNextPoll(h.poll(), playingEvery)
 	h.wantCalls("playback")
 	h.wantShown(shown(soWhat, time.Minute, true))
+	if h.spotify.timeout <= 0 || h.spotify.timeout > pollTimeout {
+		t.Fatalf("the poll could take %v, want at most %v, as keys wait for it", h.spotify.timeout, pollTimeout)
+	}
 }
 
 func TestPollWhenTheSongEnds(t *testing.T) {
@@ -213,9 +256,8 @@ func TestPollWhenTheSongEnds(t *testing.T) {
 	ending.Progress = ending.Duration - 2*time.Second
 	h := newHarness(t, ending)
 
-	if next := h.poll(); next != 3*time.Second {
-		t.Fatalf("next poll in %v, want 3s: a second after the song ends", next)
-	}
+	// A second after the song ends.
+	h.wantNextPoll(h.poll(), 3*time.Second)
 }
 
 func TestPollWhilePaused(t *testing.T) {
@@ -223,9 +265,7 @@ func TestPollWhilePaused(t *testing.T) {
 	paused.Playing = false
 	h := newHarness(t, paused)
 
-	if next := h.poll(); next != pausedEvery {
-		t.Fatalf("next poll in %v, want %v", next, pausedEvery)
-	}
+	h.wantNextPoll(h.poll(), pausedEvery)
 	h.wantShown(shown(soWhat, time.Minute, false))
 }
 
@@ -237,9 +277,7 @@ func TestPollKeepsTheLastSongPausedWhenNothingPlays(t *testing.T) {
 	// Spotify has no active device a while after a pause.
 	h.spotify.state = spotify.Playback{}
 	h.advance(10 * time.Second)
-	if next := h.poll(); next != pausedEvery {
-		t.Fatalf("next poll in %v, want %v", next, pausedEvery)
-	}
+	h.wantNextPoll(h.poll(), pausedEvery)
 	h.wantShown(shown(soWhat, time.Minute+10*time.Second, false))
 }
 
@@ -258,6 +296,25 @@ func TestPollKeepsWhatItShowsWhileSpotifyPlaysSomethingUnnamed(t *testing.T) {
 	h.spotify.state = spotify.Playback{Playing: true, Device: soloistDevice}
 	h.poll()
 	h.wantShown()
+}
+
+func TestPollBacksOffWhileItFails(t *testing.T) {
+	h := newHarness(t, soWhat)
+	h.spotify.err = errors.New("offline")
+
+	for _, want := range []time.Duration{pausedEvery, 2 * pausedEvery, 4 * pausedEvery, maxFailedEvery, maxFailedEvery} {
+		h.wantNextPoll(h.poll(), want)
+	}
+	for range 100 {
+		h.poll()
+	}
+	h.wantNextPoll(h.poll(), maxFailedEvery)
+	h.wantShown()
+
+	h.spotify.err = nil
+	h.wantNextPoll(h.poll(), playingEvery)
+	h.spotify.err = errors.New("offline")
+	h.wantNextPoll(h.poll(), pausedEvery)
 }
 
 func TestPlayPauseKeys(t *testing.T) {
@@ -288,9 +345,7 @@ func TestPlayPauseKeys(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			h := newHarness(t, tt.state)
 
-			if next := h.press(tt.key); next != followGrace {
-				t.Fatalf("next poll in %v, want %v", next, followGrace)
-			}
+			h.press(tt.key)
 			h.wantCalls(append([]string{"playback"}, tt.calls...)...)
 			h.wantShown(shown(soWhat, time.Minute, tt.playing))
 		})
@@ -340,23 +395,58 @@ func TestPlayPauseRightAfterAnotherGoesBack(t *testing.T) {
 
 func TestPollRightAfterAPlayPauseWaitsForSpotify(t *testing.T) {
 	h := newHarness(t, soWhat)
-	h.spotify.follows = false
 	h.press(media.TogglePlayPause)
 	h.spotify.takeCalls()
 	h.wantShown(shown(soWhat, time.Minute, false))
 
 	h.advance(time.Second)
-	if next := h.poll(); next != followGrace-time.Second {
-		t.Fatalf("next poll in %v, want %v", next, followGrace-time.Second)
-	}
+	h.wantNextPoll(h.poll(), followGrace-time.Second)
 	h.wantCalls()
 	h.wantShown()
 
-	h.spotify.follows = true
-	h.spotify.state.Playing = false
 	h.advance(followGrace)
-	h.poll()
+	h.wantNextPoll(h.poll(), pausedEvery)
 	h.wantCalls("playback")
+	h.wantShown(shown(soWhat, time.Minute, false))
+}
+
+func TestPollWaitsForSpotifyToPlayAfterALongPause(t *testing.T) {
+	h := newHarness(t, soWhat)
+	h.poll()
+	h.spotify.state = spotify.Playback{}
+	h.poll()
+	h.wantShown(shown(soWhat, time.Minute, true), shown(soWhat, time.Minute, false))
+
+	// Soloist takes a few seconds to play again: until then, Spotify has
+	// no active device.
+	h.spotify.follows = false
+	h.press(media.Play)
+	h.wantShown(shown(soWhat, time.Minute, true))
+	h.advance(followGrace)
+	h.wantNextPoll(h.poll(), settleEvery)
+	h.advance(settleEvery)
+	h.wantNextPoll(h.poll(), settleEvery)
+	h.wantShown()
+
+	h.spotify.state = soWhat
+	h.advance(settleEvery)
+	h.wantNextPoll(h.poll(), playingEvery)
+	h.wantShown(shown(soWhat, time.Minute, true))
+}
+
+func TestPollShowsWhatSpotifySaysOnceItDoesntFollowAPlay(t *testing.T) {
+	paused := soWhat
+	paused.Playing = false
+	h := newHarness(t, paused)
+	h.spotify.follows = false
+	h.press(media.Play)
+	h.wantShown(shown(soWhat, time.Minute, true))
+
+	h.advance(settleTimeout - time.Second)
+	h.wantNextPoll(h.poll(), settleEvery)
+	h.wantShown()
+	h.advance(time.Second)
+	h.wantNextPoll(h.poll(), pausedEvery)
 	h.wantShown(shown(soWhat, time.Minute, false))
 }
 
@@ -367,21 +457,17 @@ func TestSkipWaitsForSpotifyToPlayTheNextSong(t *testing.T) {
 		h.wantShown(shown(soWhat, time.Minute, true))
 		h.spotify.takeCalls()
 
-		h.spotify.skipTo, h.spotify.polls = freddie, 2
-		if next := h.press(key); next != skipEvery {
-			t.Fatalf("next poll in %v, want %v", next, skipEvery)
-		}
+		h.spotify.skipTo, h.spotify.lag = &freddie, []spotify.Playback{soWhat, {}}
+		h.press(key)
 		for range 2 {
-			if next := h.poll(); next != skipEvery {
-				t.Fatalf("next poll in %v while Spotify plays the song before, want %v", next, skipEvery)
-			}
+			// Spotify still plays the song before, and then reports
+			// nothing for a moment.
+			h.wantNextPoll(h.poll(), skipEvery)
 		}
 		h.wantShown()
-		if next := h.poll(); next != playingEvery {
-			t.Fatalf("next poll in %v once the next song plays, want %v", next, playingEvery)
-		}
+		h.wantNextPoll(h.poll(), playingEvery)
 		h.wantShown(shown(freddie, 0, true))
-		h.wantCalls(map[media.Command]string{media.NextTrack: "next", media.PreviousTrack: "previous"}[key], "playback", "playback", "playback")
+		h.wantCalls("playback", map[media.Command]string{media.NextTrack: "next", media.PreviousTrack: "previous"}[key], "playback", "playback", "playback")
 	}
 }
 
@@ -392,13 +478,28 @@ func TestSkipToTheStartOfTheSameSong(t *testing.T) {
 
 	restarted := soWhat
 	restarted.Progress = time.Second
-	h.spotify.skipTo = restarted
+	h.spotify.skipTo = &restarted
 	h.advance(time.Second)
 	h.press(media.PreviousTrack)
-	if next := h.poll(); next != playingEvery {
-		t.Fatalf("next poll in %v, want %v", next, playingEvery)
-	}
+	h.wantNextPoll(h.poll(), playingEvery)
 	h.wantShown(shown(soWhat, time.Second, true))
+}
+
+func TestSkipTellsFromWhatSpotifyReportedBeforeIt(t *testing.T) {
+	h := newHarness(t, soWhat)
+	h.poll()
+	h.wantShown(shown(soWhat, time.Minute, true))
+
+	// Spotify plays behind what Now Playing counts, as when Soloist took a
+	// moment to play: right before and right after the skip, it reports the
+	// same song where it was.
+	h.advance(10 * time.Second)
+	h.spotify.skipTo, h.spotify.lag = &freddie, []spotify.Playback{soWhat}
+	h.press(media.NextTrack)
+	h.wantNextPoll(h.poll(), skipEvery)
+	h.wantShown()
+	h.poll()
+	h.wantShown(shown(freddie, 0, true))
 }
 
 func TestSkipStopsWaitingForSpotify(t *testing.T) {
@@ -406,13 +507,12 @@ func TestSkipStopsWaitingForSpotify(t *testing.T) {
 	h.poll()
 	h.wantShown(shown(soWhat, time.Minute, true))
 
-	h.spotify.skipTo, h.spotify.polls = freddie, 100
 	h.press(media.NextTrack)
 	for range skipPolls - 1 {
-		h.poll()
+		h.wantNextPoll(h.poll(), skipEvery)
 	}
 	h.wantShown()
-	h.poll()
+	h.wantNextPoll(h.poll(), playingEvery)
 	h.wantShown(shown(soWhat, time.Minute, true))
 }
 
@@ -422,29 +522,25 @@ func TestPlayPauseAfterASkipAsksSpotify(t *testing.T) {
 	h.spotify.takeCalls()
 
 	// The pause it knows of doesn't hold after a skip.
-	h.spotify.skipTo = freddie
+	h.spotify.skipTo = &freddie
 	h.press(media.NextTrack)
 	h.press(media.TogglePlayPause)
-	h.wantCalls("next", "playback", "pause")
+	h.wantCalls("playback", "next", "playback", "pause")
 }
 
-func TestFailedKeysPollSoon(t *testing.T) {
+func TestFailedKeys(t *testing.T) {
 	h := newHarness(t, soWhat)
 	h.spotify.commandErr = errors.New("Restriction violated")
-	for _, key := range []media.Command{media.TogglePlayPause, media.NextTrack} {
-		if next := h.press(key); next != skipEvery {
-			t.Fatalf("next poll in %v after %d failed, want %v", next, key, skipEvery)
-		}
-	}
+	h.press(media.TogglePlayPause)
+	h.press(media.NextTrack)
+	h.wantCalls("playback", "pause", "playback", "next")
 	h.wantShown()
 
+	// A key that can't read what plays does nothing.
 	h.spotify.err = errors.New("offline")
-	if next := h.press(media.TogglePlayPause); next != skipEvery {
-		t.Fatalf("next poll in %v after Spotify didn't say what plays, want %v", next, skipEvery)
-	}
-	if next := h.poll(); next != pausedEvery {
-		t.Fatalf("next poll in %v after a failed poll, want %v", next, pausedEvery)
-	}
+	h.press(media.TogglePlayPause)
+	h.press(media.PreviousTrack)
+	h.wantCalls("playback", "playback")
 	h.wantShown()
 }
 
@@ -457,6 +553,7 @@ func TestErrorsThatRepeatAreLoggedOnce(t *testing.T) {
 	h.spotify.err = errors.New("offline")
 	h.poll()
 	h.poll()
+	h.press(media.TogglePlayPause)
 	h.spotify.err = nil
 	h.poll()
 	h.spotify.err = errors.New("offline")
@@ -464,6 +561,23 @@ func TestErrorsThatRepeatAreLoggedOnce(t *testing.T) {
 
 	if n := strings.Count(out.String(), "offline"); n != 2 {
 		t.Fatalf("logged %d errors, want 2:\n%s", n, out.String())
+	}
+}
+
+func TestLoggedOutEndsTheSession(t *testing.T) {
+	h := newHarness(t, soWhat)
+	h.spotify.err = revoked
+
+	if _, err := h.session.poll(context.Background()); !errors.Is(err, errLoggedOut) {
+		t.Fatalf("poll() = %v, want %v", err, errLoggedOut)
+	}
+	for _, key := range []media.Command{media.TogglePlayPause, media.NextTrack} {
+		if _, err := h.session.command(context.Background(), key); !errors.Is(err, errLoggedOut) {
+			t.Fatalf("command(%d) = %v, want %v", key, err, errLoggedOut)
+		}
+	}
+	if err := h.session.run(context.Background(), nil); !errors.Is(err, errLoggedOut) {
+		t.Fatalf("run() = %v, want %v", err, errLoggedOut)
 	}
 }
 
@@ -480,20 +594,20 @@ func TestRunRunsTheKeysUntilSoloistStops(t *testing.T) {
 	h.session.aliveEvery = 10 * time.Millisecond
 
 	commands := make(chan media.Command, 1)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		h.session.run(context.Background(), commands)
-	}()
+	done := make(chan error)
+	go func() { done <- h.session.run(context.Background(), commands) }()
 
 	commands <- media.TogglePlayPause
-	waitFor(t, func() bool { return h.spotify.contains("pause") })
+	waitFor(t, func() bool { return h.spotify.called("pause") })
 
 	stopped.Lock()
 	running = false
 	stopped.Unlock()
 	select {
-	case <-done:
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("run() = %v", err)
+		}
 	case <-time.After(time.Second):
 		t.Fatal("run() went on after Soloist stopped")
 	}
@@ -502,31 +616,19 @@ func TestRunRunsTheKeysUntilSoloistStops(t *testing.T) {
 func TestRunEndsWithItsContext(t *testing.T) {
 	h := newHarness(t, soWhat)
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		h.session.run(ctx, nil)
-	}()
+	done := make(chan error)
+	go func() { done <- h.session.run(ctx, nil) }()
 
-	waitFor(t, func() bool { return h.spotify.contains("playback") })
+	waitFor(t, func() bool { return h.spotify.called("playback") })
 	cancel()
 	select {
-	case <-done:
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("run() = %v", err)
+		}
 	case <-time.After(time.Second):
 		t.Fatal("run() went on after its context ended")
 	}
-}
-
-func (f *fakeSpotify) contains(call string) bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	for _, c := range f.calls {
-		if c == call {
-			return true
-		}
-	}
-	return false
 }
 
 func waitFor(t *testing.T, ok func() bool) {

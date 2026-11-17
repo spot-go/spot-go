@@ -1,7 +1,9 @@
 package background
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,7 +33,7 @@ func useTempFolder(t *testing.T) string {
 func startFake(t *testing.T, script string) int {
 	t.Helper()
 
-	p, err := start("sh", append([]string{"-c", script, "spot-go"}, args(4242, "soloist-device")...))
+	p, err := start("sh", append([]string{"-c", script, "spot-go"}, Args(4242, "soloist-device")...))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,10 +73,10 @@ func waitStopped(t *testing.T, pid int) {
 }
 
 func TestArgs(t *testing.T) {
-	got := args(4242, "soloist-device")
+	got := Args(4242, "soloist-device")
 	want := []string{"background", "--soloist", "4242", "--device", "soloist-device"}
 	if !slices.Equal(got, want) {
-		t.Fatalf("args() = %q, want %q", got, want)
+		t.Fatalf("Args() = %q, want %q", got, want)
 	}
 }
 
@@ -144,12 +146,51 @@ func TestStopWithNothingInTheBackground(t *testing.T) {
 	Stop()
 }
 
-func TestStartFailsWithoutThePidFile(t *testing.T) {
+func TestStartKillsWhatItCouldNotSave(t *testing.T) {
+	if _, err := exec.LookPath("pgrep"); err != nil {
+		t.Skip("pgrep is not installed")
+	}
 	dir := useTempFolder(t)
 	pidFile = filepath.Join(dir, "missing", "background.pid")
+	marker := fmt.Sprintf("spot-go-unsaved-%d", os.Getpid())
 
-	if _, err := start("sh", []string{"-c", "sleep 30"}); err == nil {
+	if _, err := start("sh", []string{"-c", "while :; do sleep 0.05; done", marker}); err == nil {
 		t.Fatal("start() = nil without a pid file the next run can stop it with")
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for exec.Command("pgrep", "-f", marker).Run() == nil {
+		if time.Now().After(deadline) {
+			t.Fatal("start() left running what no run of spot-go could stop")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestStartStopsTheOneBefore(t *testing.T) {
+	useTempFolder(t)
+	script := `echo started; while :; do sleep 0.05; done`
+	first := startFake(t, script)
+
+	// As when two runs of spot-go quit, one after the other.
+	second := startFake(t, script)
+	waitStopped(t, first)
+	if got, ok := pidInFile(); !ok || got != second {
+		t.Fatalf("pid file = %d, %t, want %d", got, ok, second)
+	}
+}
+
+func TestRunEndsWithoutTheSoloistLeftPlaying(t *testing.T) {
+	useTempFolder(t)
+	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// No Soloist runs with process ID -1, so Run ends before it logs in.
+	if err := Run(context.Background(), -1, ""); err != nil {
+		t.Fatalf("Run() = %v", err)
+	}
+	if _, err := os.Stat(pidFile); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Run() left its pid file: %v", err)
 	}
 }
 
