@@ -67,9 +67,7 @@ func searchAPI() *fakeAPI {
 func (h *harness) openSearchTab() {
 	h.t.Helper()
 
-	for h.player().activeTab > searchTab {
-		h.send(key("left"))
-	}
+	h.openTab(searchTab)
 }
 
 func (h *harness) searchTab() searchModel {

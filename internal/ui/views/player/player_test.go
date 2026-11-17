@@ -785,6 +785,18 @@ func newHarnessWith(t *testing.T, api *fakeAPI, width, height int) *harness {
 	return h
 }
 
+// openTab moves to tab with the arrow keys, left or right.
+func (h *harness) openTab(tab int) {
+	h.t.Helper()
+
+	for h.player().activeTab > tab {
+		h.send(key("left"))
+	}
+	for h.player().activeTab < tab {
+		h.send(key("right"))
+	}
+}
+
 func (h *harness) send(msgs ...tea.Msg) {
 	h.t.Helper()
 
@@ -1003,11 +1015,11 @@ func TestSpotGoOpensOnTheSearchTab(t *testing.T) {
 	}
 	h.wantView("⏸ So What — Miles Davis")
 
-	h.send(key("right"))
+	h.send(key("left"))
 	if got := h.player().activeTab; got != queueTab {
-		t.Fatalf("activeTab = %d, want the Queue tab right of Search", got)
+		t.Fatalf("activeTab = %d, want the Queue tab left of Search", got)
 	}
-	h.send(key("right"))
+	h.send(keys("right", "right")...)
 	h.wantView("Rock", "Jazz")
 	if h.playlistLoads != 1 {
 		t.Fatalf("playlists loaded %d times, want them loaded once", h.playlistLoads)
@@ -1272,7 +1284,7 @@ func TestOversizedTabContentIsClipped(t *testing.T) {
 	m.tabs[searchTab] = tab{name: "Search", content: tallModel{}}
 	h.model = m
 
-	h.send(keys("left", "left")...)
+	h.openSearchTab()
 
 	v := h.view()
 	if h.player().activeTab != searchTab || lipgloss.Height(v) > 24 || lipgloss.Width(v) > 80 || !strings.Contains(strings.SplitN(v, "\n", 3)[1], "Search") {

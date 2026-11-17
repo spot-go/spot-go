@@ -44,7 +44,7 @@ spot-go also starts Soloist with its local WebSocket API on `127.0.0.1`, on a po
 
 ## Keys
 
-- `←` and `→` switch tabs: Search, Queue, Playlists, Podcasts, Artists and Albums. spot-go opens on the Search tab.
+- `←` and `→` switch tabs: Queue, Search, Playlists, Podcasts, Artists and Albums. spot-go opens on the Search tab.
 - `↑` and `↓` move in the focused list.
 - `tab` moves between the list on the left and the list on the right: the songs of the selected playlist or album, the episodes of the selected podcast, or the albums of the selected artist.
 - `enter` plays the selected playlist or album from the start, the newest episode of the selected podcast, the selected artist, or the selected song, episode or album. On the Queue tab, it skips to the selected song or episode (see [Queue](#queue)).
@@ -109,7 +109,7 @@ Soloist writes what it does to `soloist.log` next to its binary, in spot-go's co
 
 ## Queue
 
-The Queue tab, right of Search, shows what Spotify plays on any device: the song or episode playing now on the left, and what plays next on the right, in order. The tab loads the queue when you open it, follows Spotify every 5 seconds while it is open, and loads it again right after a skip. `r` loads it again too.
+The Queue tab, the first one, left of Search, shows what Spotify plays on any device: the song or episode playing now on the left, and what plays next on the right, in order. The tab loads the queue when you open it, follows Spotify every 5 seconds while it is open, and loads it again right after a skip. `r` loads it again too.
 
 `enter` plays the selected song or episode by skipping to it, as in the Spotify app: Spotify skips the songs before it, and the songs after it stay in the queue. The Web API can't play an item of the queue directly, so spot-go reads the queue again, to find where the selected item is now, and asks Spotify to skip once for each item before it. If the item left the queue in the meantime, nothing is skipped. The player then shows what Spotify plays: from where, such as where you stopped an episode, and whether it plays or stays paused.
 

@@ -88,8 +88,8 @@ type (
 )
 
 const (
-	searchTab        = 0
-	queueTab         = 1
+	queueTab         = 0
+	searchTab        = 1
 	playlistsTab     = 2
 	podcastsTab      = 3
 	artistsTab       = 4
@@ -149,8 +149,9 @@ func NewModel(
 		playerContext: playerContext,
 		WindowSize:    windowSize,
 		tabs: []tab{
-			{name: "Search", content: newSearchModel(playerContext), initialized: true},
 			{name: "Queue", content: newQueueModel(playerContext)},
+			// spot-go opens on Search, the second tab.
+			{name: "Search", content: newSearchModel(playerContext), initialized: true},
 			// The Playlists tab loads at the start even though spot-go opens
 			// on Search: it follows what Spotify plays, for every tab.
 			{name: "Playlists", content: newPlaylistModel(playerContext, historyErr), initialized: true},

@@ -361,7 +361,7 @@ func TestLikedSongsLoadOnceThePlaylistsTabShows(t *testing.T) {
 		t.Fatalf("Liked Songs requests = %v before the Playlists tab showed, want none", got)
 	}
 
-	h.send(keys("right", "right")...)
+	h.openTab(playlistsTab)
 	if got := api.requestsFor(likedSongsKey); !reflect.DeepEqual(got, []string{"liked@0"}) {
 		t.Fatalf("Liked Songs requests = %v, want liked@0 once the tab shows", got)
 	}
