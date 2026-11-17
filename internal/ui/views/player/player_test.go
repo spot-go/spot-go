@@ -739,7 +739,7 @@ func newStoredModel(api *fakeAPI, width, height int, store *library.Store) Model
 	client := spotify.NewClient(&http.Client{Transport: api})
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: width, Height: height}}
 	m := NewModel(size, context.Background(), client, api.account(), &libspotify.PlayerDevice{ID: testDeviceID}, store, nil, nil, api)
-	// spot-go opens on the Search tab (see TestSpotGoOpensOnTheSearchTab),
+	// spot-go opens on the Queue tab (see TestSpotGoOpensOnTheQueueTab),
 	// but most tests start on the Playlists tab, which loads at the start.
 	m.activeTab = playlistsTab
 	m.confirmEvery = time.Millisecond
@@ -992,8 +992,9 @@ func TestPlaylistsLoad(t *testing.T) {
 	}
 }
 
-func TestSpotGoOpensOnTheSearchTab(t *testing.T) {
+func TestSpotGoOpensOnTheQueueTab(t *testing.T) {
 	api := soWhatOnPhone()
+	api.queue = []string{albumTrackJSON("Freddie Freeloader", "Miles Davis", 589000, true)}
 	client := spotify.NewClient(&http.Client{Transport: api})
 	size := views.WindowSize{WindowSizeMsg: tea.WindowSizeMsg{Width: 120, Height: 40}}
 	m := NewModel(size, context.Background(), client, &libspotify.PrivateUser{}, &libspotify.PlayerDevice{ID: testDeviceID}, nil, nil, nil, api)
@@ -1005,21 +1006,26 @@ func TestSpotGoOpensOnTheSearchTab(t *testing.T) {
 
 	h.run(m.Init())
 
-	if got := h.player().activeTab; got != searchTab {
-		t.Fatalf("activeTab = %d, want the Search tab", got)
+	if got := h.player().activeTab; got != queueTab {
+		t.Fatalf("activeTab = %d, want the Queue tab", got)
 	}
-	h.wantView(searchHelpText)
+	// The queue loads at the start, as when the tab is switched to, and
+	// again when the first poll reads what Spotify plays, as the tab
+	// follows Spotify while it shows.
+	h.wantQueueReads(2)
+	h.wantView("Next up", "1  Freddie Freeloader - Miles Davis")
 	// The Playlists tab still loads, to follow what Spotify plays.
 	if h.playlistLoads != 1 {
 		t.Fatalf("playlists loaded %d times, want 1", h.playlistLoads)
 	}
 	h.wantView("⏸ So What — Miles Davis")
 
-	h.send(key("left"))
-	if got := h.player().activeTab; got != queueTab {
-		t.Fatalf("activeTab = %d, want the Queue tab left of Search", got)
+	h.send(key("right"))
+	if got := h.player().activeTab; got != searchTab {
+		t.Fatalf("activeTab = %d, want the Search tab right of Queue", got)
 	}
-	h.send(keys("right", "right")...)
+	h.wantView(searchHelpText)
+	h.send(key("right"))
 	h.wantView("Rock", "Jazz")
 	if h.playlistLoads != 1 {
 		t.Fatalf("playlists loaded %d times, want them loaded once", h.playlistLoads)

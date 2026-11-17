@@ -347,7 +347,7 @@ func TestRefusedLikedSongsPlayIsConfirmed(t *testing.T) {
 func TestLikedSongsLoadOnceThePlaylistsTabShows(t *testing.T) {
 	api := withLikedSongs()
 	m := newModelWith(api, 120, 40)
-	m.activeTab = searchTab
+	m.activeTab = queueTab
 	playlists := m.tabs[playlistsTab].content.(playlistModel)
 	playlists.visible = false
 	m.tabs[playlistsTab].content = playlists
@@ -376,7 +376,7 @@ func TestLikedSongsLoadOnceThePlaylistsTabShows(t *testing.T) {
 func TestPlaylistSongsStillLoadOnAnotherTab(t *testing.T) {
 	api := newFakeAPI()
 	m := newModelWith(api, 120, 40)
-	m.activeTab = searchTab
+	m.activeTab = queueTab
 	playlists := m.tabs[playlistsTab].content.(playlistModel)
 	playlists.visible = false
 	m.tabs[playlistsTab].content = playlists

@@ -149,17 +149,17 @@ func NewModel(
 		playerContext: playerContext,
 		WindowSize:    windowSize,
 		tabs: []tab{
-			{name: "Queue", content: newQueueModel(playerContext)},
-			// spot-go opens on Search, the second tab.
-			{name: "Search", content: newSearchModel(playerContext), initialized: true},
+			// spot-go opens on the Queue tab, the first one.
+			{name: "Queue", content: newQueueModel(playerContext), initialized: true},
+			{name: "Search", content: newSearchModel(playerContext)},
 			// The Playlists tab loads at the start even though spot-go opens
-			// on Search: it follows what Spotify plays, for every tab.
+			// on Queue: it follows what Spotify plays, for every tab.
 			{name: "Playlists", content: newPlaylistModel(playerContext, historyErr), initialized: true},
 			{name: "Podcasts", content: newPodcastModel(playerContext, historyErr)},
 			{name: "Artists", content: newArtistModel(playerContext, historyErr)},
 			{name: "Albums", content: newAlbumModel(playerContext, historyErr)},
 		},
-		activeTab:     searchTab,
+		activeTab:     queueTab,
 		volumeSaver:   newVolumeSaver(saveVolume),
 		confirmEvery:  confirmPollEvery,
 		startPolls:    confirmPolls,
@@ -179,6 +179,9 @@ func (m Model) Init() tea.Cmd {
 			cmds = append(cmds, t.content.Init())
 		}
 	}
+	// The tab spot-go opens on shows from the start, as if switched to: the
+	// Queue tab loads the queue once it shows.
+	cmds = append(cmds, m.updateTab(m.activeTab, tabShown{}))
 	return tea.Batch(cmds...)
 }
 
