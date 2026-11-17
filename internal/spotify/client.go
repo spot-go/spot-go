@@ -70,8 +70,16 @@ type (
 		URI        spotify.URI `json:"uri"`
 		DurationMs int         `json:"duration_ms"`
 		IsPlayable *bool       `json:"is_playable"`
+		IsLocal    bool        `json:"is_local"`
 		Artists    []named     `json:"artists"`
 		Show       *named      `json:"show"`
+	}
+
+	savedTracksResponse struct {
+		Total int `json:"total"`
+		Items []struct {
+			Track *playable `json:"track"`
+		} `json:"items"`
 	}
 
 	named struct {
@@ -237,6 +245,34 @@ func (c Client) PlaylistItemsPage(ctx context.Context, playlistID spotify.ID, of
 	return page, nil
 }
 
+// LikedSongsPage returns the songs you liked, from offset, newest first, as
+// Liked Songs lists them in the Spotify app.
+func (c Client) LikedSongsPage(ctx context.Context, offset int) (PlaylistItemsPage, error) {
+	query := url.Values{
+		"limit":  {strconv.Itoa(maxItemsPerPage)},
+		"offset": {strconv.Itoa(offset)},
+		"market": {"from_token"},
+	}
+
+	var resp savedTracksResponse
+	if err := c.getJSON(ctx, c.baseURL+"me/tracks?"+query.Encode(), &resp); err != nil {
+		return PlaylistItemsPage{}, err
+	}
+
+	page := PlaylistItemsPage{
+		Items: make([]PlaylistItem, 0, len(resp.Items)),
+		Next:  offset + len(resp.Items),
+		Total: resp.Total,
+	}
+	page.Last = len(resp.Items) == 0 || page.Next >= resp.Total
+	for i, entry := range resp.Items {
+		if t := entry.Track; t != nil {
+			page.Items = append(page.Items, t.playlistItem(offset+i, t.IsLocal))
+		}
+	}
+	return page, nil
+}
+
 func (c Client) RecentlyPlayedPlaylists(ctx context.Context) ([]PlayedContext, error) {
 	return c.recentlyPlayed(ctx, "playlist")
 }
@@ -291,6 +327,8 @@ func (c Client) NowPlaying(ctx context.Context) (NowPlaying, error) {
 	playing := state
 	playing.Playing = true
 	if uri, ok := resp.Context.uriOf("playlist", "show", "album", "artist"); ok {
+		playing.Context = uri
+	} else if uri, ok := resp.Context.likedSongs(); ok {
 		playing.Context = uri
 	}
 	if item := resp.Item; item != nil {
@@ -396,6 +434,28 @@ func (c Client) PlayContext(ctx context.Context, deviceID spotify.ID, playbackCo
 	return c.play(ctx, deviceID, playbackContext, &spotify.PlaybackOffset{Position: &position})
 }
 
+// PlayContextFrom plays playbackContext from item, one of its songs, or from
+// the start when item is empty. Unlike a position, item keeps pointing at the
+// same song when songs are added before it.
+func (c Client) PlayContextFrom(ctx context.Context, deviceID spotify.ID, playbackContext, item spotify.URI) error {
+	var offset *spotify.PlaybackOffset
+	if item != "" {
+		offset = &spotify.PlaybackOffset{URI: item}
+	}
+	return c.play(ctx, deviceID, playbackContext, offset)
+}
+
+// PlaySongs plays songs, in order, without a context. It says to start from
+// the first one: given only the songs, Spotify may start from another one.
+func (c Client) PlaySongs(ctx context.Context, deviceID spotify.ID, songs []spotify.URI) error {
+	first := 0
+	opt := &spotify.PlayOptions{URIs: songs, PlaybackOffset: &spotify.PlaybackOffset{Position: &first}}
+	if deviceID != "" {
+		opt.DeviceID = &deviceID
+	}
+	return c.PlayOpt(ctx, opt)
+}
+
 func (c Client) PlayArtist(ctx context.Context, deviceID spotify.ID, artist spotify.URI) error {
 	return c.play(ctx, deviceID, artist, nil)
 }
@@ -490,6 +550,16 @@ func decodeError(resp *http.Response) error {
 
 func (c *playbackContext) uriOf(types ...string) (spotify.URI, bool) {
 	if c == nil || c.URI == "" || !slices.Contains(types, c.Type) {
+		return "", false
+	}
+	return c.URI, true
+}
+
+// likedSongs is the URI of Liked Songs, spotify:user:<id>:collection, when it
+// is the context. Your Episodes is a collection too, but its URI goes on,
+// with :your-episodes, and its episodes count as played from their show.
+func (c *playbackContext) likedSongs() (spotify.URI, bool) {
+	if c == nil || c.Type != "collection" || !strings.HasSuffix(string(c.URI), ":collection") {
 		return "", false
 	}
 	return c.URI, true

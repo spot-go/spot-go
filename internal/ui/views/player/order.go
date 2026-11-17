@@ -79,9 +79,21 @@ func sortItems(items []list.Item, order library.Order, history library.History) 
 
 	slices.SortStableFunc(sorted, func(a, b list.Item) int {
 		x, y := a.(item), b.(item)
-		return cmp.Or(compare(x, y), byIndex(x, y))
+		return cmp.Or(likedFirst(x, y), compare(x, y), byIndex(x, y))
 	})
 	return sorted
+}
+
+// likedFirst keeps Liked Songs above the playlists, as the Spotify app pins
+// it to the top of the library.
+func likedFirst(a, b item) int {
+	switch {
+	case a.liked == b.liked:
+		return 0
+	case a.liked:
+		return -1
+	}
+	return 1
 }
 
 func sortShows(items []list.Item, order library.Order, history library.History) []list.Item {
