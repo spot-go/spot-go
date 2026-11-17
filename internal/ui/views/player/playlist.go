@@ -1,6 +1,7 @@
 package player
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -41,6 +42,9 @@ type (
 		id                 libspotify.ID
 		uri                libspotify.URI
 		index              int
+		// liked marks Liked Songs, which comes first in every order, as
+		// in the Spotify app.
+		liked bool
 	}
 
 	playlistSongs struct {
@@ -125,6 +129,17 @@ const (
 )
 
 const (
+	// likedSongsID keys Liked Songs among the playlists. Playlist IDs have
+	// no dash.
+	likedSongsID = libspotify.ID("liked-songs")
+	likedSongs   = "Liked Songs"
+	// maxLikedSongsPlayed is how many songs spot-go sends to Spotify when
+	// it can't play Liked Songs as a context. The Web API rejects a long
+	// list as too large: 850 songs already fail.
+	maxLikedSongsPlayed = 100
+)
+
+const (
 	songsLoadDelay        = 150 * time.Millisecond
 	songsPageTimeout      = 45 * time.Second
 	playbackTimeout       = 15 * time.Second
@@ -185,8 +200,11 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case playlistsLoaded:
 		p.state = statePlaylistLoaded
 
-		items := make([]list.Item, 0, len(msg.playlists))
+		items := make([]list.Item, 0, len(msg.playlists)+1)
 		uris := make([]libspotify.URI, 0, len(msg.playlists))
+		if liked, ok := p.likedSongsItem(); ok {
+			items = append(items, liked)
+		}
 		for i, pl := range msg.playlists {
 			title := pl.Name
 			if title == "" {
@@ -509,12 +527,19 @@ func (p playlistModel) fetchSongs(playlistID libspotify.ID, gen, offset int) tea
 		ctx, cancel := context.WithTimeout(p.ctx, songsPageTimeout)
 		defer cancel()
 
-		page, err := p.spotifyClient.PlaylistItemsPage(ctx, playlistID, offset)
+		page, err := p.songsPage(ctx, playlistID, offset)
 		if err != nil {
 			return songsLoadFailed{playlistID, gen, err}
 		}
 		return songsPageLoaded{playlistID, gen, page}
 	}
+}
+
+func (p playlistModel) songsPage(ctx context.Context, playlistID libspotify.ID, offset int) (spotify.PlaylistItemsPage, error) {
+	if playlistID == likedSongsID {
+		return p.spotifyClient.LikedSongsPage(ctx, offset)
+	}
+	return p.spotifyClient.PlaylistItemsPage(ctx, playlistID, offset)
 }
 
 func (p playlistModel) addSongsPage(msg songsPageLoaded) tea.Cmd {
@@ -560,7 +585,7 @@ func (p playlistModel) failSongs(msg songsLoadFailed) {
 	}
 	songs.state = stateSongsError
 	var apiErr libspotify.Error
-	if errors.As(msg.err, &apiErr) && apiErr.Status == http.StatusForbidden {
+	if msg.playlistID != likedSongsID && errors.As(msg.err, &apiErr) && apiErr.Status == http.StatusForbidden {
 		songs.state = stateSongsForbidden
 	}
 }
@@ -629,13 +654,14 @@ func (p playlistModel) play() (playlistModel, tea.Cmd) {
 	}
 
 	position, started := 0, playbackStarted{name: playlist.title, uri: playlist.uri}
+	var from *spotify.PlaylistItem
 	if !p.leftFocus {
 		if song, ok := p.selectedSong(); ok {
 			if !song.Playable {
 				p.playback = playbackStatus{seq: p.playback.seq + 1, text: unplayableReason(song), err: true}
 				return p, nil
 			}
-			position = song.Position
+			position, from = song.Position, &song
 			started.name, started.artist, started.duration, started.item = song.Name, song.Artist(), song.Duration, song.URI
 		}
 	}
@@ -643,6 +669,9 @@ func (p playlistModel) play() (playlistModel, tea.Cmd) {
 	*p.plays++
 	p.playback = playbackStatus{seq: p.playback.seq + 1, text: "Starting " + started.name + "...", starting: true}
 	started.seq = p.playback.seq
+	if playlist.liked {
+		return p, p.startLikedSongs(started, from)
+	}
 	return p, p.startPlayback(started, position)
 }
 
@@ -661,6 +690,85 @@ func (p playlistModel) startPlayback(started playbackStarted, position int) tea.
 		}
 		return started
 	}
+}
+
+// startLikedSongs plays Liked Songs from the start, or from song. The Web API
+// only documents albums, artists and playlists as contexts, but plays Liked
+// Songs too, as spotify:user:<id>:collection, and then Spotify shows it plays
+// from Liked Songs. It may refuse a song to start from in it, as it only
+// documents that for albums and playlists. When it refuses, spot-go plays the
+// songs it loaded instead, from the one to start from, without a context.
+func (p playlistModel) startLikedSongs(started playbackStarted, song *spotify.PlaylistItem) tea.Cmd {
+	var deviceID libspotify.ID
+	if p.playerDevice != nil {
+		deviceID = p.playerDevice.ID
+	}
+	var item libspotify.URI
+	if song != nil {
+		item = cmp.Or(song.LinkedFrom, song.URI)
+	}
+	songs := p.likedSongsFrom(song)
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(p.ctx, playbackTimeout)
+		defer cancel()
+
+		err := p.spotifyClient.PlayContextFrom(ctx, deviceID, started.uri, item)
+		var apiErr libspotify.Error
+		if errors.As(err, &apiErr) && apiErr.Status == http.StatusBadRequest && len(songs) > 0 {
+			if err = p.spotifyClient.PlaySongs(ctx, deviceID, songs); err == nil {
+				started.uri = ""
+			}
+		}
+		if err != nil {
+			return playbackFailed{started.seq, err}
+		}
+		return started
+	}
+}
+
+// likedSongsFrom lists the loaded songs of Liked Songs that Spotify can play,
+// from song, or from the first one when song is nil.
+func (p playlistModel) likedSongsFrom(song *spotify.PlaylistItem) []libspotify.URI {
+	loaded := p.songs[likedSongsID]
+	if loaded == nil || loaded.list == nil {
+		return nil
+	}
+	start := 0
+	if song != nil {
+		start = loaded.list.Index()
+	}
+	var uris []libspotify.URI
+	for _, li := range loaded.list.Items()[min(start, len(loaded.list.Items())):] {
+		if s, ok := li.(songItem); ok && s.Playable {
+			uris = append(uris, s.URI)
+			if len(uris) == maxLikedSongsPlayed {
+				break
+			}
+		}
+	}
+	return uris
+}
+
+// likedSongsItem is Liked Songs in the list of playlists. It needs the ID of
+// the user, as the URI that plays it has it.
+func (p playlistModel) likedSongsItem() (item, bool) {
+	user := p.spotifyUser
+	if user == nil || user.ID == "" {
+		return item{}, false
+	}
+	uri := user.URI
+	if uri == "" {
+		uri = libspotify.URI("spotify:user:" + user.ID)
+	}
+	return item{
+		title: likedSongs,
+		owner: cmp.Or(user.DisplayName, user.ID),
+		id:    likedSongsID,
+		uri:   uri + ":collection",
+		index: -1,
+		liked: true,
+	}, true
 }
 
 func (msg playbackStarted) info() media.Info {
