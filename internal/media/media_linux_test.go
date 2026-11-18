@@ -36,6 +36,11 @@ func TestMetadata(t *testing.T) {
 			"xesam:artist":  dbus.MakeVariant([]string{"Miles Davis"}),
 			"mpris:length":  dbus.MakeVariant(int64(562000000)),
 		}},
+		{"song with its artwork", Info{ID: "spotify:track:so-what", Title: "So What", Artwork: "https://i.scdn.co/image/kind-of-blue"}, map[string]dbus.Variant{
+			"mpris:trackid": dbus.MakeVariant(soWhat),
+			"xesam:title":   dbus.MakeVariant("So What"),
+			"mpris:artUrl":  dbus.MakeVariant("https://i.scdn.co/image/kind-of-blue"),
+		}},
 		{"playlist without a song", Info{Title: "Rock"}, map[string]dbus.Variant{
 			"mpris:trackid": dbus.MakeVariant(rock),
 			"xesam:title":   dbus.MakeVariant("Rock"),

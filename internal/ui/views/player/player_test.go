@@ -71,6 +71,8 @@ type (
 		playingName    string
 		progressMs     int
 		durationMs     int
+		// covers gives what plays a cover, at coverURL.
+		covers         bool
 		shows          []string
 		showsStatus    int
 		showRequests   int
@@ -314,7 +316,7 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 			device = fmt.Sprintf(`{"id":%q,"name":%q,"volume_percent":%d,"supports_volume":%t}`, f.device, f.deviceName, f.volume, !f.noVolume)
 		}
 		if f.playingItem != "" {
-			item = fmt.Sprintf(`{"uri":%q,"name":%q,"duration_ms":%d,"artists":[%s]}`, f.playingItem, f.playingName, f.durationMs, f.artistsJSON())
+			item = fmt.Sprintf(`{"uri":%q,"name":%q,"duration_ms":%d,"artists":[%s],"album":{"images":[%s]}}`, f.playingItem, f.playingName, f.durationMs, f.artistsJSON(), f.coverJSON())
 		}
 		switch f.playingType {
 		case "show", "album", "artist", "collection":
@@ -324,7 +326,7 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 			context = "null"
 		case "episode":
 			context = "null"
-			item = fmt.Sprintf(`{"type":"episode","uri":%q,"name":%q,"duration_ms":%d,"show":{"uri":%q}}`, f.playingItem, f.playingName, f.durationMs, f.playing)
+			item = fmt.Sprintf(`{"type":"episode","uri":%q,"name":%q,"duration_ms":%d,"images":[%s],"show":{"uri":%q}}`, f.playingItem, f.playingName, f.durationMs, f.coverJSON(), f.playing)
 		}
 		repeat := "off"
 		if f.repeat != "" {
@@ -566,6 +568,20 @@ func (f *fakeAPI) account() *libspotify.PrivateUser {
 		return &libspotify.PrivateUser{}
 	}
 	return &libspotify.PrivateUser{User: libspotify.User{ID: f.user, URI: libspotify.URI("spotify:user:" + f.user), DisplayName: "Chico"}}
+}
+
+// coverURL is the URL of the cover of item, when the fake API gives covers.
+func coverURL(item string) string {
+	return "https://i.scdn.co/image/" + strings.ReplaceAll(item, ":", "-")
+}
+
+// coverJSON is the cover of what plays, in the sizes Spotify gives.
+func (f *fakeAPI) coverJSON() string {
+	if !f.covers {
+		return ""
+	}
+	url := coverURL(f.playingItem)
+	return fmt.Sprintf(`{"url":%q,"width":640,"height":640},{"url":%q,"width":300,"height":300},{"url":%q,"width":64,"height":64}`, url+"-640", url, url+"-64")
 }
 
 func (f *fakeAPI) artistsJSON() string {

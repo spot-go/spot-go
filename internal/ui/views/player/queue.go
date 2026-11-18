@@ -58,6 +58,7 @@ type (
 		item     libspotify.URI
 		name     string
 		artist   string
+		artwork  string
 		duration time.Duration
 		from     time.Duration
 		paused   bool
@@ -297,6 +298,7 @@ func (q queueModel) skipTo(seq, plays int, song spotify.PlaylistItem) tea.Cmd {
 			if state.Item == song.URI && (!again || state.Progress < followGrace) {
 				started.from, started.paused = state.Progress, !state.Playing
 				started.duration = cmp.Or(state.Duration, started.duration)
+				started.artwork = state.Artwork
 				break
 			}
 		}
@@ -323,7 +325,7 @@ func queuePosition(items []spotify.PlaylistItem, song spotify.PlaylistItem) (int
 }
 
 func (msg queuePlaybackStarted) info() media.Info {
-	return media.Info{Title: msg.name, Artist: msg.artist, Duration: msg.duration, Elapsed: msg.from, Playing: !msg.paused}
+	return media.Info{Title: msg.name, Artist: msg.artist, Artwork: msg.artwork, Duration: msg.duration, Elapsed: msg.from, Playing: !msg.paused}
 }
 
 func (q queueModel) View() tea.View {
