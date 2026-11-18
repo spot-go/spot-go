@@ -330,6 +330,7 @@ func (s *session) show(state spotify.Playback) {
 		ID:       string(state.Item),
 		Title:    state.Name,
 		Artist:   state.Artist,
+		Artwork:  state.Artwork,
 		Duration: state.Duration,
 		Elapsed:  state.Progress,
 		Playing:  state.Playing,

@@ -33,6 +33,7 @@ type (
 		device   libspotify.ID
 		name     string
 		artist   string
+		artwork  string
 		item     libspotify.URI
 		progress time.Duration
 		duration time.Duration
@@ -158,6 +159,7 @@ func (m Model) knownPlayback() (spotify.Playback, bool) {
 		Item:     known.item,
 		Name:     known.name,
 		Artist:   known.artist,
+		Artwork:  known.artwork,
 		Progress: known.position(since),
 		Duration: known.duration,
 	}, fresh
@@ -289,6 +291,7 @@ func toggledFrom(state spotify.Playback, plays, settled int) playbackToggled {
 		device:   state.Device,
 		name:     state.Name,
 		artist:   state.Artist,
+		artwork:  state.Artwork,
 		item:     state.Item,
 		progress: state.Progress,
 		duration: state.Duration,
@@ -320,5 +323,5 @@ func (m Model) playbackToggled(msg playbackToggled) Model {
 }
 
 func (t playbackToggled) info() media.Info {
-	return media.Info{Title: t.name, Artist: t.artist, Duration: t.duration, Elapsed: t.progress, Playing: !t.paused}
+	return media.Info{Title: t.name, Artist: t.artist, Artwork: t.artwork, Duration: t.duration, Elapsed: t.progress, Playing: !t.paused}
 }

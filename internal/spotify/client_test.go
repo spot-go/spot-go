@@ -162,10 +162,14 @@ func TestPlayback(t *testing.T) {
 		want   Playback
 		err    bool
 	}{
-		{"playing", http.StatusOK, `{"is_playing":true,"progress_ms":60000,"device":{"id":"phone"},"item":{"type":"track","uri":"spotify:track:t","name":"Paranoid","duration_ms":168000,"artists":[{"name":"Black Sabbath"},{"name":"Ozzy"}]}}`,
-			Playback{Playing: true, Device: "phone", Item: "spotify:track:t", Name: "Paranoid", Artist: "Black Sabbath, Ozzy", Progress: time.Minute, Duration: 168 * time.Second}, false},
-		{"paused episode", http.StatusOK, `{"is_playing":false,"device":{"id":"phone"},"context":null,"item":{"type":"episode","uri":"spotify:episode:e","name":"E","show":{"uri":"spotify:show:s","name":"The Daily"}}}`,
-			Playback{Device: "phone", Item: "spotify:episode:e", Name: "E", Artist: "The Daily"}, false},
+		{"playing", http.StatusOK, `{"is_playing":true,"progress_ms":60000,"device":{"id":"phone"},"item":{"type":"track","uri":"spotify:track:t","name":"Paranoid","duration_ms":168000,"artists":[{"name":"Black Sabbath"},{"name":"Ozzy"}],"album":{"images":[{"url":"https://i.scdn.co/image/640","width":640,"height":640},{"url":"https://i.scdn.co/image/300","width":300,"height":300},{"url":"https://i.scdn.co/image/64","width":64,"height":64}]}}}`,
+			Playback{Playing: true, Device: "phone", Item: "spotify:track:t", Name: "Paranoid", Artist: "Black Sabbath, Ozzy", Artwork: "https://i.scdn.co/image/300", Progress: time.Minute, Duration: 168 * time.Second}, false},
+		{"local song", http.StatusOK, `{"is_playing":true,"device":{"id":"phone"},"item":{"type":"track","uri":"spotify:local:a:b:c:1","name":"Demo","is_local":true,"album":{"images":[]}}}`,
+			Playback{Playing: true, Device: "phone", Item: "spotify:local:a:b:c:1", Name: "Demo"}, false},
+		{"paused episode", http.StatusOK, `{"is_playing":false,"device":{"id":"phone"},"context":null,"item":{"type":"episode","uri":"spotify:episode:e","name":"E","images":[{"url":"https://i.scdn.co/image/episode","width":640,"height":640}],"show":{"uri":"spotify:show:s","name":"The Daily","images":[{"url":"https://i.scdn.co/image/show","width":640,"height":640}]}}}`,
+			Playback{Device: "phone", Item: "spotify:episode:e", Name: "E", Artist: "The Daily", Artwork: "https://i.scdn.co/image/episode"}, false},
+		{"episode without images", http.StatusOK, `{"is_playing":true,"device":{"id":"phone"},"context":null,"item":{"type":"episode","uri":"spotify:episode:e","name":"E","images":[],"show":{"uri":"spotify:show:s","name":"The Daily","images":[{"url":"https://i.scdn.co/image/show","width":300,"height":300}]}}}`,
+			Playback{Playing: true, Device: "phone", Item: "spotify:episode:e", Name: "E", Artist: "The Daily", Artwork: "https://i.scdn.co/image/show"}, false},
 		{"no item", http.StatusOK, `{"is_playing":false,"device":{"id":"phone"},"item":null}`, Playback{Device: "phone"}, false},
 		{"volume", http.StatusOK, `{"is_playing":true,"device":{"id":"phone","volume_percent":55,"supports_volume":true}}`,
 			Playback{Playing: true, Device: "phone", Volume: 55, SupportsVolume: true}, false},
@@ -196,6 +200,55 @@ func TestPlayback(t *testing.T) {
 				t.Fatalf("Playback = %+v, %v, want %+v, error %v", got, err, tt.want, tt.err)
 			}
 		})
+	}
+}
+
+func TestNowPlayingArtwork(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"song", `{"is_playing":true,"item":{"type":"track","uri":"spotify:track:t","name":"Paranoid","album":{"images":[{"url":"https://i.scdn.co/image/640","width":640,"height":640},{"url":"https://i.scdn.co/image/300","width":300,"height":300}]}}}`, "https://i.scdn.co/image/300"},
+		{"episode", `{"is_playing":true,"item":{"type":"episode","uri":"spotify:episode:e","name":"E","images":[{"url":"https://i.scdn.co/image/episode","width":300,"height":300}],"show":{"uri":"spotify:show:s","images":[{"url":"https://i.scdn.co/image/show","width":300,"height":300}]}}}`, "https://i.scdn.co/image/episode"},
+		{"no images", `{"is_playing":true,"item":{"type":"track","uri":"spotify:track:t","name":"Paranoid"}}`, ""},
+		// Now Playing keeps what it showed while paused.
+		{"paused", `{"is_playing":false,"item":{"type":"track","uri":"spotify:track:t","name":"Paranoid","album":{"images":[{"url":"https://i.scdn.co/image/300","width":300,"height":300}]}}}`, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := testClient(func(r *http.Request) *http.Response {
+				return jsonResponse(r, http.StatusOK, tt.body)
+			})
+
+			got, err := c.NowPlaying(context.Background())
+
+			if err != nil || got.Artwork != tt.want {
+				t.Fatalf("NowPlaying artwork = %q, %v, want %q", got.Artwork, err, tt.want)
+			}
+		})
+	}
+}
+
+func TestArtworkPicksTheSmallestImageWideEnough(t *testing.T) {
+	tests := []struct {
+		name   string
+		images []image
+		want   string
+	}{
+		{"none", nil, ""},
+		{"widest first", []image{{"640", 640}, {"300", 300}, {"64", 64}}, "300"},
+		{"narrowest first", []image{{"64", 64}, {"300", 300}, {"640", 640}}, "300"},
+		{"only bigger ones", []image{{"1000", 1000}, {"640", 640}}, "640"},
+		{"only smaller ones", []image{{"64", 64}, {"200", 200}}, "200"},
+		{"unknown width", []image{{"unknown", 0}}, "unknown"},
+		{"unknown width and a known one", []image{{"unknown", 0}, {"64", 64}}, "64"},
+		{"no URL", []image{{"", 300}, {"64", 64}}, "64"},
+	}
+	for _, tt := range tests {
+		if got := artwork(tt.images); got != tt.want {
+			t.Errorf("%s: artwork = %q, want %q", tt.name, got, tt.want)
+		}
 	}
 }
 

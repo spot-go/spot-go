@@ -94,11 +94,13 @@ type (
 	}
 
 	NowPlaying struct {
-		Playing        bool
-		Context        spotify.URI
-		Item           spotify.URI
-		Name           string
-		Artist         string
+		Playing bool
+		Context spotify.URI
+		Item    spotify.URI
+		Name    string
+		Artist  string
+		// Artwork is the URL of the cover of Item: see Playback.Artwork.
+		Artwork        string
 		Progress       time.Duration
 		Duration       time.Duration
 		PausedItem     spotify.URI
@@ -112,12 +114,16 @@ type (
 	}
 
 	Playback struct {
-		Playing        bool
-		Device         spotify.ID
-		DeviceName     string
-		Item           spotify.URI
-		Name           string
-		Artist         string
+		Playing    bool
+		Device     spotify.ID
+		DeviceName string
+		Item       spotify.URI
+		Name       string
+		Artist     string
+		// Artwork is the URL of the cover of Item: its album for a song, or
+		// the episode's image, or else its show's. It is empty when Spotify
+		// has none, as for a local file.
+		Artwork        string
 		Progress       time.Duration
 		Duration       time.Duration
 		Volume         int
@@ -150,10 +156,21 @@ type (
 		Name       string      `json:"name"`
 		DurationMs int         `json:"duration_ms"`
 		Artists    []named     `json:"artists"`
-		Show       *struct {
-			URI  spotify.URI `json:"uri"`
-			Name string      `json:"name"`
+		Album      *struct {
+			Images []image `json:"images"`
+		} `json:"album"`
+		// Images are those of an episode.
+		Images []image `json:"images"`
+		Show   *struct {
+			URI    spotify.URI `json:"uri"`
+			Name   string      `json:"name"`
+			Images []image     `json:"images"`
 		} `json:"show"`
+	}
+
+	image struct {
+		URL   string `json:"url"`
+		Width int    `json:"width"`
 	}
 
 	playbackContext struct {
@@ -165,6 +182,11 @@ type (
 const (
 	cacheKeyAllCurrentUsersPlaylists = "AllCurrentUsersPlaylists"
 )
+
+// artworkWidth is how wide, in pixels, the cover of what plays should be at
+// least: Spotify gives a cover in a few sizes, usually 640, 300 and 64
+// pixels wide, and Now Playing shows it at up to about 150 points.
+const artworkWidth = 300
 
 const (
 	// RepeatOff plays the context once.
@@ -333,6 +355,7 @@ func (c Client) NowPlaying(ctx context.Context) (NowPlaying, error) {
 	}
 	if item := resp.Item; item != nil {
 		playing.Item, playing.Name, playing.Artist = item.URI, item.Name, item.artist()
+		playing.Artwork = item.artwork()
 		playing.Progress = time.Duration(resp.ProgressMs) * time.Millisecond
 		playing.Duration = time.Duration(item.DurationMs) * time.Millisecond
 		if playing.Context == "" && item.Show != nil {
@@ -358,6 +381,7 @@ func (c Client) Playback(ctx context.Context) (Playback, error) {
 	playback.Device, playback.Volume, playback.SupportsVolume = resp.deviceVolume()
 	if resp.Item != nil {
 		playback.Item, playback.Name, playback.Artist = resp.Item.URI, resp.Item.Name, resp.Item.artist()
+		playback.Artwork = resp.Item.artwork()
 		playback.Duration = time.Duration(resp.Item.DurationMs) * time.Millisecond
 	}
 	return playback, nil
@@ -390,6 +414,37 @@ func (i playerItem) artist() string {
 		return i.Show.Name
 	}
 	return strings.Join(names, ", ")
+}
+
+// artwork is the URL of the cover of the item: its album's for a song, and
+// for an episode its own, or else its show's.
+func (i playerItem) artwork() string {
+	switch {
+	case i.Album != nil:
+		return artwork(i.Album.Images)
+	case len(i.Images) > 0:
+		return artwork(i.Images)
+	case i.Show != nil:
+		return artwork(i.Show.Images)
+	}
+	return ""
+}
+
+// artwork is the URL of the smallest of images at least artworkWidth wide,
+// or else of the widest. An image of unknown width counts only when no other
+// has a URL.
+func artwork(images []image) string {
+	var best image
+	for _, img := range images {
+		switch {
+		case img.URL == "":
+		case best.URL == "",
+			img.Width >= artworkWidth && (best.Width < artworkWidth || img.Width < best.Width),
+			best.Width < artworkWidth && img.Width > best.Width:
+			best = img
+		}
+	}
+	return best.URL
 }
 
 func (c Client) ResumePlayback(ctx context.Context, deviceID spotify.ID) error {
