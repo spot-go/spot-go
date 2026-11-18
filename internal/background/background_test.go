@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,10 +21,11 @@ func useTempFolder(t *testing.T) string {
 	t.Helper()
 
 	dir := t.TempDir()
-	oldPid, oldLog, oldTimeout := pidFile, logFile, stopTimeout
+	oldPid, oldLog, oldProgram, oldTimeout := pidFile, logFile, programFolder, stopTimeout
 	pidFile = filepath.Join(dir, "background.pid")
 	logFile = filepath.Join(dir, "background.log")
-	t.Cleanup(func() { pidFile, logFile, stopTimeout = oldPid, oldLog, oldTimeout })
+	programFolder = filepath.Join(dir, Command)
+	t.Cleanup(func() { pidFile, logFile, programFolder, stopTimeout = oldPid, oldLog, oldProgram, oldTimeout })
 	return dir
 }
 
@@ -219,5 +221,90 @@ func TestForgetRemovesOnlyItsOwnPid(t *testing.T) {
 	forget()
 	if _, err := os.Stat(pidFile); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("forget() left its own pid file: %v", err)
+	}
+}
+
+// writeProgram writes a program, which is only text for the tests, at path.
+func writeProgram(t *testing.T, path, text string) {
+	t.Helper()
+
+	if err := os.WriteFile(path, []byte(text), 0755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func wantFile(t *testing.T, path, text string) {
+	t.Helper()
+
+	if b, err := os.ReadFile(path); err != nil || string(b) != text {
+		t.Fatalf("%s = %q, %v, want %q", path, b, err, text)
+	}
+}
+
+func TestKeepCopiesTheProgram(t *testing.T) {
+	dir := useTempFolder(t)
+	exe := filepath.Join(t.TempDir(), "exe", "spot-go")
+	if err := os.MkdirAll(filepath.Dir(exe), 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeProgram(t, exe, "spot-go v1")
+
+	kept := keep(exe)
+
+	if want := filepath.Join(dir, Command, "spot-go"); kept != want {
+		t.Fatalf("keep() = %q, want %q", kept, want)
+	}
+	wantFile(t, kept, "spot-go v1")
+	info, err := os.Stat(kept)
+	if err != nil || info.Mode().Perm() != 0700 {
+		t.Fatalf("the copy has mode %v, %v, want 0700", info.Mode().Perm(), err)
+	}
+	// go run removes the program it built once spot-go quits.
+	if err := os.Remove(exe); err != nil {
+		t.Fatal(err)
+	}
+	wantFile(t, kept, "spot-go v1")
+}
+
+func TestKeepReplacesTheCopyBefore(t *testing.T) {
+	useTempFolder(t)
+	exe := filepath.Join(t.TempDir(), "spot-go")
+	writeProgram(t, exe, "spot-go v1")
+	kept := keep(exe)
+	// spot-go in the background still runs from the copy before.
+	running, err := os.Open(kept)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer running.Close()
+
+	writeProgram(t, exe, "spot-go v2")
+	if again := keep(exe); again != kept {
+		t.Fatalf("keep() = %q, want %q again", again, kept)
+	}
+
+	wantFile(t, kept, "spot-go v2")
+	if b, err := io.ReadAll(running); err != nil || string(b) != "spot-go v1" {
+		t.Fatalf("the copy before = %q, %v, want it untouched", b, err)
+	}
+	entries, err := os.ReadDir(programFolder)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("%s has %v, %v, want only spot-go", programFolder, entries, err)
+	}
+}
+
+func TestKeepRunsTheProgramWithoutACopy(t *testing.T) {
+	dir := useTempFolder(t)
+	exe := filepath.Join(t.TempDir(), "spot-go")
+	writeProgram(t, exe, "spot-go v1")
+	// A file where the folder of the copy should be.
+	programFolder = filepath.Join(dir, "file")
+	writeProgram(t, programFolder, "")
+
+	if got := keep(exe); got != exe {
+		t.Fatalf("keep() = %q, want %q", got, exe)
+	}
+	if got := keep(filepath.Join(dir, "missing")); got != filepath.Join(dir, "missing") {
+		t.Fatalf("keep() of a missing program = %q, want it", got)
 	}
 }
