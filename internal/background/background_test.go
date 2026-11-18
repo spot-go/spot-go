@@ -282,8 +282,11 @@ func TestKeepCopiesWhatGoRunBuilt(t *testing.T) {
 	}
 	wantFile(t, kept, "spot-go v1")
 	info, err := os.Stat(kept)
-	if err != nil || info.Mode().Perm() != 0700 {
-		t.Fatalf("the copy has mode %v, %v, want 0700", info.Mode().Perm(), err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode := info.Mode().Perm(); mode != 0700 {
+		t.Fatalf("the copy has mode %v, want 0700", mode)
 	}
 	// go run removes the program it built once spot-go quits.
 	if err := os.Remove(exe); err != nil {
