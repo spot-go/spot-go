@@ -116,7 +116,7 @@ Soloist plays the music, but it is spot-go that shows it in Now Playing and take
 
 spot-go in the background ends when the Soloist left playing stops, and when spot-go runs again, which takes over the keys. It also ends when Spotify no longer takes spot-go's login, and on Linux when the D-Bus session bus goes away, as when you log out. With no session bus, as over SSH, or on macOS when spot-go was built without cgo, there are no media keys to take, so it ends right away. To end it yourself, run `pkill -f 'spot-go background'`, or, on macOS, quit the `spot-go` process in Activity Monitor while spot-go itself isn't open.
 
-It writes the errors it hits, such as a key Spotify refused, to `background.log`, next to `soloist.log`. spot-go empties the file each time it starts in the background. It runs from a copy of spot-go, in the `background` folder next to it, which spot-go makes again each time it starts in the background: `go run .` removes the program it builds once spot-go quits, and macOS no longer shows in Now Playing, nor sends the media keys to, a program whose file is gone.
+It writes the errors it hits, such as a key Spotify refused, to `background.log`, next to `soloist.log`. spot-go empties the file each time it starts in the background. When spot-go runs with `go run .`, spot-go in the background runs from a copy of it, in the `background` folder next to that file: go run removes the program it builds once spot-go quits, and macOS no longer shows in Now Playing, nor sends the media keys to, a program whose file is gone. spot-go makes the copy again each time it starts in the background that way, and removes it the next time it starts in the background from a program go run didn't build, such as one built with `go build`.
 
 ## Queue
 

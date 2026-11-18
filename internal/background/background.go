@@ -72,17 +72,38 @@ func Start(soloistPid int, device string) error {
 	return nil
 }
 
-// keep copies spot-go, the program at exe, to a folder of its own, and
-// returns the copy, which spot-go in the background runs. `go run` removes
-// the program it built once spot-go quits, and macOS then no longer shows in
-// Now Playing, nor sends the media keys to, the program that still runs from
-// it. Without a copy, spot-go in the background runs exe.
+// keep returns the program spot-go in the background runs: exe, spot-go
+// itself, or a copy of it when `go run` built it. go run removes the program
+// it built once spot-go quits, and macOS then no longer shows in Now Playing,
+// nor sends the media keys to, the program that still runs from it. Without
+// a copy, spot-go in the background runs exe. A copy that an earlier go run
+// left goes away once spot-go runs from elsewhere, as it takes some 20 MB.
 func keep(exe string) string {
+	if !builtByGoRun(exe) {
+		if filepath.Dir(exe) != programFolder {
+			_ = os.RemoveAll(programFolder)
+		}
+		return exe
+	}
 	kept, err := copyProgram(exe, programFolder)
 	if err != nil {
 		return exe
 	}
 	return kept
+}
+
+// builtByGoRun reports whether `go run` built exe: it builds a program in a
+// folder of its own, named go-build and some digits, in the temporary
+// folder.
+func builtByGoRun(exe string) bool {
+	for dir := filepath.Dir(exe); ; dir = filepath.Dir(dir) {
+		if strings.HasPrefix(filepath.Base(dir), "go-build") {
+			return true
+		}
+		if filepath.Dir(dir) == dir {
+			return false
+		}
+	}
 }
 
 // copyProgram copies the program at exe to folder, as spot-go. It replaces

@@ -241,12 +241,38 @@ func wantFile(t *testing.T, path, text string) {
 	}
 }
 
-func TestKeepCopiesTheProgram(t *testing.T) {
-	dir := useTempFolder(t)
-	exe := filepath.Join(t.TempDir(), "exe", "spot-go")
+// goRunProgram is where go run builds spot-go, in dir.
+func goRunProgram(t *testing.T, dir string) string {
+	t.Helper()
+
+	exe := filepath.Join(dir, "go-build2619775426", "b001", "exe", "spot-go")
 	if err := os.MkdirAll(filepath.Dir(exe), 0700); err != nil {
 		t.Fatal(err)
 	}
+	return exe
+}
+
+func TestBuiltByGoRun(t *testing.T) {
+	for _, tt := range []struct {
+		exe  string
+		want bool
+	}{
+		{"/var/folders/yn/_cvr7m5x3pdcq9klvz48dw640000gp/T/go-build2619775426/b001/exe/spot-go", true},
+		{"/tmp/go-build1962315458/b001/exe/spot-go", true},
+		{"/Users/chico/code/spot-go/spot-go", false},
+		{"/opt/homebrew/bin/spot-go", false},
+		{"/Users/chico/go/bin/spot-go", false},
+		{"spot-go", false},
+	} {
+		if got := builtByGoRun(tt.exe); got != tt.want {
+			t.Errorf("builtByGoRun(%q) = %t, want %t", tt.exe, got, tt.want)
+		}
+	}
+}
+
+func TestKeepCopiesWhatGoRunBuilt(t *testing.T) {
+	dir := useTempFolder(t)
+	exe := goRunProgram(t, t.TempDir())
 	writeProgram(t, exe, "spot-go v1")
 
 	kept := keep(exe)
@@ -268,7 +294,7 @@ func TestKeepCopiesTheProgram(t *testing.T) {
 
 func TestKeepReplacesTheCopyBefore(t *testing.T) {
 	useTempFolder(t)
-	exe := filepath.Join(t.TempDir(), "spot-go")
+	exe := goRunProgram(t, t.TempDir())
 	writeProgram(t, exe, "spot-go v1")
 	kept := keep(exe)
 	// spot-go in the background still runs from the copy before.
@@ -293,9 +319,9 @@ func TestKeepReplacesTheCopyBefore(t *testing.T) {
 	}
 }
 
-func TestKeepRunsTheProgramWithoutACopy(t *testing.T) {
+func TestKeepRunsWhatGoRunBuiltWhenItCantCopyIt(t *testing.T) {
 	dir := useTempFolder(t)
-	exe := filepath.Join(t.TempDir(), "spot-go")
+	exe := goRunProgram(t, t.TempDir())
 	writeProgram(t, exe, "spot-go v1")
 	// A file where the folder of the copy should be.
 	programFolder = filepath.Join(dir, "file")
@@ -304,7 +330,41 @@ func TestKeepRunsTheProgramWithoutACopy(t *testing.T) {
 	if got := keep(exe); got != exe {
 		t.Fatalf("keep() = %q, want %q", got, exe)
 	}
-	if got := keep(filepath.Join(dir, "missing")); got != filepath.Join(dir, "missing") {
+	missing := filepath.Join(filepath.Dir(exe), "missing")
+	if got := keep(missing); got != missing {
 		t.Fatalf("keep() of a missing program = %q, want it", got)
 	}
+}
+
+func TestKeepRunsAProgramGoRunDidntBuild(t *testing.T) {
+	useTempFolder(t)
+	// A copy an earlier go run left.
+	keep(writtenGoRunProgram(t))
+	exe := filepath.Join(t.TempDir(), "spot-go")
+	writeProgram(t, exe, "spot-go v2")
+
+	if got := keep(exe); got != exe {
+		t.Fatalf("keep() = %q, want %q", got, exe)
+	}
+	if _, err := os.Stat(programFolder); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("%s is still there (%v), want the copy gone", programFolder, err)
+	}
+}
+
+func TestKeepLeavesTheCopyItRunsFrom(t *testing.T) {
+	useTempFolder(t)
+	kept := keep(writtenGoRunProgram(t))
+
+	if got := keep(kept); got != kept {
+		t.Fatalf("keep() = %q, want %q", got, kept)
+	}
+	wantFile(t, kept, "spot-go v1")
+}
+
+func writtenGoRunProgram(t *testing.T) string {
+	t.Helper()
+
+	exe := goRunProgram(t, t.TempDir())
+	writeProgram(t, exe, "spot-go v1")
+	return exe
 }
