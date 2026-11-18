@@ -69,6 +69,7 @@ func TestPosition(t *testing.T) {
 		{"playing moves on", Info{Elapsed: time.Minute, Playing: true}, at.Add(5 * time.Second), 65 * time.Second},
 		{"paused stays", Info{Elapsed: time.Minute}, at.Add(5 * time.Second), time.Minute},
 		{"stops at the end", Info{Elapsed: time.Minute, Duration: 62 * time.Second, Playing: true}, at.Add(time.Hour), 62 * time.Second},
+		{"paused past the end", Info{Elapsed: 70 * time.Second, Duration: 62 * time.Second}, at.Add(5 * time.Second), 62 * time.Second},
 	} {
 		if got := position(tt.info, at, tt.now); got != tt.want.Microseconds() {
 			t.Errorf("%s: position = %d, want %d", tt.name, got, tt.want.Microseconds())

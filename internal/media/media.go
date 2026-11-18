@@ -54,14 +54,15 @@ func dispatch(c Command) {
 	}
 }
 
-// later is info d after it was published: what plays moves on, up to its
-// end, while it plays.
+// later is info d after it was published: what plays moves on while it
+// plays, and never goes past its end, even paused, as Spotify can report a
+// position past the end.
 func (info Info) later(d time.Duration) Info {
 	if info.Playing {
 		info.Elapsed += d
-		if info.Duration > 0 {
-			info.Elapsed = min(info.Elapsed, info.Duration)
-		}
+	}
+	if info.Duration > 0 {
+		info.Elapsed = min(info.Elapsed, info.Duration)
 	}
 	return info
 }

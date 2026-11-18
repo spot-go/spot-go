@@ -109,6 +109,14 @@ func (h *artworksHarness) wantNoFetch() {
 		h.t.Fatalf("fetched %q, want no fetch", f.url)
 	default:
 	}
+	// A fetch that just started may not have reached h.fetches yet, but
+	// load notes it at once.
+	h.artworks.mu.Lock()
+	fetching := len(h.artworks.fetching)
+	h.artworks.mu.Unlock()
+	if fetching != 0 {
+		h.t.Fatalf("fetching %d, want no fetch", fetching)
+	}
 }
 
 // answer answers f, and waits for artworks to take the answer.
@@ -192,8 +200,8 @@ func TestArtworksFetchAnArtworkOnce(t *testing.T) {
 	h.artworks.publish(soWhatInfo(kindOfBlue))
 	h.artworks.publish(soWhatInfo(kindOfBlue))
 	f := h.fetched(kindOfBlue)
-	h.wantNoFetch()
 	h.answer(f, "blue", nil)
+	h.wantNoFetch()
 	h.wantShown(shownInfo{info: soWhatInfo(kindOfBlue)}, shownInfo{info: soWhatInfo(kindOfBlue)}, shownInfo{info: soWhatInfo(kindOfBlue), image: "blue"})
 
 	h.artworks.publish(soWhatInfo(kindOfBlue))
@@ -299,6 +307,7 @@ func TestInfoLater(t *testing.T) {
 		{"playing moves on", Info{Elapsed: time.Minute, Playing: true}, 65 * time.Second},
 		{"paused stays", Info{Elapsed: time.Minute}, time.Minute},
 		{"stops at the end", Info{Elapsed: time.Minute, Duration: 62 * time.Second, Playing: true}, 62 * time.Second},
+		{"paused past the end", Info{Elapsed: 70 * time.Second, Duration: 62 * time.Second}, 62 * time.Second},
 	} {
 		if got := tt.info.later(5 * time.Second).Elapsed; got != tt.want {
 			t.Errorf("%s: elapsed = %v, want %v", tt.name, got, tt.want)
