@@ -204,10 +204,42 @@ func TestSearchKeysAreTypedWhileTyping(t *testing.T) {
 	}
 	h.wantPauses()
 	h.wantVolumes("")
+}
+
+func TestSearchEscLeavesTheInputBeforeTheFirstSearch(t *testing.T) {
+	h := newHarnessWith(t, playingOnPhone(), 120, 40)
+	h.openSearchTab()
+
+	h.send(keys("/", "b", "e")...)
+	h.wantView("enter search", "esc cancel")
 
 	h.send(key("esc"))
-	if !h.searchTab().typing {
-		t.Fatal("esc left the input before any search, want it to keep typing")
+	s := h.searchTab()
+	if s.typing || s.capturesInput() {
+		t.Fatal("esc kept typing before any search, want it to leave the input")
+	}
+	if got := s.input.Value(); got != "" {
+		t.Fatalf("input = %q, want the typed text dropped", got)
+	}
+	if s.input.Focused() {
+		t.Fatal("input is still focused after esc")
+	}
+	h.wantView(searchHelpText, "/ search")
+	if len(h.api.searches) != 0 {
+		t.Fatalf("searches = %v, want none after esc", h.api.searches)
+	}
+
+	// The keys control Spotify and switch tabs again.
+	h.send(key("k"))
+	h.wantPauses("")
+	h.send(key("right"))
+	if got := h.player().activeTab; got != playlistsTab {
+		t.Fatalf("activeTab = %d, want the Playlists tab after esc", got)
+	}
+
+	h.send(key("left"), key("/"), key("x"))
+	if got := h.searchTab().input.Value(); got != "x" {
+		t.Fatalf("input = %q, want a new search to start empty", got)
 	}
 }
 

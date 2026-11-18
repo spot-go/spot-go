@@ -359,9 +359,9 @@ func (s searchModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			s.focusResults()
 			return s, s.search(query)
 		case "esc":
-			if s.state == stateSearchIdle {
-				return s, nil
-			}
+			// esc leaves the input without searching, even before the first
+			// search, as every key goes to the input while typing: back to
+			// the results, or to the hint, with the last search in the input.
 			s.typing = false
 			s.input.Blur()
 			s.input.SetValue(s.query)
@@ -771,9 +771,11 @@ func (s searchModel) leftHelp(width int) string {
 	var hints []string
 	if s.typing {
 		hints = append(hints, h.ShortKey.Inline(true).Render("enter")+" "+h.ShortDesc.Inline(true).Render("search"))
-		if s.state != stateSearchIdle {
-			hints = append(hints, h.ShortKey.Inline(true).Render("esc")+" "+h.ShortDesc.Inline(true).Render("results"))
+		back := "results"
+		if s.state == stateSearchIdle {
+			back = "cancel"
 		}
+		hints = append(hints, h.ShortKey.Inline(true).Render("esc")+" "+h.ShortDesc.Inline(true).Render(back))
 	} else {
 		hints = append(hints, h.ShortKey.Inline(true).Render("/")+" "+h.ShortDesc.Inline(true).Render("search"))
 	}

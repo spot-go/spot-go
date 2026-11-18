@@ -128,7 +128,7 @@ The Web API only returns the first part of the queue, usually 20 songs or episod
 
 ## Search
 
-The Search tab, right of Queue, searches the Spotify catalog. Press `/`, type what you want to listen to and press `enter`. While you type, every key goes to the search, so `space`, `k`, `n`, `p`, `<`, `>`, `+`, `-`, `←` and `→` don't control Spotify or switch tabs. `esc` goes back to the results without searching.
+The Search tab, right of Queue, searches the Spotify catalog. Press `/`, type what you want to listen to and press `enter`. While you type, every key goes to the search, so `space`, `k`, `n`, `p`, `<`, `>`, `+`, `-`, `←` and `→` don't control Spotify or switch tabs. `esc` leaves the input without searching, back to the results, or to the hint before your first search, so the keys control Spotify and switch tabs again.
 
 The left side lists the kinds of results: all, songs, artists, albums, playlists, podcasts and episodes. Next to each kind is how many Spotify found, and next to All is how many results it mixes. The right side lists the results of the selected kind, in Spotify's order. `tab` moves between the two sides, and `r` searches again. The Web API returns at most 10 results of each kind per request, so spot-go loads more as you move down the list, up to the first 1000.
 
