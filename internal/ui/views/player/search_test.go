@@ -347,6 +347,7 @@ func TestSearchAgainKeepsTheQuery(t *testing.T) {
 	if got := h.searchTab().input.Value(); got != "beatles" {
 		t.Fatalf("input = %q, want the last query", got)
 	}
+	h.wantView("enter search", "esc results")
 	h.send(key("esc"))
 	if h.searchTab().typing {
 		t.Fatal("esc kept typing, want it back on the results")
