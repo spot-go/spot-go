@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -51,6 +52,8 @@ var (
 	pidFile = filepath.Join(soloist.Folder, "background.pid")
 	// logFile has what it writes, such as why a media key failed.
 	logFile = filepath.Join(soloist.Folder, "background.log")
+	// programFolder has the copy of spot-go that runs in the background.
+	programFolder = filepath.Join(soloist.Folder, Command)
 )
 
 // Start starts spot-go again, in the background, to keep Now Playing and the
@@ -61,12 +64,81 @@ func Start(soloistPid int, device string) error {
 	if err != nil {
 		return fmt.Errorf("fail to find spot-go: %w", err)
 	}
-	p, err := start(exe, Args(soloistPid, device))
+	p, err := start(keep(exe), Args(soloistPid, device))
 	if err != nil {
 		return err
 	}
 	p.Release()
 	return nil
+}
+
+// keep returns the program spot-go in the background runs: exe, spot-go
+// itself, or a copy of it when `go run` built it. go run removes the program
+// it built once spot-go quits, and macOS then no longer shows in Now Playing,
+// nor sends the media keys to, the program that still runs from it. Without
+// a copy, spot-go in the background runs exe. A copy that an earlier go run
+// left goes away once spot-go runs from elsewhere, as it takes some 20 MB.
+func keep(exe string) string {
+	if !builtByGoRun(exe) {
+		if filepath.Dir(exe) != programFolder {
+			_ = os.RemoveAll(programFolder)
+		}
+		return exe
+	}
+	kept, err := copyProgram(exe, programFolder)
+	if err != nil {
+		return exe
+	}
+	return kept
+}
+
+// builtByGoRun reports whether `go run` built exe: it builds a program in a
+// folder of its own, named go-build and some digits, in the temporary
+// folder.
+func builtByGoRun(exe string) bool {
+	for dir := filepath.Dir(exe); ; dir = filepath.Dir(dir) {
+		if strings.HasPrefix(filepath.Base(dir), "go-build") {
+			return true
+		}
+		if filepath.Dir(dir) == dir {
+			return false
+		}
+	}
+}
+
+// copyProgram copies the program at exe to folder, as spot-go. It replaces
+// an earlier copy at once, so a spot-go that still runs from that one goes
+// on, and the next one runs the new copy.
+func copyProgram(exe, folder string) (string, error) {
+	in, err := os.Open(exe)
+	if err != nil {
+		return "", err
+	}
+	defer in.Close()
+	if err := os.MkdirAll(folder, 0700); err != nil {
+		return "", err
+	}
+	out, err := os.CreateTemp(folder, ".spot-go-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(out.Name())
+
+	_, err = io.Copy(out, in)
+	if err == nil {
+		err = out.Chmod(0700)
+	}
+	if closeErr := out.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return "", err
+	}
+	kept := filepath.Join(folder, "spot-go")
+	if err := os.Rename(out.Name(), kept); err != nil {
+		return "", err
+	}
+	return kept, nil
 }
 
 // Args are the arguments of spot-go in the background.

@@ -31,6 +31,7 @@ var (
 		Item:     "spotify:track:so-what",
 		Name:     "So What",
 		Artist:   "Miles Davis",
+		Artwork:  "https://i.scdn.co/image/so-what",
 		Progress: time.Minute,
 		Duration: 9 * time.Minute,
 	}
@@ -40,6 +41,7 @@ var (
 		Item:     "spotify:track:freddie-freeloader",
 		Name:     "Freddie Freeloader",
 		Artist:   "Miles Davis",
+		Artwork:  "https://i.scdn.co/image/freddie-freeloader",
 		Duration: 10 * time.Minute,
 	}
 	// revoked is how a request fails once the user removed spot-go's access:
@@ -250,6 +252,7 @@ func shown(state spotify.Playback, elapsed time.Duration, playing bool) media.In
 		ID:       string(state.Item),
 		Title:    state.Name,
 		Artist:   state.Artist,
+		Artwork:  state.Artwork,
 		Duration: state.Duration,
 		Elapsed:  elapsed,
 		Playing:  playing,

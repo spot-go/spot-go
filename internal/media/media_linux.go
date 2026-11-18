@@ -312,6 +312,9 @@ func metadata(info Info) map[string]dbus.Variant {
 	if info.Duration > 0 {
 		m["mpris:length"] = dbus.MakeVariant(info.Duration.Microseconds())
 	}
+	if info.Artwork != "" {
+		m["mpris:artUrl"] = dbus.MakeVariant(info.Artwork)
+	}
 	return m
 }
 
@@ -334,14 +337,7 @@ func playbackStatus(info Info) string {
 }
 
 func position(info Info, at, now time.Time) int64 {
-	elapsed := info.Elapsed
-	if info.Playing {
-		elapsed += now.Sub(at)
-	}
-	if info.Duration > 0 {
-		elapsed = min(elapsed, info.Duration)
-	}
-	return elapsed.Microseconds()
+	return info.later(now.Sub(at)).Elapsed.Microseconds()
 }
 
 func (mprisRoot) Raise() *dbus.Error { return nil }

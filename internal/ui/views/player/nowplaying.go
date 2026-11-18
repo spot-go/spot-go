@@ -31,6 +31,11 @@ func (n nowPlaying) stillPlaying(playing spotify.NowPlaying, now time.Time) bool
 
 func (m Model) publishNowPlaying(item libspotify.URI, info media.Info, now time.Time) Model {
 	info.ID = string(item)
+	if info.Artwork == "" && item != "" && item == m.nowPlaying.item {
+		// A play started from a tab doesn't know the artwork of the song,
+		// which Spotify reported for it before.
+		info.Artwork = m.nowPlaying.info.Artwork
+	}
 	m.nowPlaying.track = track{item: item, info: info, at: now}
 	if m.publish != nil {
 		m.publish(info)
@@ -71,6 +76,7 @@ func playingInfo(playing spotify.NowPlaying) media.Info {
 	return media.Info{
 		Title:    playing.Name,
 		Artist:   playing.Artist,
+		Artwork:  playing.Artwork,
 		Duration: playing.Duration,
 		Elapsed:  playing.Progress,
 		Playing:  true,

@@ -60,9 +60,9 @@ spot-go also starts Soloist with its local WebSocket API on `127.0.0.1`, on a po
 
 These keys control Spotify on the device it is playing on, from every tab. Skips, seeks, and volume, shuffle and repeat changes pressed while Spotify is still taking a change add up, and run once it ends. A seek pressed before a skip is dropped, and so are skips and seeks still waiting when a tab starts playing something else. `space` and `k` are ignored while Spotify takes a change.
 
-On macOS, the play/pause, next and previous keys of the keyboard, and the Now Playing controls in Control Center, work too, even when the terminal is in the background. spot-go shows macOS what Spotify is playing, so it takes over these keys while Spotify plays. If another app, such as Music, plays after it, the keys go to that app until Spotify plays again.
+On macOS, the play/pause, next and previous keys of the keyboard, and the Now Playing controls in Control Center, work too, even when the terminal is in the background. spot-go shows macOS what Spotify is playing, so it takes over these keys while Spotify plays. Now Playing shows the cover of the song's album, or for an episode its own image, or else its podcast's. spot-go downloads the cover once Spotify reports what plays, so it shows a moment after the song does, and a song without one, such as a local file, shows none. If another app, such as Music, plays after it, the keys go to that app until Spotify plays again.
 
-On Linux, spot-go shows up as an MPRIS media player on the D-Bus session bus, so the media keys of desktops such as GNOME and KDE, their media controls and `playerctl` work too. Desktops usually send the keys to the player that played last.
+On Linux, spot-go shows up as an MPRIS media player on the D-Bus session bus, so the media keys of desktops such as GNOME and KDE, their media controls and `playerctl` work too. Desktops usually send the keys to the player that played last. spot-go gives them the link to the cover too (`mpris:artUrl`), for those that show it.
 
 Spotify may only list the songs of playlists you own or collaborate on, depending on the mode of the Spotify app. Other playlists still play with `enter`.
 
@@ -116,7 +116,7 @@ Soloist plays the music, but it is spot-go that shows it in Now Playing and take
 
 spot-go in the background ends when the Soloist left playing stops, and when spot-go runs again, which takes over the keys. It also ends when Spotify no longer takes spot-go's login, and on Linux when the D-Bus session bus goes away, as when you log out. With no session bus, as over SSH, or on macOS when spot-go was built without cgo, there are no media keys to take, so it ends right away. To end it yourself, run `pkill -f 'spot-go background'`, or, on macOS, quit the `spot-go` process in Activity Monitor while spot-go itself isn't open.
 
-It writes the errors it hits, such as a key Spotify refused, to `background.log`, next to `soloist.log`. spot-go empties the file each time it starts in the background.
+It writes the errors it hits, such as a key Spotify refused, to `background.log`, next to `soloist.log`. spot-go empties the file each time it starts in the background. When spot-go runs with `go run .`, spot-go in the background runs from a copy of it, in the `background` folder next to that file: go run removes the program it builds once spot-go quits, and macOS no longer shows in Now Playing, nor sends the media keys to, a program whose file is gone. spot-go makes the copy again each time it starts in the background that way, and removes it the next time it starts in the background from a program go run didn't build, such as one built with `go build`.
 
 ## Queue
 
