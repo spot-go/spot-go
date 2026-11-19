@@ -793,11 +793,11 @@ func (s searchModel) rightView() string {
 	if !s.leftFocus {
 		target = "categories"
 	}
-	keys := s.keyHelp(s.help, target)
+	keys := s.keyHelp(s.help, target, s.typing)
 
 	switch s.state {
 	case stateSearchIdle:
-		return s.rightPane("", "", func() string { return s.notice(searchHelpText) }, "")
+		return s.rightPane("", "", func() string { return s.notice(searchHelpText) }, s.hintRow(s.help, nil, s.typing))
 	case stateSearchLoading:
 		return s.rightPane(`Searching for "`+s.query+`"...`, "", func() string { return "" }, keys)
 	case stateSearchError:

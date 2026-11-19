@@ -639,7 +639,7 @@ func (a artistModel) rightView() string {
 	if !a.leftFocus {
 		target = "artists"
 	}
-	keys := a.keyHelp(a.list.Help.Styles, target)
+	keys := a.keyHelp(a.list.Help.Styles, target, a.capturesInput())
 	if artist, ok := a.selectedArtist(); ok {
 		return a.rightPane(artist.title, discographyProgress(a.discographies[artist.id]), func() string { return a.discographyView(artist) }, keys)
 	}

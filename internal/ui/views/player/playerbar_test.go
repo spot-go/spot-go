@@ -551,7 +551,7 @@ func TestPlayerShowsTheKeysOfEveryTab(t *testing.T) {
 func TestCompactPlayerLeavesTheKeysToThePane(t *testing.T) {
 	h := newHarness(t, 120, 15)
 
-	h.wantView("enter play • r refresh • space play/pause • n/p next/previous")
+	h.wantView("enter play • r refresh • ? keys • space play/pause • n/p next/previous")
 	if got := h.bottomLine(); strings.Contains(got, "play/pause") {
 		t.Fatalf("bottom line = %q, want no keys in the compact player", got)
 	}
@@ -563,7 +563,7 @@ func TestCompactPlayerLeavesTheKeysToThePane(t *testing.T) {
 
 	h.send(tea.WindowSizeMsg{Width: 120, Height: 16})
 	h.wantBottomLine("space play/pause")
-	h.dontWantView("r refresh • space")
+	h.dontWantView("? keys • space")
 }
 
 func TestPlayerLeavesOutKeysThatDoNotFit(t *testing.T) {

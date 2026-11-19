@@ -719,7 +719,7 @@ func (p podcastModel) rightView() string {
 	if !p.leftFocus {
 		target = "podcasts"
 	}
-	keys := p.keyHelp(p.list.Help.Styles, target)
+	keys := p.keyHelp(p.list.Help.Styles, target, p.capturesInput())
 	if show, ok := p.selectedShow(); ok {
 		return p.rightPane(show.title, episodesProgress(p.episodes[show.id]), p.episodesView, keys)
 	}

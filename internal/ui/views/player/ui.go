@@ -48,6 +48,7 @@ type (
 		nowPlaying    nowPlaying
 		ownModes      ModeControl
 		quitPrompt    quitPrompt
+		keyList       keyList
 		// keepPlaying is true when the user chose to keep the music playing
 		// after spot-go quits.
 		keepPlaying bool
@@ -67,6 +68,8 @@ type (
 		name        string
 		content     tea.Model
 		initialized bool
+		// keys are the keys of the tab, as the list of keys shows them.
+		keys []playerHint
 	}
 
 	contentDimension struct {
@@ -150,14 +153,14 @@ func NewModel(
 		WindowSize:    windowSize,
 		tabs: []tab{
 			// spot-go opens on the Queue tab, the first one.
-			{name: "Queue", content: newQueueModel(playerContext), initialized: true},
-			{name: "Search", content: newSearchModel(playerContext)},
+			{name: "Queue", content: newQueueModel(playerContext), initialized: true, keys: queueKeys},
+			{name: "Search", content: newSearchModel(playerContext), keys: searchKeys},
 			// The Playlists tab loads at the start even though spot-go opens
 			// on Queue: it follows what Spotify plays, for every tab.
-			{name: "Playlists", content: newPlaylistModel(playerContext, historyErr), initialized: true},
-			{name: "Podcasts", content: newPodcastModel(playerContext, historyErr)},
-			{name: "Artists", content: newArtistModel(playerContext, historyErr)},
-			{name: "Albums", content: newAlbumModel(playerContext, historyErr)},
+			{name: "Playlists", content: newPlaylistModel(playerContext, historyErr), initialized: true, keys: playlistKeys},
+			{name: "Podcasts", content: newPodcastModel(playerContext, historyErr), keys: podcastKeys},
+			{name: "Artists", content: newArtistModel(playerContext, historyErr), keys: artistKeys},
+			{name: "Albums", content: newAlbumModel(playerContext, historyErr), keys: albumKeys},
 		},
 		activeTab:     queueTab,
 		volumeSaver:   newVolumeSaver(saveVolume),
@@ -218,6 +221,11 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		if m.quitPrompt.open {
 			return m.quitKey(msg)
 		}
+		if m.keyList.open {
+			if m, ok := m.keyListKey(msg); ok {
+				return m, nil
+			}
+		}
 		switch msg.String() {
 		case "ctrl+q", "ctrl+c":
 			return m.quit()
@@ -265,6 +273,17 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			if !m.activeCapturesInput() {
 				return m.changeVolume(-volumeStep)
 			}
+		case "?":
+			// While a search or a filter is typed, ? is typed too.
+			if !m.activeCapturesInput() {
+				m.keyList = keyList{open: true}
+				return m, nil
+			}
+		}
+		if m.keyList.open {
+			// The tab under the list of keys doesn't show, so its keys
+			// don't reach it.
+			return m, nil
 		}
 		return m, m.updateTab(m.activeTab, msg)
 
@@ -336,8 +355,9 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, m.broadcast(m.contentDimension())
 
 	case tea.PasteMsg:
-		if m.quitPrompt.open {
-			// The prompt takes no text, and the tab under it doesn't show.
+		if m.quitPrompt.open || m.keyList.open {
+			// The prompt and the list of keys take no text, and the tab
+			// under them doesn't show.
 			return m, nil
 		}
 
@@ -359,6 +379,9 @@ func (m Model) switchTab(i int) (Model, tea.Cmd) {
 
 	hidden := m.updateTab(m.activeTab, tabHidden{})
 	m.activeTab = i
+	// The list of keys, when it shows, shows the keys of the new tab from
+	// its start.
+	m.keyList.offset = 0
 	var init tea.Cmd
 	if !m.tabs[i].initialized {
 		m.tabs[i].initialized = true
@@ -489,8 +512,11 @@ func (m Model) View() tea.View {
 	}
 
 	tabContent := m.tabs[m.activeTab].content.View().Content
-	if m.quitPrompt.open {
+	switch {
+	case m.quitPrompt.open:
 		tabContent = m.quitPrompt.view(cd.width, cd.height)
+	case m.keyList.open:
+		tabContent = m.keyListView(cd.width, cd.height)
 	}
 	content := lipgloss.NewStyle().
 		MaxWidth(cd.width).

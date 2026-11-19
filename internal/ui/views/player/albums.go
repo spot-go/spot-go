@@ -612,7 +612,7 @@ func (a albumModel) rightView() string {
 	if !a.leftFocus {
 		target = "albums"
 	}
-	keys := a.keyHelp(a.list.Help.Styles, target)
+	keys := a.keyHelp(a.list.Help.Styles, target, a.capturesInput())
 	if album, ok := a.selectedAlbum(); ok {
 		return a.rightPane(album.heading(), songsProgress(a.songs[album.id]), a.songsView, keys)
 	}

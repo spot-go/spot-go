@@ -814,7 +814,7 @@ func (p playlistModel) rightView() string {
 	if !p.leftFocus {
 		target = "playlists"
 	}
-	return p.rightPane(playlist.title, songsProgress(p.selectedSongs()), p.songsView, p.keyHelp(p.list.Help.Styles, target))
+	return p.rightPane(playlist.title, songsProgress(p.selectedSongs()), p.songsView, p.keyHelp(p.list.Help.Styles, target, p.capturesInput()))
 }
 
 func (p playlistModel) songsView() string {
