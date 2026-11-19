@@ -122,11 +122,13 @@ func (m Model) chooseQuit(choice quitChoice) (Model, tea.Cmd) {
 
 // view is the quit prompt in a box at the center of an area width columns
 // wide and height lines high. When the box doesn't fit, the prompt leaves out
-// the detail, and then the box.
+// the detail, and then the box. The detail shows in the gray of what the
+// keys under it do, so it reads as well as they do.
 func (q quitPrompt) view(width, height int) string {
-	question, choices, hints := quitQuestionStyle.Render(quitQuestion), q.choices(), quitHintLine()
+	h := styles.Help()
+	question, detail, choices, hints := quitQuestionStyle.Render(quitQuestion), h.ShortDesc.Render(quitDetail), q.choices(), hintText(h, quitHints)
 	boxes := []string{
-		quitBoxStyle.Render(strings.Join([]string{question, "", dimStyle.Render(quitDetail), "", choices, "", hints}, "\n")),
+		quitBoxStyle.Render(strings.Join([]string{question, "", detail, "", choices, "", hints}, "\n")),
 		quitBoxStyle.Render(strings.Join([]string{question, "", choices, "", hints}, "\n")),
 	}
 	for _, box := range boxes {
@@ -153,8 +155,4 @@ func (q quitPrompt) choices() string {
 		buttons[i] = style.Render(name)
 	}
 	return strings.Join(buttons, "  ")
-}
-
-func quitHintLine() string {
-	return hintText(styles.Help(), quitHints)
 }

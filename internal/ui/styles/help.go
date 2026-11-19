@@ -6,9 +6,9 @@ import (
 )
 
 // Help is how the hints of keys show, wherever spot-go shows them: each key
-// brighter than what it does, and both easy to read on the background of
-// the terminal, which the dim grays of bubbles' help aren't on a dark one.
-// The separators between hints stay dim, as they only space them out.
+// standing out from what it does, and both easy to read on the background
+// of the terminal, which the dim grays of bubbles' help aren't on a dark
+// one. The separators between hints stay dim, as they only space them out.
 func Help() help.Styles {
 	lightDark := lipgloss.LightDark(HasDarkBackground)
 	key := lipgloss.NewStyle().Foreground(lightDark(lipgloss.Color("#303030"), lipgloss.Color("#D0D0D0")))
