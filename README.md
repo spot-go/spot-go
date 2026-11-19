@@ -44,7 +44,7 @@ spot-go also starts Soloist with its local WebSocket API on `127.0.0.1`, on a po
 
 ## Keys
 
-- `?` lists every key and what it does: the keys of the open tab, the keys that control Spotify and the other keys of spot-go. `←` and `→` switch tabs under the list, to see the keys of each tab, `↑` and `↓`, or `pgup`, `pgdown`, `home` and `end`, scroll it when it doesn't fit the window, and the keys that control Spotify keep working. `?` or `esc` closes it. Every tab shows `? keys` under the list on the right. While you type a search or a filter, `?` is typed like any other key.
+- `?` lists the keys and what they do: the keys of the open tab, the keys that control Spotify and the other keys of spot-go. `←` and `→` switch tabs under the list, to see the keys of each tab, `↑` and `↓`, or `pgup`, `pgdown`, `home` and `end`, scroll it when it doesn't fit the window, and the keys that control Spotify keep working. `?` or `esc` closes it. The keys under the list on the right of each tab end with `? keys`. While you type a search or a filter, `?` is typed like any other key, so `? keys` doesn't show then.
 - `←` and `→` switch tabs: Queue, Search, Playlists, Podcasts, Artists and Albums. spot-go opens on the Queue tab.
 - `↑` and `↓` move in the focused list, `pgup` and `pgdown` move a page, and `home` and `end` go to its first and last item.
 - `tab` moves between the list on the left and the list on the right: the songs of the selected playlist or album, the episodes of the selected podcast, or the albums of the selected artist.

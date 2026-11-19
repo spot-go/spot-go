@@ -276,7 +276,8 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		case "?":
 			// While a search or a filter is typed, ? is typed too.
 			if !m.activeCapturesInput() {
-				return m.toggleKeyList(), nil
+				m.keyList = keyList{open: true}
+				return m, nil
 			}
 		}
 		if m.keyList.open {

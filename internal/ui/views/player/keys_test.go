@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -135,6 +136,14 @@ func TestQuestionMarkIsTypedWhileTyping(t *testing.T) {
 		if got := h.playlists().list.FilterValue(); got != "ro" {
 			t.Fatalf("filter = %q, want %q", got, "ro")
 		}
+
+		// The esc that hides the list doesn't reach the tab, where it would
+		// clear the filter.
+		h.send(key("esc"))
+		h.wantNoKeyList()
+		if l := h.playlists().list; l.FilterState() != list.FilterApplied || l.FilterValue() != "ro" {
+			t.Fatalf("filter = %q (%v) after esc hid the list, want %q applied", l.FilterValue(), l.FilterState(), "ro")
+		}
 	})
 }
 
@@ -142,6 +151,7 @@ func TestKeyListKeepsTheKeysOfTheTab(t *testing.T) {
 	h := newHarnessWith(t, soWhatOnPhone(), 120, 40)
 	h.send(pollPlayback{})
 	before := h.playlists()
+	order := before.order()
 	h.send(key("?"))
 
 	h.send(keys("tab", "enter", "s", "r", "/", "x", "end", "down", "up")...)
@@ -151,8 +161,8 @@ func TestKeyListKeepsTheKeysOfTheTab(t *testing.T) {
 	if p.leftFocus != before.leftFocus {
 		t.Fatal("tab moved the focus under the list of keys")
 	}
-	if got, want := p.order(), before.order(); got != want {
-		t.Fatalf("order = %v under the list of keys, want %v", got, want)
+	if got := p.order(); got != order {
+		t.Fatalf("order = %v under the list of keys, want %v", got, order)
 	}
 	if p.capturesInput() || p.list.FilterValue() != "" {
 		t.Fatalf("filter = %q under the list of keys, want none", p.list.FilterValue())
@@ -164,12 +174,6 @@ func TestKeyListKeepsTheKeysOfTheTab(t *testing.T) {
 		t.Fatalf("selected playlist = %d under the list of keys, want %d", got, want)
 	}
 	h.wantKeyList()
-
-	h.send(key("esc"))
-	h.wantNoKeyList()
-	if p := h.playlists(); p.list.FilterState() != before.list.FilterState() {
-		t.Fatal("esc that closed the list of keys reached the tab")
-	}
 }
 
 func TestSpotifyKeysWorkUnderTheKeyList(t *testing.T) {
@@ -212,8 +216,10 @@ func TestQuitUnderTheKeyList(t *testing.T) {
 }
 
 func TestKeyListScrollsWhenItDoesNotFit(t *testing.T) {
-	h := newHarness(t, 80, 24)
+	h := newHarness(t, 80, 60)
 	h.send(key("?"))
+	all := h.keyListRows()
+	h.send(tea.WindowSizeMsg{Width: 80, Height: 24})
 	h.wantKeyList("↑/↓ scroll • ←/→ other tabs • esc close")
 
 	first := h.keyListRows()
@@ -250,9 +256,10 @@ func TestKeyListScrollsWhenItDoesNotFit(t *testing.T) {
 	if got := h.keyListRows(); got[0] != first[0] {
 		t.Fatalf("first row after home = %q, want %q", got[0], first[0])
 	}
+	page, end := len(first), len(all)-len(first)
 	h.send(key("pgdown"))
-	if got := h.keyListRows(); got[0] == first[0] {
-		t.Fatalf("first row after pgdown = %q, want the next page", got[0])
+	if got, want := h.keyListRows(), all[min(page, end)]; got[0] != want {
+		t.Fatalf("first row after pgdown = %q, want %q, a page further", got[0], want)
 	}
 	h.send(key("pgup"))
 	if got := h.keyListRows(); got[0] != first[0] {
@@ -266,6 +273,16 @@ func TestKeyListScrollsWhenItDoesNotFit(t *testing.T) {
 	h.dontWantView("↑/↓ scroll")
 	h.send(key("down"))
 	h.wantKeyList("Playlists tab", "ctrl+c/ctrl+q")
+
+	// After a resize, the first ↑ moves at once, from the end it shows.
+	h.send(tea.WindowSizeMsg{Width: 80, Height: 24})
+	h.send(key("end"))
+	h.send(tea.WindowSizeMsg{Width: 80, Height: 30})
+	atEnd := h.keyListRows()
+	h.send(key("up"))
+	if got := h.keyListRows(); got[1] != atEnd[0] {
+		t.Fatalf("second row after ↑ at the end of a taller window = %q, want %q", got[1], atEnd[0])
+	}
 
 	// Another tab shows its keys from the start.
 	h.send(tea.WindowSizeMsg{Width: 80, Height: 24})
@@ -338,4 +355,64 @@ func TestTabsShowTheKeyListHint(t *testing.T) {
 	h.wantView("? keys • space play/pause")
 	h.openTab(playlistsTab)
 	h.wantView("r refresh • ? keys • space play/pause")
+}
+
+func TestNarrowTabsKeepTheKeyListHint(t *testing.T) {
+	h := newHarness(t, 120, 40)
+
+	for _, tab := range []int{playlistsTab, podcastsTab, artistsTab, albumsTab, queueTab, searchTab} {
+		h.openTab(tab)
+		for width := 56; width <= 80; width++ {
+			h.send(tea.WindowSizeMsg{Width: width, Height: 40})
+			v := h.view()
+			if strings.Contains(v, tooSmallWindow[:10]) {
+				continue
+			}
+			if !strings.Contains(v, "? keys") {
+				t.Fatalf("%s tab at %d columns: no ? keys:\n%s", h.player().tabs[tab].name, width, v)
+			}
+		}
+		h.send(tea.WindowSizeMsg{Width: 120, Height: 40})
+	}
+
+	// The hints of the tab before ? make room for it, from the end.
+	h.openTab(podcastsTab)
+	h.send(tea.WindowSizeMsg{Width: 60, Height: 40})
+	h.wantView("tab episodes • enter play • ? keys")
+}
+
+func TestKeyListHintHidesWhileTyping(t *testing.T) {
+	t.Run("search", func(t *testing.T) {
+		h := newHarness(t, 120, 40)
+		h.openSearchTab()
+		h.wantView("? keys")
+
+		h.send(key("/"))
+		h.dontWantView("? keys")
+		h.send(key("esc"))
+		h.wantView("? keys")
+	})
+
+	t.Run("filter", func(t *testing.T) {
+		h := newHarness(t, 120, 40)
+
+		h.send(key("/"))
+		h.dontWantView("? keys")
+		h.send(key("esc"))
+		h.wantView("? keys")
+	})
+}
+
+func TestKeyListWrapsWhatKeysDoInNarrowWindows(t *testing.T) {
+	h := newHarness(t, 57, 60)
+	h.openTab(podcastsTab)
+	h.send(key("?"))
+
+	rows := h.keyListRows()
+	for _, row := range rows {
+		if strings.Contains(row, "…") {
+			t.Fatalf("row %q is cut, want it to go on under itself:\n%s", row, h.view())
+		}
+	}
+	h.wantKeyList("play the newest episode, or the", "selected one")
 }

@@ -375,38 +375,49 @@ func (m Model) ownDevice() libspotify.ID {
 // hintLine shows the keys that control Spotify on every tab, in at most
 // width columns. Hints that don't fit are left out from the end.
 func hintLine(width int) string {
-	h := help.DefaultStyles(styles.HasDarkBackground)
-	separator := h.ShortSeparator.Inline(true).Render(" • ")
-	line := ""
-	for i, hint := range playerHints {
-		next := h.ShortKey.Inline(true).Render(hint.key) + " " + h.ShortDesc.Inline(true).Render(hint.desc)
-		if i > 0 {
-			next = separator + next
+	return appendHints(help.DefaultStyles(styles.HasDarkBackground), "", playerHints, width)
+}
+
+// appendHints adds to text as many of hints as fit in width columns, in
+// order, each after a separator when text isn't empty. It stops at the
+// first hint that doesn't fit.
+func appendHints(h help.Styles, text string, hints []playerHint, width int) string {
+	for _, hint := range hints {
+		next := hintText(h, []playerHint{hint})
+		if text != "" {
+			next = h.ShortSeparator.Inline(true).Render(" • ") + next
 		}
-		if lipgloss.Width(line+next) > width {
+		if lipgloss.Width(text+next) > width {
 			break
 		}
-		line += next
+		text += next
 	}
-	return line
+	return text
 }
 
 // bottomLine is the bottom line of the frame, width columns wide, with left
 // at its start and right at its end.
 func bottomLine(width int, left, right string) string {
+	return frameEdge("└", "┘", width, left, right)
+}
+
+// frameEdge is the top or bottom line of a frame, width columns wide, from
+// the corner first to the corner last, with left at its start and right at
+// its end. When they don't fit, the line is plain.
+func frameEdge(first, last string, width int, left, right string) string {
 	if width < 2 {
 		return frameStyle.Render(strings.Repeat("─", max(0, width)))
 	}
-	start, end := frameStyle.Render("└"), frameStyle.Render("┘")
+	start, end := frameStyle.Render(first), frameStyle.Render(last)
 	if left != "" {
-		start = frameStyle.Render("└─") + " " + left + " "
+		start = frameStyle.Render(first+"─") + " " + left + " "
 	}
 	if right != "" {
-		end = " " + right + " " + frameStyle.Render("─┘")
+		end = " " + right + " " + frameStyle.Render("─"+last)
 	}
 	fill := width - lipgloss.Width(start) - lipgloss.Width(end)
 	if fill < 0 {
-		return frameStyle.Render("└" + strings.Repeat("─", width-2) + "┘")
+		return frameStyle.Render(first + strings.Repeat("─", width-2) + last)
 	}
 	return start + frameStyle.Render(strings.Repeat("─", fill)) + end
 }

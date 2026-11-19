@@ -373,7 +373,7 @@ func wrapLines(style lipgloss.Style, s string, width, limit int) []string {
 }
 
 func (q queueModel) rightView() string {
-	keys := q.keyHelp(q.help, "")
+	keys := q.keyHelp(q.help, "", false)
 	if q.list == nil {
 		text := queueLoadingText
 		if q.err != nil && !q.loading {

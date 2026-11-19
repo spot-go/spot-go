@@ -3,6 +3,7 @@ package player
 import (
 	"errors"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -187,33 +188,33 @@ func (s paneSize) notice(text string) string {
 }
 
 // keyHelp shows the keys of the right pane. tab, which moves to target, is
-// left out when target is empty, as on tabs with only one list.
-func (s paneSize) keyHelp(h help.Styles, target string) string {
+// left out when target is empty, as on tabs with only one list. typing is
+// true while the tab takes every key, as when a search or a filter is
+// typed.
+func (s paneSize) keyHelp(h help.Styles, target string, typing bool) string {
 	hints := []playerHint{{"enter", "play"}, {"r", "refresh"}}
 	if target != "" {
 		hints = append([]playerHint{{"tab", target}}, hints...)
 	}
-	return s.hintRow(h, hints)
+	return s.hintRow(h, hints, typing)
 }
 
-// hintRow shows hints under the right pane, then ?, which shows every key.
+// hintRow shows hints under the right pane, then ?, which lists every key,
+// unless typing, as ? is then typed. When the row is too narrow, ? stays and
+// the hints before it are left out from the end: the list of keys has them.
 // The keys that control Spotify on every tab show in the player, or here,
 // after ?, as many as fit, when the compact player has no room for them.
-func (s paneSize) hintRow(h help.Styles, hints []playerHint) string {
-	text := hintText(h, hints)
-	more := []playerHint{keyListHint}
-	if s.spotifyKeys {
-		more = append(more, playerHints...)
+func (s paneSize) hintRow(h help.Styles, hints []playerHint, typing bool) string {
+	width := s.rightWidth()
+	if !typing {
+		hints = append(slices.Clone(hints), keyListHint)
+		for len(hints) > 1 && lipgloss.Width(hintText(h, hints)) > width {
+			hints = slices.Delete(hints, len(hints)-2, len(hints)-1)
+		}
 	}
-	for _, hint := range more {
-		next := hintText(h, []playerHint{hint})
-		if text != "" {
-			next = h.ShortSeparator.Inline(true).Render(" • ") + next
-		}
-		if lipgloss.Width(text+next) > s.rightWidth() {
-			break
-		}
-		text += next
+	text := hintText(h, hints)
+	if s.spotifyKeys {
+		text = appendHints(h, text, playerHints, width)
 	}
 	return lipgloss.NewStyle().
 		Width(s.rightWidth()).

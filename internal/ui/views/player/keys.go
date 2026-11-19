@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/help"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spot-go/spot-go/internal/ui/styles"
 )
 
@@ -101,17 +102,11 @@ func libraryKeys(items, contents, play string) []playerHint {
 	return slices.Concat([]playerHint{
 		{"tab", "move between " + items + " and " + contents},
 		{"enter", play},
-		{"/", "filter the " + items},
+		{"/", "filter the " + items + " (enter applies)"},
 		{"esc", "clear the filter"},
 		{"s", "sort the " + items},
 		{"r", "reload the " + contents},
 	}, listKeys)
-}
-
-// toggleKeyList shows the list of keys, or hides it.
-func (m Model) toggleKeyList() Model {
-	m.keyList = keyList{open: !m.keyList.open}
-	return m
 }
 
 // keyListKey handles a key pressed while the list of keys shows, and reports
@@ -201,12 +196,12 @@ func (m Model) keyListView(width, height int) string {
 		lipgloss.Width(hints)+keyListFrame+2,
 	))
 	inner := max(0, boxWidth-keyListFrame)
-	rows := []string{frameLine("╭", "╮", title, boxWidth)}
+	rows := []string{frameEdge("╭", "╮", boxWidth, title, "")}
 	for _, line := range lines[offset : offset+shown] {
 		line = fit(line, inner)
 		rows = append(rows, frameStyle.Render("│")+" "+line+strings.Repeat(" ", max(0, inner-lipgloss.Width(line)))+" "+frameStyle.Render("│"))
 	}
-	rows = append(rows, frameLine("╰", "╯", hints, boxWidth))
+	rows = append(rows, frameEdge("╰", "╯", boxWidth, hints, ""))
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, strings.Join(rows, "\n"))
 }
 
@@ -215,7 +210,7 @@ func (m Model) keyListView(width, height int) string {
 // the others when both fit side by side, or else above them.
 func keyColumns(h help.Styles, sections []keySection, width int) []string {
 	if len(sections) > 1 {
-		left, right := keyLines(h, sections[:1]), keyLines(h, sections[1:])
+		left, right := keyLines(h, sections[:1], 0), keyLines(h, sections[1:], 0)
 		leftWidth := widest(left)
 		if leftWidth+len(keyColumnGap)+widest(right) <= width {
 			lines := make([]string, max(len(left), len(right)))
@@ -235,7 +230,7 @@ func keyColumns(h help.Styles, sections []keySection, width int) []string {
 			return lines
 		}
 	}
-	lines := keyLines(h, sections)
+	lines := keyLines(h, sections, width)
 	for i, line := range lines {
 		lines[i] = fit(line, width)
 	}
@@ -243,8 +238,10 @@ func keyColumns(h help.Styles, sections []keySection, width int) []string {
 }
 
 // keyLines are the lines of sections, one under the other, with the keys
-// lined up in a column and what they do next to them.
-func keyLines(h help.Styles, sections []keySection) []string {
+// lined up in a column and what they do next to them. In at most width
+// columns, what a key does goes on under itself when it doesn't fit, and
+// with no width, it stays on one line.
+func keyLines(h help.Styles, sections []keySection, width int) []string {
 	keyWidth := 0
 	for _, s := range sections {
 		for _, k := range s.keys {
@@ -258,8 +255,18 @@ func keyLines(h help.Styles, sections []keySection) []string {
 		}
 		lines = append(lines, keySectionStyle.Render(s.title))
 		for _, k := range s.keys {
+			desc := []string{k.desc}
+			if width > 0 {
+				desc = strings.Split(ansi.Wordwrap(k.desc, max(1, width-keyWidth-len(keyDescGap)), ""), "\n")
+				for i, d := range desc {
+					desc[i] = strings.TrimRight(d, " ")
+				}
+			}
 			gap := strings.Repeat(" ", keyWidth-lipgloss.Width(k.key)) + keyDescGap
-			lines = append(lines, h.FullKey.Inline(true).Render(k.key)+gap+h.FullDesc.Inline(true).Render(k.desc))
+			lines = append(lines, h.FullKey.Inline(true).Render(k.key)+gap+h.FullDesc.Inline(true).Render(desc[0]))
+			for _, more := range desc[1:] {
+				lines = append(lines, strings.Repeat(" ", keyWidth+len(keyDescGap))+h.FullDesc.Inline(true).Render(more))
+			}
 		}
 	}
 	return lines
@@ -290,20 +297,6 @@ func hintText(h help.Styles, hints []playerHint) string {
 		parts[i] = h.ShortKey.Inline(true).Render(hint.key) + " " + h.ShortDesc.Inline(true).Render(hint.desc)
 	}
 	return strings.Join(parts, h.ShortSeparator.Inline(true).Render(" • "))
-}
-
-// frameLine is the top or bottom line of a frame width columns wide, from
-// start to end, with text after its first dash. A text that doesn't fit is
-// left out.
-func frameLine(start, end, text string, width int) string {
-	if width < 2 {
-		return frameStyle.Render(strings.Repeat("─", max(0, width)))
-	}
-	fill := width - lipgloss.Width(text) - 5
-	if text == "" || fill < 0 {
-		return frameStyle.Render(start + strings.Repeat("─", width-2) + end)
-	}
-	return frameStyle.Render(start+"─") + " " + text + " " + frameStyle.Render(strings.Repeat("─", fill)+end)
 }
 
 // widest is the width of the widest of lines.
