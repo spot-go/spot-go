@@ -68,7 +68,7 @@ func newList(items []list.Item, delegate list.ItemDelegate) list.Model {
 	l.Paginator.ActiveDot = l.Styles.ActivePaginationDot.String()
 	l.Paginator.InactiveDot = l.Styles.InactivePaginationDot.String()
 	l.FilterInput.SetStyles(l.Styles.Filter)
-	l.Help.Styles = help.DefaultStyles(styles.HasDarkBackground)
+	l.Help.Styles = styles.Help()
 	return l
 }
 

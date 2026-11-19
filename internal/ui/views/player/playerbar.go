@@ -375,7 +375,7 @@ func (m Model) ownDevice() libspotify.ID {
 // hintLine shows the keys that control Spotify on every tab, in at most
 // width columns. Hints that don't fit are left out from the end.
 func hintLine(width int) string {
-	return appendHints(help.DefaultStyles(styles.HasDarkBackground), "", playerHints, width)
+	return appendHints(styles.Help(), "", playerHints, width)
 }
 
 // appendHints adds to text as many of hints as fit in width columns, in

@@ -165,7 +165,7 @@ func newSearchModel(ctx playerContext) searchModel {
 	return searchModel{
 		playerContext: ctx,
 		input:         input,
-		help:          help.DefaultStyles(styles.HasDarkBackground),
+		help:          styles.Help(),
 		leftFocus:     true,
 		results:       make(map[spotify.SearchType]*searchResults),
 	}

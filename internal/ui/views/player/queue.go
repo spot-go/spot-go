@@ -82,7 +82,7 @@ const (
 func newQueueModel(ctx playerContext) queueModel {
 	return queueModel{
 		playerContext: ctx,
-		help:          help.DefaultStyles(styles.HasDarkBackground),
+		help:          styles.Help(),
 		confirmEvery:  confirmPollEvery,
 	}
 }
