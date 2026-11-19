@@ -173,7 +173,7 @@ func (m Model) keySections() []keySection {
 // keyListLines are the lines of the list of keys in an area width columns
 // wide and height lines high, and how many of them show at once.
 func (m Model) keyListLines(width, height int) ([]string, int) {
-	h := help.DefaultStyles(styles.HasDarkBackground)
+	h := styles.Help()
 	lines := keyColumns(h, m.keySections(), width-keyListFrame)
 	return lines, max(0, min(len(lines), height-keyListBorders))
 }
@@ -184,7 +184,7 @@ func (m Model) keyListLines(width, height int) ([]string, int) {
 // its keys. When the list doesn't fit, it shows the lines from its offset,
 // and ↑ and ↓ scroll it.
 func (m Model) keyListView(width, height int) string {
-	h := help.DefaultStyles(styles.HasDarkBackground)
+	h := styles.Help()
 	lines, shown := m.keyListLines(width, height)
 	offset := max(0, min(m.keyList.offset, len(lines)-shown))
 	hints := keyListHints(h, shown < len(lines), width-keyListFrame-2)

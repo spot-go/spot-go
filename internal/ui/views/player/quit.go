@@ -3,7 +3,6 @@ package player
 import (
 	"strings"
 
-	"charm.land/bubbles/v2/help"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/spot-go/spot-go/internal/ui/styles"
@@ -157,5 +156,5 @@ func (q quitPrompt) choices() string {
 }
 
 func quitHintLine() string {
-	return hintText(help.DefaultStyles(styles.HasDarkBackground), quitHints)
+	return hintText(styles.Help(), quitHints)
 }
