@@ -157,11 +157,5 @@ func (q quitPrompt) choices() string {
 }
 
 func quitHintLine() string {
-	h := help.DefaultStyles(styles.HasDarkBackground)
-	separator := h.ShortSeparator.Inline(true).Render(" • ")
-	hints := make([]string, len(quitHints))
-	for i, hint := range quitHints {
-		hints[i] = h.ShortKey.Inline(true).Render(hint.key) + " " + h.ShortDesc.Inline(true).Render(hint.desc)
-	}
-	return strings.Join(hints, separator)
+	return hintText(help.DefaultStyles(styles.HasDarkBackground), quitHints)
 }

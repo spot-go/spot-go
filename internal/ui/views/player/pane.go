@@ -187,27 +187,33 @@ func (s paneSize) notice(text string) string {
 }
 
 // keyHelp shows the keys of the right pane. tab, which moves to target, is
-// left out when target is empty, as on tabs with only one list. The keys
-// that control Spotify on every tab show in the player, or here, as many as
-// fit, when the compact player has no room for them.
+// left out when target is empty, as on tabs with only one list.
 func (s paneSize) keyHelp(h help.Styles, target string) string {
-	hint := func(key, desc string) string {
-		return h.ShortKey.Inline(true).Render(key) + " " + h.ShortDesc.Inline(true).Render(desc)
-	}
-	hints := []string{hint("enter", "play"), hint("r", "refresh")}
+	hints := []playerHint{{"enter", "play"}, {"r", "refresh"}}
 	if target != "" {
-		hints = append([]string{hint("tab", target)}, hints...)
+		hints = append([]playerHint{{"tab", target}}, hints...)
 	}
-	separator := h.ShortSeparator.Inline(true).Render(" • ")
-	text := strings.Join(hints, separator)
+	return s.hintRow(h, hints)
+}
+
+// hintRow shows hints under the right pane, then ?, which shows every key.
+// The keys that control Spotify on every tab show in the player, or here,
+// after ?, as many as fit, when the compact player has no room for them.
+func (s paneSize) hintRow(h help.Styles, hints []playerHint) string {
+	text := hintText(h, hints)
+	more := []playerHint{keyListHint}
 	if s.spotifyKeys {
-		for _, ph := range playerHints {
-			next := separator + hint(ph.key, ph.desc)
-			if lipgloss.Width(text+next) > s.rightWidth() {
-				break
-			}
-			text += next
+		more = append(more, playerHints...)
+	}
+	for _, hint := range more {
+		next := hintText(h, []playerHint{hint})
+		if text != "" {
+			next = h.ShortSeparator.Inline(true).Render(" • ") + next
 		}
+		if lipgloss.Width(text+next) > s.rightWidth() {
+			break
+		}
+		text += next
 	}
 	return lipgloss.NewStyle().
 		Width(s.rightWidth()).

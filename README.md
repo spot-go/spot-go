@@ -44,8 +44,9 @@ spot-go also starts Soloist with its local WebSocket API on `127.0.0.1`, on a po
 
 ## Keys
 
+- `?` lists every key and what it does: the keys of the open tab, the keys that control Spotify and the other keys of spot-go. `←` and `→` switch tabs under the list, to see the keys of each tab, `↑` and `↓`, or `pgup`, `pgdown`, `home` and `end`, scroll it when it doesn't fit the window, and the keys that control Spotify keep working. `?` or `esc` closes it. Every tab shows `? keys` under the list on the right. While you type a search or a filter, `?` is typed like any other key.
 - `←` and `→` switch tabs: Queue, Search, Playlists, Podcasts, Artists and Albums. spot-go opens on the Queue tab.
-- `↑` and `↓` move in the focused list.
+- `↑` and `↓` move in the focused list, `pgup` and `pgdown` move a page, and `home` and `end` go to its first and last item.
 - `tab` moves between the list on the left and the list on the right: the songs of the selected playlist or album, the episodes of the selected podcast, or the albums of the selected artist.
 - `enter` plays the selected playlist or album from the start, the newest episode of the selected podcast, the selected artist, or the selected song, episode or album. On the Queue tab, it skips to the selected song or episode (see [Queue](#queue)).
 - `/` filters the list on the left. The matches keep the order of the list. On the Search tab, `/` types a search (see [Search](#search)).
@@ -91,7 +92,7 @@ The player at the bottom of the window shows what Spotify is playing on any devi
 
 A change made with these keys, such as a new repeat mode, or why the volume or the position couldn't change, shows on the right of the first row for 3 seconds. While a tab starts something, the first row says so, and if it fails, why.
 
-In windows shorter than 16 lines, the player shrinks to the bottom line of the frame: the song or episode with a shorter progress bar, shuffle, repeat and the volume. The keys that control Spotify then show, as many as fit, under the list on the right, with the keys of the tab.
+In windows shorter than 16 lines, the player shrinks to the bottom line of the frame: the song or episode with a shorter progress bar, shuffle, repeat and the volume. The keys that control Spotify then show, as many as fit, under the list on the right, after the keys of the tab and `? keys`.
 
 ## Quitting
 
@@ -128,7 +129,7 @@ The Web API only returns the first part of the queue, usually 20 songs or episod
 
 ## Search
 
-The Search tab, right of Queue, searches the Spotify catalog. Press `/`, type what you want to listen to and press `enter`. While you type, every key goes to the search, so `space`, `k`, `n`, `p`, `<`, `>`, `+`, `-`, `←` and `→` don't control Spotify or switch tabs. `esc` leaves the input without searching, back to the results, or to the hint before your first search, so the keys control Spotify and switch tabs again.
+The Search tab, right of Queue, searches the Spotify catalog. Press `/`, type what you want to listen to and press `enter`. While you type, every key goes to the search, so `space`, `k`, `n`, `p`, `<`, `>`, `+`, `-`, `←` and `→` don't control Spotify or switch tabs, and `?` doesn't list the keys. `esc` leaves the input without searching, back to the results, or to the hint before your first search, so the keys control Spotify and switch tabs again.
 
 The left side lists the kinds of results: all, songs, artists, albums, playlists, podcasts and episodes. Next to each kind is how many Spotify found, and next to All is how many results it mixes. The right side lists the results of the selected kind, in Spotify's order. `tab` moves between the two sides, and `r` searches again. The Web API returns at most 10 results of each kind per request, so spot-go loads more as you move down the list, up to the first 1000.
 
