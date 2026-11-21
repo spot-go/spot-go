@@ -63,6 +63,10 @@ const (
 	ClientIDEnv = "SPOT_GO_CLIENT_ID"
 
 	scopeUserReadPlaybackPosition = "user-read-playback-position"
+
+	// exchangeTimeout is how long Spotify can take to give the token of a
+	// login.
+	exchangeTimeout = 30 * time.Second
 )
 
 // DefaultClientID is the Client ID of spot-go's own Spotify app, which
@@ -183,6 +187,12 @@ func (a *Authorization) Start() error {
 	callback.mu.Lock()
 	defer callback.mu.Unlock()
 
+	select {
+	case <-a.done:
+		// Canceled before it started.
+		return ErrCanceled
+	default:
+	}
 	if !callback.listening {
 		ln, err := net.Listen("tcp", callbackAddr)
 		if err != nil {
@@ -227,10 +237,19 @@ func (a *Authorization) Cancel() {
 
 // finish ends the login with r, unless it ended before.
 func (a *Authorization) finish(r ClientResponse) {
+	a.complete(func() ClientResponse { return r })
+}
+
+// complete ends the login with what end returns, unless it ended before:
+// then end doesn't run, and complete returns false. Cancel waits for end.
+func (a *Authorization) complete(end func() ClientResponse) bool {
+	ran := false
 	a.end.Do(func() {
-		a.result = r
+		ran = true
+		a.result = end()
 		close(a.done)
 	})
+	return ran
 }
 
 func Login(ctx context.Context) ClientResponse {
@@ -313,20 +332,33 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 		fail(errors.New("Spotify sent no authorization code"))
 		return
 	}
-	t, err := a.config.Exchange(r.Context(), code, oauth2.VerifierOption(a.verifier))
+	ctx, cancel := context.WithTimeout(r.Context(), exchangeTimeout)
+	defer cancel()
+	t, err := a.config.Exchange(ctx, code, oauth2.VerifierOption(a.verifier))
 	if err != nil {
 		fail(fmt.Errorf("fail to get token: %w", err))
 		return
 	}
-	if err := saveAuth(t, scopes, a.ClientID); err != nil {
-		fail(fmt.Errorf("fail to save config: %w", err))
-		return
-	}
 
-	client := newSessionClient(context.Background(), a.config, t)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, authSuccessPage)
-	a.finish(ClientResponse{client, nil})
+	// A login canceled meanwhile, as when spot-go went back to the Client
+	// ID, isn't saved: another login may have taken its place.
+	var saveErr error
+	completed := a.complete(func() ClientResponse {
+		if err := saveAuth(t, scopes, a.ClientID); err != nil {
+			saveErr = fmt.Errorf("fail to save config: %w", err)
+			return ClientResponse{nil, saveErr}
+		}
+		return ClientResponse{newSessionClient(context.Background(), a.config, t), nil}
+	})
+	switch {
+	case !completed:
+		errorPage("This login was canceled in spot-go. Log in again from spot-go.")
+	case saveErr != nil:
+		errorPage(saveErr.Error())
+	default:
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, authSuccessPage)
+	}
 }
 
 // newSessionClient is a client that refreshes the token t of the app of

@@ -205,6 +205,45 @@ func TestEscWhileLoggingInGoesBackToTheClientID(t *testing.T) {
 	}
 }
 
+func TestLoginGoesOnOnceTheBrowserIsDone(t *testing.T) {
+	withSettings(t, &config.Settings{Auth: &config.Auth{}})
+	m := submit(t, typeText(t, needsLogin(t), ownClientID))
+
+	m, cmd := update(t, m, authorized{m.authorization, spotify.ClientResponse{Client: spotify.NewClient(http.DefaultClient)}})
+	if cmd == nil || m.spotifyClient == nil {
+		t.Fatal("the login does not go on to the account")
+	}
+	if m.state != stateInit || strings.Contains(view(m), "browser") {
+		t.Fatalf("state = %v after the login, want the spinner:\n%s", m.state, view(m))
+	}
+
+	// esc no longer goes back to the Client ID.
+	_, cmd = update(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if !isQuit(cmd) {
+		t.Fatal("esc after the login did not quit")
+	}
+}
+
+func TestSpotGosAppStaysChosen(t *testing.T) {
+	withSettings(t, loggedIn(ownClientID))
+	m := needsLogin(t)
+	if got := clientIDValue(t, m); got != ownClientID {
+		t.Fatalf("the input starts with %q, want the saved %q", got, ownClientID)
+	}
+	for range ownClientID {
+		m, _ = update(t, m, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	}
+	m = submit(t, m)
+	if m.authorization == nil || m.authorization.ClientID != spotify.DefaultClientID {
+		t.Fatalf("authorization = %+v, want spot-go's own app", m.authorization)
+	}
+
+	m, _ = update(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if got := clientIDValue(t, m); got != "" {
+		t.Fatalf("the input has %q after esc, want it empty as chosen", got)
+	}
+}
+
 func TestFailedLoginShowsWhy(t *testing.T) {
 	withSettings(t, &config.Settings{Auth: &config.Auth{}})
 	m := submit(t, typeText(t, needsLogin(t), ownClientID))
@@ -333,15 +372,20 @@ func loginScopes(t *testing.T) []string {
 	return strings.Fields(u.Query().Get("scope"))
 }
 
-// refusingAPI answers every Web API request with a 403, as Spotify does for
-// an account not on the user list of an app in development mode.
-type refusingAPI struct{}
+const notRegisteredMsg = "Check settings on developer.spotify.com/dashboard, the user may not be registered."
 
-func (refusingAPI) RoundTrip(r *http.Request) (*http.Response, error) {
+// refusingAPI answers every Web API request with a 403 with body, as
+// Spotify does for an account not on the user list of an app in development
+// mode: in plain text, or else empty or in JSON.
+type refusingAPI struct {
+	body string
+}
+
+func (a refusingAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	return &http.Response{
 		StatusCode: http.StatusForbidden,
-		Header:     http.Header{"Content-Type": {"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{"error":{"status":403,"message":"Check settings on developer.spotify.com/dashboard, the user may not be registered."}}`)),
+		Header:     http.Header{"Content-Type": {"text/plain"}},
+		Body:       io.NopCloser(strings.NewReader(a.body)),
 		Request:    r,
 	}, nil
 }
@@ -363,7 +407,7 @@ func TestRefusedAccountLetsYouLogInAgain(t *testing.T) {
 			t.Setenv(spotify.ClientIDEnv, c.env)
 			m := soloistModel()
 			m.spotifyUser = nil
-			m.spotifyClient = spotify.NewClient(&http.Client{Transport: refusingAPI{}})
+			m.spotifyClient = spotify.NewClient(&http.Client{Transport: refusingAPI{notRegisteredMsg}})
 
 			msg := m.getCurrentUser()
 			if _, ok := msg.(accountRefused); !ok {
@@ -383,6 +427,24 @@ func TestRefusedAccountLetsYouLogInAgain(t *testing.T) {
 			m, _ = update(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 			if m.state != stateWebAPINeedsAuth {
 				t.Fatalf("state after enter = %v, want the login", m.state)
+			}
+		})
+	}
+}
+
+func TestRefusalWithoutAMessage(t *testing.T) {
+	for name, body := range map[string]string{
+		"empty": "",
+		"json":  `{"error":{"status":403,"message":"Forbidden"}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			withSettings(t, loggedIn(ownClientID))
+			m := soloistModel()
+			m.spotifyClient = spotify.NewClient(&http.Client{Transport: refusingAPI{body}})
+
+			msg := m.getCurrentUser()
+			if _, ok := msg.(accountRefused); !ok {
+				t.Fatalf("getCurrentUser() = %#v for a 403 with the body %q, want accountRefused", msg, body)
 			}
 		})
 	}

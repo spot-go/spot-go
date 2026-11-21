@@ -42,8 +42,10 @@ type (
 
 		// authorization is the login going on in the browser.
 		authorization *spotify.Authorization
-		// clientID is the Client ID last typed.
-		clientID string
+		// clientID is the Client ID last typed, and clientIDChosen whether
+		// one was, even "" for spot-go's own app.
+		clientID       string
+		clientIDChosen bool
 	}
 
 	state int

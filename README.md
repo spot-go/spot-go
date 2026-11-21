@@ -9,7 +9,7 @@ A Spotify terminal UI.
 ## Requirements
 
 - Go 1.27.3 or newer. `mise.toml` pins this version, so with [mise](https://mise.jdx.dev) you can install it with `mise install`.
-- A Spotify Premium account
+- A Spotify Premium account. Spotify only lets the few accounts on the user list of spot-go's own Spotify app use it, so with another account you log in with your own Spotify app (see [Spotify app settings](#spotify-app-settings)).
 - A program that plays the audio. spot-go uses [Soloist](https://developer.spotify.com/documentation/soloist), Spotify's own player, on:
   - macOS on Apple Silicon
   - Linux on x86_64, aarch64 or armv7, with PipeWire or PulseAudio
@@ -202,7 +202,7 @@ When spot-go asks you to log in, it asks for the Client ID: paste it and press `
 The `SPOT_GO_CLIENT_ID` environment variable sets the Client ID too, in place of the one you type or saved:
 
 ```bash
-SPOT_GO_CLIENT_ID=0123456789abcdef0123456789abcdef spot-go
+SPOT_GO_CLIENT_ID=0123456789abcdef0123456789abcdef go run .
 ```
 
 spot-go asks for the Client ID only when it needs a new login: on the first run, after an update that needs more Spotify permissions, and when Spotify no longer takes the login it saved. To switch to another app later, run spot-go once with `SPOT_GO_CLIENT_ID` set to that app's Client ID: spot-go asks you to log in again, and keeps the new app from then on, with or without the variable.

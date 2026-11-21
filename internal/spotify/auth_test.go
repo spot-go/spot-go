@@ -468,3 +468,44 @@ func TestLoginWithoutTheBuiltInApp(t *testing.T) {
 		t.Fatalf("Login() = %+v for a login of a build's own app, in a build without one, want ErrNeedsAuth", resp)
 	}
 }
+
+func TestLoginCanceledDuringTheTokenRequestIsNotSaved(t *testing.T) {
+	var a *Authorization
+	exchanging := make(chan struct{})
+	tokenServer(t, func(w http.ResponseWriter, form url.Values) {
+		close(exchanging)
+		// spot-go goes back to the Client ID meanwhile.
+		a.Cancel()
+		writeToken(w, "access", "refresh")
+	})
+	saved := fakeSaveAuth(t, nil)
+	// After tokenServer, which changes the endpoint.
+	a = NewAuthorization(ownClientID)
+	pending(t, a)
+
+	w := callbackRequest(url.Values{"code": {"c"}, "state": {a.state}})
+
+	<-exchanging
+	if len(*saved) != 0 {
+		t.Fatalf("saved %+v, want nothing for a canceled login", *saved)
+	}
+	if resp := a.Wait(); !errors.Is(resp.Err, ErrCanceled) {
+		t.Fatalf("Wait() = %+v, want ErrCanceled", resp)
+	}
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "canceled") {
+		t.Fatalf("callback answered %d:\n%s", w.Code, w.Body)
+	}
+}
+
+func TestCanceledLoginDoesNotStart(t *testing.T) {
+	a := NewAuthorization(ownClientID)
+	a.Cancel()
+	if err := a.Start(); !errors.Is(err, ErrCanceled) {
+		t.Fatalf("Start() = %v for a canceled login, want ErrCanceled", err)
+	}
+	callback.mu.Lock()
+	defer callback.mu.Unlock()
+	if callback.pending == a {
+		t.Fatal("a canceled login waits for the callback")
+	}
+}

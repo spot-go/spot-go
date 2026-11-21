@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync"
@@ -810,5 +811,55 @@ func TestSessionClientLeavesTheRefreshTimeoutToTheRefresh(t *testing.T) {
 	c := newSessionClient(context.WithValue(context.Background(), oauth2.HTTPClient, refresh), oauthConfig(DefaultClientID), &oauth2.Token{AccessToken: "token", Expiry: time.Now().Add(time.Hour)})
 	if c.httpClient.Timeout != 0 {
 		t.Fatalf("Web API requests time out after %v, want them to end with their context", c.httpClient.Timeout)
+	}
+}
+
+func TestCurrentUserErrorsKeepTheirStatus(t *testing.T) {
+	cases := map[string]struct {
+		body string
+		want string
+	}{
+		"json":       {`{"error":{"status":403,"message":"Forbidden by the app"}}`, "Forbidden by the app"},
+		"plain text": {"Check settings on developer.spotify.com/dashboard, the user may not be registered.\n", "Check settings on developer.spotify.com/dashboard, the user may not be registered."},
+		"no body":    {"", "unexpected HTTP 403"},
+		"html":       {"<html><body>Forbidden</body></html>", "unexpected HTTP 403"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/me" {
+					t.Errorf("path = %s, want /me", r.URL.Path)
+				}
+				w.WriteHeader(http.StatusForbidden)
+				io.WriteString(w, c.body)
+			}))
+			defer s.Close()
+			client := NewClient(s.Client())
+			client.baseURL = s.URL + "/"
+
+			_, err := client.CurrentUser(context.Background())
+
+			var apiErr spotify.Error
+			if !errors.As(err, &apiErr) || apiErr.Status != http.StatusForbidden {
+				t.Fatalf("CurrentUser() error = %#v, want a spotify.Error with status 403", err)
+			}
+			if !strings.Contains(apiErr.Message, c.want) {
+				t.Fatalf("message = %q, want %q", apiErr.Message, c.want)
+			}
+		})
+	}
+}
+
+func TestCurrentUser(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"id":"chico","display_name":"Chico"}`)
+	}))
+	defer s.Close()
+	client := NewClient(s.Client())
+	client.baseURL = s.URL + "/"
+
+	u, err := client.CurrentUser(context.Background())
+	if err != nil || u.DisplayName != "Chico" || u.ID != "chico" {
+		t.Fatalf("CurrentUser() = %+v, %v", u, err)
 	}
 }

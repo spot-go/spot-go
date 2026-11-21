@@ -185,7 +185,7 @@ func (m Model) showWebAPILogin(err error) Model {
 		title = paragraphs(errText(err), webAPILoginTitle, webAPILoginNoDefaultMsg, steps, webAPIOpenBrowserMsg)
 	}
 	value := m.clientID
-	if value == "" {
+	if !m.clientIDChosen {
 		if saved := spotify.LoggedInClientID(); saved != spotify.DefaultClientID {
 			value = saved
 		}
@@ -200,7 +200,7 @@ func (m Model) submitClientID(id string) (tea.Model, tea.Cmd) {
 	if m.state != stateWebAPINeedsAuth {
 		return m, nil
 	}
-	m.clientID = id
+	m.clientID, m.clientIDChosen = id, true
 	if id == "" {
 		id = spotify.DefaultClientID
 	}
@@ -250,8 +250,11 @@ func (m Model) handleAuthorized(msg authorized) (tea.Model, tea.Cmd) {
 	if msg.resp.Err != nil {
 		return m.showWebAPILogin(msg.resp.Err), nil
 	}
+	// The browser is done: spot-go goes on as with a login it saved.
 	m.spotifyClient = msg.resp.Client
-	return m, m.getCurrentUser
+	m.state = stateInit
+	m.msg = m.spinner.View()
+	return m, tea.Batch(m.getCurrentUser, m.spinner.Tick)
 }
 
 // copyAuthURL copies the URL of the login going on to the clipboard.
