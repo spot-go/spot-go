@@ -1,0 +1,50 @@
+name: Release check
+
+# Builds the release, without publishing it, when a pull request changes how
+# spot-go is released.
+on:
+  pull_request:
+    paths:
+      - .goreleaser.yaml
+      - .github/workflows/release*.yml
+      - install.sh
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    # As the release, on a Mac, for the macOS build's cgo.
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean --snapshot
+
+      - name: Check the macOS build
+        run: |
+          bin=$(find dist -path '*darwin_arm64*' -name spot-go -type f)
+          "$bin" --version
+          # It runs on the oldest macOS Go supports, not only on the runner's.
+          vtool -show-build "$bin"
+          vtool -show-build "$bin" | grep -Eq 'minos 13\.0$'
+          # It is built with cgo, for Now Playing and the media keys.
+          otool -L "$bin" | grep -q MediaPlayer.framework
+          codesign --verify "$bin"
+
+  install-script:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: shellcheck -s sh install.sh
