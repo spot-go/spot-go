@@ -7,6 +7,11 @@ version: 2
 
 project_name: spot-go
 
+git:
+  # When v1.2.3 is tagged on the commit of v1.2.3-rc.1, releases v1.2.3: git
+  # sorts v1.2.3-rc.1 after v1.2.3 otherwise.
+  prerelease_suffix: "-"
+
 builds:
   # macOS needs cgo for Now Playing and the media keys
   # (internal/media/media_darwin.go), so it builds on a Mac: the release runs
@@ -55,6 +60,9 @@ changelog:
 
 release:
   prerelease: auto
+  # Running the Release workflow again, after a package failed to publish,
+  # uploads the files again instead of failing on the ones already there.
+  replace_existing_artifacts: true
   footer: |
     ## Install
 
@@ -83,6 +91,10 @@ homebrew_casks:
     binaries: [spot-go]
     # Release candidates stay out of the tap.
     skip_upload: auto
+    zap:
+      trash:
+        - ~/Library/Application Support/spot-go
+        - ~/Library/Caches/spot-go
     hooks:
       post:
         # spot-go isn't signed by an Apple Developer ID, so macOS would block

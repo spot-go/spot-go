@@ -5,15 +5,16 @@
 #
 # To pick the version or the folder, pass them after `sh -s --`:
 #
-#   curl -fsSL https://raw.githubusercontent.com/franciscocpg/spot-go/main/install.sh | sh -s -- --version 1.2.3 --dir /usr/local/bin
+#   curl -fsSL https://raw.githubusercontent.com/franciscocpg/spot-go/main/install.sh | sh -s -- --version 1.2.3 --dir ~/bin
 #
-# SPOT_GO_VERSION and SPOT_GO_INSTALL_DIR set them too.
+# SPOT_GO_VERSION and SPOT_GO_INSTALL_DIR set them too. A folder only root can
+# write to, such as /usr/local/bin, needs `sudo sh` in place of `sh`.
 
 set -eu
 
 repo=franciscocpg/spot-go
 version=${SPOT_GO_VERSION:-latest}
-dir=${SPOT_GO_INSTALL_DIR:-$HOME/.local/bin}
+dir=${SPOT_GO_INSTALL_DIR:-}
 
 usage() {
 	cat <<EOF
@@ -51,6 +52,17 @@ while [ $# -gt 0 ]; do
 		usage >&2
 		exit 2
 		;;
+	esac
+done
+
+if [ -z "$dir" ]; then
+	[ -n "${HOME:-}" ] || fail "HOME isn't set: pass --dir"
+	dir=$HOME/.local/bin
+fi
+while :; do
+	case $dir in
+	?*/) dir=${dir%/} ;;
+	*) break ;;
 	esac
 done
 
@@ -116,8 +128,14 @@ latest) base=https://github.com/$repo/releases/latest/download ;;
 *) base=https://github.com/$repo/releases/download/v${version#v} ;;
 esac
 
+{ mkdir -p "$dir" 2>/dev/null && [ -w "$dir" ]; } || fail "can't write to $dir: pass another --dir, or run sh with sudo"
+
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+# So the shells that don't run the EXIT trap on a signal, such as dash, run it.
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 echo "Downloading $base/$asset"
 download "$base/$asset" "$tmp/$asset" || fail "fail to download $base/$asset"
@@ -129,15 +147,24 @@ got=$(sha256 "$tmp/$asset")
 [ "$got" = "$want" ] || fail "the SHA-256 of $asset is $got, want $want"
 
 tar -xzf "$tmp/$asset" -C "$tmp" spot-go
-mkdir -p "$dir"
 # Into the folder and then renamed, so a spot-go that still runs, such as
 # spot-go in the background, keeps running from the file it started from.
 cp "$tmp/spot-go" "$dir/.spot-go.new"
 chmod 755 "$dir/.spot-go.new"
 mv -f "$dir/.spot-go.new" "$dir/spot-go"
 
-echo "Installed $("$dir/spot-go" --version) to $dir/spot-go"
+installed=$("$dir/spot-go" --version) || fail "installed $dir/spot-go, but it doesn't run on this system"
+echo "Installed $installed to $dir/spot-go"
 case :$PATH: in
-*:"$dir":*) ;;
-*) echo "$dir isn't in your PATH. Add it, or run $dir/spot-go." ;;
+*:"$dir":* | *:"$dir"/:*) ;;
+*)
+	cat <<EOF
+
+$dir isn't in your PATH. To run spot-go as spot-go, add this line to your
+shell's profile, such as ~/.zshrc on macOS or ~/.bashrc on Linux, and open a
+new terminal:
+
+  export PATH="$dir:\$PATH"
+EOF
+	;;
 esac

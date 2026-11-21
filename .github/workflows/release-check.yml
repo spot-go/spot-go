@@ -1,13 +1,18 @@
 name: Release check
 
 # Builds the release, without publishing it, when a pull request changes how
-# spot-go is released.
+# spot-go is released, or what the checks below look at.
 on:
   pull_request:
     paths:
       - .goreleaser.yaml
       - .github/workflows/release*.yml
       - install.sh
+      - go.mod
+      - go.sum
+      - main.go
+      - cmd/version.go
+      - internal/media/**
 
 permissions:
   contents: read
@@ -17,6 +22,8 @@ jobs:
     # As the release, on a Mac, for the macOS build's cgo.
     runs-on: macos-latest
     timeout-minutes: 30
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -42,6 +49,23 @@ jobs:
           # It is built with cgo, for Now Playing and the media keys.
           otool -L "$bin" | grep -q MediaPlayer.framework
           codesign --verify "$bin"
+
+      - name: Check the cask loads in Homebrew
+        run: |
+          brew tap-new --no-git spot-go/check
+          tap=$(brew --repository spot-go/check)
+          mkdir -p "$tap/Casks"
+          cp dist/homebrew/Casks/spot-go.rb "$tap/Casks/"
+          brew readall --os=all --arch=all spot-go/check
+          brew info --cask spot-go/check/spot-go
+
+      - name: Install with install.sh
+        run: |
+          # From the files the release would publish, in place of the
+          # latest release.
+          sed "s#https://github.com/\$repo/releases/latest/download#file://$PWD/dist#" install.sh > "$RUNNER_TEMP/install.sh"
+          sh "$RUNNER_TEMP/install.sh" --dir "$RUNNER_TEMP/bin"
+          "$RUNNER_TEMP/bin/spot-go" --version
 
   install-script:
     runs-on: ubuntu-latest

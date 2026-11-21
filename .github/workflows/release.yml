@@ -31,6 +31,9 @@ jobs:
           version: "~> v2"
           args: release --clean ${{ github.event_name == 'workflow_dispatch' && '--snapshot' || '' }}
         env:
+          # The tag that was pushed, which GoReleaser otherwise picks among the
+          # tags of the commit.
+          GORELEASER_CURRENT_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Pushes the cask to franciscocpg/homebrew-tap and the Nix package
           # to franciscocpg/nur-packages.

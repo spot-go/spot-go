@@ -8,7 +8,7 @@ A Spotify terminal UI.
 
 ## Requirements
 
-- A Spotify Premium account
+- A Spotify Premium account, on the user list of spot-go's Spotify app. The app is in development mode, which Spotify limits to 5 users (see [Spotify app settings](#spotify-app-settings)), so Spotify refuses spot-go's requests for other accounts.
 - A program that plays the audio. spot-go uses [Soloist](https://developer.spotify.com/documentation/soloist), Spotify's own player, on:
   - macOS 13 or newer on Apple Silicon
   - Linux on x86_64, aarch64 or armv7, with PipeWire or PulseAudio
@@ -68,10 +68,10 @@ curl -fsSL https://raw.githubusercontent.com/franciscocpg/spot-go/main/install.s
 `--version` installs another version and `--dir` another folder. Pass them after `sh -s --`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/franciscocpg/spot-go/main/install.sh | sh -s -- --version 1.2.3 --dir /usr/local/bin
+curl -fsSL https://raw.githubusercontent.com/franciscocpg/spot-go/main/install.sh | sh -s -- --version 1.2.3 --dir ~/bin
 ```
 
-Run it again to update spot-go.
+A folder only root can write to, such as `/usr/local/bin`, needs `sudo sh` in place of `sh`. When the folder isn't in your `PATH`, as `~/.local/bin` on macOS, the script says so and prints the line to add to your shell's profile. Run it again to update spot-go.
 
 ### go install
 
@@ -291,11 +291,15 @@ The release needs, once:
 
 1. This repository to be public, so anyone can download the release.
 2. The [franciscocpg/homebrew-tap](https://github.com/franciscocpg/homebrew-tap) repository, public and with a first commit, such as a README.
-3. The [franciscocpg/nur-packages](https://github.com/franciscocpg/nur-packages) repository, made from the [NUR packages template](https://github.com/nix-community/nur-packages-template), with `spot-go = pkgs.callPackage ./pkgs/spot-go { };` in its `default.nix`, and [added to NUR](https://github.com/nix-community/NUR#how-to-add-your-own-repository).
-4. An [AUR account](https://aur.archlinux.org/register) with an SSH key: the public key in the account's settings.
+3. The [franciscocpg/nur-packages](https://github.com/franciscocpg/nur-packages) repository, public and made from the [NUR packages template](https://github.com/nix-community/nur-packages-template), with `nurRepo` set to `franciscocpg` in its `.github/workflows/build.yml`.
+4. An [AUR account](https://aur.archlinux.org/register) with an SSH key without a passphrase, such as one made with `ssh-keygen -t ed25519 -N '' -f aur`: the public key goes in the account's settings.
 5. These secrets in this repository's Actions settings:
-   - `PACKAGES_GITHUB_TOKEN`: a fine-grained personal access token with read and write access to the contents of homebrew-tap and nur-packages.
-   - `AUR_KEY`: the private SSH key of the AUR account.
+   - `PACKAGES_GITHUB_TOKEN`: a fine-grained personal access token with read and write access to the contents of homebrew-tap and nur-packages. Such a token expires, so renew it before it does.
+   - `AUR_KEY`: the private SSH key of the AUR account. Without it, the release leaves out the AUR.
+
+After the first release pushed `pkgs/spot-go/default.nix` to nur-packages, add `spot-go = pkgs.callPackage ./pkgs/spot-go { };` to its `default.nix`, and [add it to NUR](https://github.com/nix-community/NUR#how-to-add-your-own-repository). Before that, the file the line points to doesn't exist, so nur-packages wouldn't evaluate.
+
+The GitHub release comes out before Homebrew, the AUR and NUR. If one of them fails, such as with an expired token, fix it and run the failed job again: it uploads the release's files again and goes on to the packages. If the AUR got the version the first time, it fails the second time with nothing to commit, which is harmless.
 
 ## License
 
