@@ -50,14 +50,28 @@ jobs:
           otool -L "$bin" | grep -q MediaPlayer.framework
           codesign --verify "$bin"
 
-      - name: Check the cask loads in Homebrew
+      - name: Install the cask with Homebrew
         run: |
           brew tap-new --no-git spot-go/check
           tap=$(brew --repository spot-go/check)
           mkdir -p "$tap/Casks"
-          cp dist/homebrew/Casks/spot-go.rb "$tap/Casks/"
+          # From the archives the release would publish, in place of the
+          # release's.
+          sed -E "s#\"https://github.com/franciscocpg/spot-go/releases/download/[^/]+/#\"file://$PWD/dist/#" \
+            dist/homebrew/Casks/spot-go.rb > "$tap/Casks/spot-go.rb"
+          cat "$tap/Casks/spot-go.rb"
+          # As the README says to, by its full name, which trusts the cask.
+          brew install --cask spot-go/check/spot-go
+          spot-go --version
+          bin=$(echo "$(brew --prefix)"/Caskroom/spot-go/*/spot-go)
+          xattr -l "$bin"
+          if xattr -p com.apple.quarantine "$bin" 2>/dev/null; then
+            echo "the cask left the quarantine flag on $bin" >&2
+            exit 1
+          fi
+          # The Linux part of the cask loads too.
           brew readall --os=all --arch=all spot-go/check
-          brew info --cask spot-go/check/spot-go
+          brew uninstall --zap --cask spot-go/check/spot-go
 
       - name: Install with install.sh
         run: |
