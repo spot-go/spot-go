@@ -9,9 +9,9 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/franciscocpg/spot-go/internal/media"
-	"github.com/franciscocpg/spot-go/internal/spotify"
-	"github.com/franciscocpg/spot-go/internal/ui/styles"
+	"github.com/spot-go/spot-go/internal/media"
+	"github.com/spot-go/spot-go/internal/spotify"
+	"github.com/spot-go/spot-go/internal/ui/styles"
 	libspotify "github.com/zmb3/spotify/v2"
 )
 

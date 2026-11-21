@@ -1,18 +1,18 @@
 #!/bin/sh
 # Installs spot-go from its GitHub releases:
 #
-#   curl -fsSL https://raw.githubusercontent.com/franciscocpg/spot-go/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/spot-go/spot-go/main/install.sh | sh
 #
 # To pick the version or the folder, pass them after `sh -s --`:
 #
-#   curl -fsSL https://raw.githubusercontent.com/franciscocpg/spot-go/main/install.sh | sh -s -- --version 1.2.3 --dir ~/bin
+#   curl -fsSL https://raw.githubusercontent.com/spot-go/spot-go/main/install.sh | sh -s -- --version 1.2.3 --dir ~/bin
 #
 # SPOT_GO_VERSION and SPOT_GO_INSTALL_DIR set them too. A folder only root can
 # write to, such as /usr/local/bin, needs `sudo sh` in place of `sh`.
 
 set -eu
 
-repo=franciscocpg/spot-go
+repo=spot-go/spot-go
 version=${SPOT_GO_VERSION:-latest}
 dir=${SPOT_GO_INSTALL_DIR:-}
 

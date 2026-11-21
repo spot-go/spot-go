@@ -18,9 +18,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/franciscocpg/spot-go/internal/library"
-	"github.com/franciscocpg/spot-go/internal/media"
-	"github.com/franciscocpg/spot-go/internal/spotify"
+	"github.com/spot-go/spot-go/internal/library"
+	"github.com/spot-go/spot-go/internal/media"
+	"github.com/spot-go/spot-go/internal/spotify"
 	libspotify "github.com/zmb3/spotify/v2"
 )
 

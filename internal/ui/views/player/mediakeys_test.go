@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/franciscocpg/spot-go/internal/media"
+	"github.com/spot-go/spot-go/internal/media"
 )
 
 func (f *fakeAPI) skipRequests() []string {

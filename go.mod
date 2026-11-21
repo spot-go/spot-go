@@ -1,4 +1,4 @@
-module github.com/franciscocpg/spot-go
+module github.com/spot-go/spot-go
 
 go 1.27.3
 

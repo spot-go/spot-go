@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/franciscocpg/spot-go/cmd"
-	"github.com/franciscocpg/spot-go/internal/media"
+	"github.com/spot-go/spot-go/cmd"
+	"github.com/spot-go/spot-go/internal/media"
 )
 
 // version is spot-go's version. The release build sets it, with

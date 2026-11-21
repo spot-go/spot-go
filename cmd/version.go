@@ -14,7 +14,7 @@ func SetVersion(v string) {
 
 // version returns v, or else the version of the main module that
 // readBuildInfo reports without its v, as go install sets it, such as 1.2.3
-// for github.com/franciscocpg/spot-go@v1.2.3, or else dev.
+// for github.com/spot-go/spot-go@v1.2.3, or else dev.
 func version(v string, readBuildInfo func() (*debug.BuildInfo, bool)) string {
 	if v != "" {
 		return v

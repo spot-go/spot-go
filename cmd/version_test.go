@@ -8,7 +8,7 @@ import (
 func TestVersion(t *testing.T) {
 	built := func(v string) func() (*debug.BuildInfo, bool) {
 		return func() (*debug.BuildInfo, bool) {
-			return &debug.BuildInfo{Main: debug.Module{Path: "github.com/franciscocpg/spot-go", Version: v}}, true
+			return &debug.BuildInfo{Main: debug.Module{Path: "github.com/spot-go/spot-go", Version: v}}, true
 		}
 	}
 	noInfo := func() (*debug.BuildInfo, bool) { return nil, false }

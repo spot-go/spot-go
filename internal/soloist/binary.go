@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/franciscocpg/spot-go/internal/path"
-	"github.com/franciscocpg/spot-go/internal/tar"
+	"github.com/spot-go/spot-go/internal/path"
+	"github.com/spot-go/spot-go/internal/tar"
 )
 
 const (

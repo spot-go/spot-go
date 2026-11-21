@@ -13,8 +13,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/franciscocpg/spot-go/internal/browser"
-	"github.com/franciscocpg/spot-go/internal/config"
+	"github.com/spot-go/spot-go/internal/browser"
+	"github.com/spot-go/spot-go/internal/config"
 	spotifyauth "github.com/zmb3/spotify/v2/auth"
 
 	"golang.org/x/oauth2"

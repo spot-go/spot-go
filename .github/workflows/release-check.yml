@@ -57,7 +57,7 @@ jobs:
           mkdir -p "$tap/Casks"
           # From the archives the release would publish, in place of the
           # release's.
-          sed -E "s#\"https://github.com/franciscocpg/spot-go/releases/download/[^/]+/#\"file://$PWD/dist/#" \
+          sed -E "s#\"https://github.com/spot-go/spot-go/releases/download/[^/]+/#\"file://$PWD/dist/#" \
             dist/homebrew/Casks/spot-go.rb > "$tap/Casks/spot-go.rb"
           cat "$tap/Casks/spot-go.rb"
           # As the README says to, by its full name, which trusts the cask.

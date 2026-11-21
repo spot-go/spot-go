@@ -11,7 +11,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/franciscocpg/spot-go/internal/spotify"
+	"github.com/spot-go/spot-go/internal/spotify"
 )
 
 var searchResponseKeys = map[string]string{

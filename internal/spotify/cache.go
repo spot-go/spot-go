@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/allegro/bigcache/v3"
-	"github.com/franciscocpg/spot-go/internal/encoding"
+	"github.com/spot-go/spot-go/internal/encoding"
 )
 
 var (

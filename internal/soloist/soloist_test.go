@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/franciscocpg/spot-go/internal/command"
+	"github.com/spot-go/spot-go/internal/command"
 )
 
 func TestAPIKey(t *testing.T) {

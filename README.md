@@ -22,7 +22,7 @@ A Spotify terminal UI.
 On macOS:
 
 ```bash
-brew install --cask franciscocpg/tap/spot-go
+brew install --cask spot-go/tap/spot-go
 ```
 
 spot-go isn't signed with an Apple Developer ID, so macOS would block it as it blocks other programs downloaded from the internet. The cask removes the quarantine flag macOS puts on the download, so spot-go runs.
@@ -37,7 +37,7 @@ yay -S spot-go-bin
 
 ### Debian, Ubuntu, Fedora, Alpine
 
-Each [release](https://github.com/franciscocpg/spot-go/releases/latest) has `.deb`, `.rpm` and `.apk` packages. Download the one for your system and install it, for example on x86_64:
+Each [release](https://github.com/spot-go/spot-go/releases/latest) has `.deb`, `.rpm` and `.apk` packages. Download the one for your system and install it, for example on x86_64:
 
 ```bash
 sudo apt install ./spot-go_1.2.3_linux_amd64.deb             # Debian, Ubuntu
@@ -49,10 +49,10 @@ The packages aren't signed, so Alpine needs `--allow-untrusted`.
 
 ### Nix
 
-spot-go is in [NUR](https://github.com/nix-community/NUR), the Nix User Repository, at `nur.repos.franciscocpg.spot-go`. To run it without NUR:
+spot-go is in [NUR](https://github.com/nix-community/NUR), the Nix User Repository, at `nur.repos.spot-go.spot-go`. To run it without NUR:
 
 ```bash
-nix run github:franciscocpg/nur-packages#spot-go
+nix run github:spot-go/nur-packages#spot-go
 ```
 
 On NixOS, Soloist, which spot-go downloads from Spotify, is built for other Linux distributions. If it doesn't start, enable [nix-ld](https://github.com/nix-community/nix-ld) (`programs.nix-ld.enable = true;`).
@@ -62,13 +62,13 @@ On NixOS, Soloist, which spot-go downloads from Spotify, is built for other Linu
 On macOS or Linux, the install script downloads the release for your system, checks its checksum and installs spot-go to `~/.local/bin`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/franciscocpg/spot-go/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/spot-go/spot-go/main/install.sh | sh
 ```
 
 `--version` installs another version and `--dir` another folder. Pass them after `sh -s --`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/franciscocpg/spot-go/main/install.sh | sh -s -- --version 1.2.3 --dir ~/bin
+curl -fsSL https://raw.githubusercontent.com/spot-go/spot-go/main/install.sh | sh -s -- --version 1.2.3 --dir ~/bin
 ```
 
 A folder only root can write to, such as `/usr/local/bin`, needs `sudo sh` in place of `sh`. When the folder isn't in your `PATH`, as `~/.local/bin` on macOS, the script says so and prints the line to add to your shell's profile. Run it again to update spot-go.
@@ -78,7 +78,7 @@ A folder only root can write to, such as `/usr/local/bin`, needs `sudo sh` in pl
 With Go 1.27.3 or newer:
 
 ```bash
-go install github.com/franciscocpg/spot-go@latest
+go install github.com/spot-go/spot-go@latest
 ```
 
 On macOS, it needs the Xcode Command Line Tools (`xcode-select --install`) to build spot-go's support for the keyboard's media keys. Built with `CGO_ENABLED=0`, spot-go runs without them, but the media keys don't reach it. The release builds above have it already.
@@ -281,20 +281,20 @@ git push origin v1.2.3
 The tag runs the Release workflow (`.github/workflows/release.yml`), which runs [GoReleaser](https://goreleaser.com) with `.goreleaser.yaml` on a macOS runner: the macOS build needs cgo and the macOS SDK, and the Linux builds need no cgo, so they cross-compile there too. It:
 
 - creates the GitHub release, with an archive for each platform, the `.deb`, `.rpm` and `.apk` packages, and `checksums.txt`
-- pushes the cask to [franciscocpg/homebrew-tap](https://github.com/franciscocpg/homebrew-tap)
+- pushes the cask to [spot-go/homebrew-tap](https://github.com/spot-go/homebrew-tap)
 - pushes `spot-go-bin` to the AUR
-- pushes the Nix package to [franciscocpg/nur-packages](https://github.com/franciscocpg/nur-packages), at `pkgs/spot-go/default.nix`
+- pushes the Nix package to [spot-go/nur-packages](https://github.com/spot-go/nur-packages), at `pkgs/spot-go/default.nix`
 
 A tag with a pre-release suffix, such as `v1.2.3-rc.1`, makes a pre-release on GitHub only, without Homebrew, the AUR or NUR. Running the Release workflow by hand, from the Actions tab, builds everything without publishing it, and keeps the archives, the packages, the cask, the `PKGBUILD` and the Nix file in the run's artifacts.
 
 The release needs, once:
 
-1. This repository to be public, so anyone can download the release.
-2. The [franciscocpg/homebrew-tap](https://github.com/franciscocpg/homebrew-tap) repository, public and with a first commit, such as a README.
-3. The [franciscocpg/nur-packages](https://github.com/franciscocpg/nur-packages) repository, public and made from the [NUR packages template](https://github.com/nix-community/nur-packages-template), with `nurRepo` set to `franciscocpg` in its `.github/workflows/build.yml`.
+1. This repository in the [spot-go](https://github.com/spot-go) GitHub organization, at `spot-go/spot-go` as its module path says, and public, so anyone can download the release and `go install` finds it.
+2. The [spot-go/homebrew-tap](https://github.com/spot-go/homebrew-tap) repository, public and with a first commit, such as a README.
+3. The [spot-go/nur-packages](https://github.com/spot-go/nur-packages) repository, public and made from the [NUR packages template](https://github.com/nix-community/nur-packages-template), with `nurRepo` set to `spot-go` in its `.github/workflows/build.yml`.
 4. An [AUR account](https://aur.archlinux.org/register) with an SSH key without a passphrase, such as one made with `ssh-keygen -t ed25519 -N '' -f aur`: the public key goes in the account's settings.
 5. These secrets in this repository's Actions settings:
-   - `PACKAGES_GITHUB_TOKEN`: a fine-grained personal access token with read and write access to the contents of homebrew-tap and nur-packages. Such a token expires, so renew it before it does.
+   - `PACKAGES_GITHUB_TOKEN`: a fine-grained personal access token, with the spot-go organization as its resource owner, and read and write access to the contents of homebrew-tap and nur-packages. Such a token expires, so renew it before it does.
    - `AUR_KEY`: the private SSH key of the AUR account. Without it, the release leaves out the AUR.
 
 After the first release pushed `pkgs/spot-go/default.nix` to nur-packages, add `spot-go = pkgs.callPackage ./pkgs/spot-go { };` to its `default.nix`, and [add it to NUR](https://github.com/nix-community/NUR#how-to-add-your-own-repository). Before that, the file the line points to doesn't exist, so nur-packages wouldn't evaluate.

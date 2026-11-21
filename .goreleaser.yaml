@@ -59,6 +59,11 @@ changelog:
   use: github-native
 
 release:
+  # Not from the git remote, so the release and the packages' links go to the
+  # spot-go organization wherever the repository was cloned from.
+  github:
+    owner: spot-go
+    name: spot-go
   prerelease: auto
   # Running the Release workflow again, after a package failed to publish,
   # uploads the files again instead of failing on the ones already there.
@@ -68,25 +73,25 @@ release:
 
     ```bash
     # macOS
-    brew install --cask franciscocpg/tap/spot-go
+    brew install --cask spot-go/tap/spot-go
 
     # Arch Linux
     yay -S spot-go-bin
 
     # macOS or Linux, to ~/.local/bin
-    curl -fsSL https://raw.githubusercontent.com/franciscocpg/spot-go/main/install.sh | sh
+    curl -fsSL https://raw.githubusercontent.com/spot-go/spot-go/main/install.sh | sh
     ```
 
-    On Debian, Ubuntu, Fedora and Alpine, install the `.deb`, `.rpm` or `.apk` package below. The [README](https://github.com/franciscocpg/spot-go#install) has Nix and `go install` too.
+    On Debian, Ubuntu, Fedora and Alpine, install the `.deb`, `.rpm` or `.apk` package below. The [README](https://github.com/spot-go/spot-go#install) has Nix and `go install` too.
 
 homebrew_casks:
   - name: spot-go
     repository:
-      owner: franciscocpg
+      owner: spot-go
       name: homebrew-tap
       token: "{{ .Env.PACKAGES_GITHUB_TOKEN }}"
     directory: Casks
-    homepage: https://github.com/franciscocpg/spot-go
+    homepage: https://github.com/spot-go/spot-go
     description: Spotify terminal UI
     binaries: [spot-go]
     # Release candidates stay out of the tap.
@@ -107,7 +112,7 @@ homebrew_casks:
 nfpms:
   - package_name: spot-go
     ids: [linux]
-    homepage: https://github.com/franciscocpg/spot-go
+    homepage: https://github.com/spot-go/spot-go
     maintainer: Francisco Guimarães <3680556+franciscocpg@users.noreply.github.com>
     description: A Spotify terminal UI.
     license: MIT
@@ -121,7 +126,7 @@ nfpms:
 
 aurs:
   - name: spot-go-bin
-    homepage: https://github.com/franciscocpg/spot-go
+    homepage: https://github.com/spot-go/spot-go
     description: A Spotify terminal UI
     license: MIT
     maintainers:
@@ -138,11 +143,11 @@ aurs:
 nix:
   - name: spot-go
     repository:
-      owner: franciscocpg
+      owner: spot-go
       name: nur-packages
       token: "{{ .Env.PACKAGES_GITHUB_TOKEN }}"
     path: pkgs/spot-go/default.nix
-    homepage: https://github.com/franciscocpg/spot-go
+    homepage: https://github.com/spot-go/spot-go
     description: A Spotify terminal UI
     license: mit
     main_program: spot-go

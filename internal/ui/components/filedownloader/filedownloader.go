@@ -8,7 +8,7 @@ import (
 	"os"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/franciscocpg/spot-go/internal/program"
+	"github.com/spot-go/spot-go/internal/program"
 )
 
 type (

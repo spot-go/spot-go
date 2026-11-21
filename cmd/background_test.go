@@ -3,7 +3,7 @@ package cmd
 import (
 	"testing"
 
-	"github.com/franciscocpg/spot-go/internal/background"
+	"github.com/spot-go/spot-go/internal/background"
 )
 
 func TestBackgroundCommandTakesItsArgs(t *testing.T) {

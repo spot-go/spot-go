@@ -4,8 +4,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/franciscocpg/spot-go/internal/background"
 	"github.com/spf13/cobra"
+	"github.com/spot-go/spot-go/internal/background"
 )
 
 var (
