@@ -20,8 +20,6 @@ import (
 	"github.com/spot-go/spot-go/internal/ui/views"
 	"github.com/spot-go/spot-go/internal/ui/views/player"
 	libspotify "github.com/zmb3/spotify/v2"
-
-	"golang.design/x/clipboard"
 )
 
 type (
@@ -41,6 +39,11 @@ type (
 
 		player  *player.Model
 		publish func(media.Info)
+
+		// authorization is the login going on in the browser.
+		authorization *spotify.Authorization
+		// clientID is the Client ID last typed.
+		clientID string
 	}
 
 	state int
@@ -58,6 +61,7 @@ const (
 	stateWebAPINeedsAuth
 	stateCopyWebAPIAuthURL
 	stateWebAPILoggingIn
+	stateWebAPIRefused
 	stateWebAPILogged
 	stateSoloistDownload
 	stateSoloistAPIKey
@@ -71,14 +75,7 @@ const (
 	// devices end the wait.
 	deviceListTries = 3
 
-	webAPILoginMsg = `Let's login to spotify. First we need a token to use the Web API.
-Press enter to open a browser and login.`
-	webAPIAuthMsg = `A browser should be opened. Continue the login to spotify there.
-
-If the browser did not open, press "c" to copy the URL to your clipboard
-and past it on your browser manually.`
-	webAPIURLCopiedToClipboardMsg = "URL copied to clipboard. Paste it on your browser and continue the login."
-	webAPIWelcomeMsg              = `Welcome %s.
+	webAPIWelcomeMsg = `Welcome %s.
 
 Now we are going to configure the spotify player (Soloist).
 Press enter to continue`
@@ -112,9 +109,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "esc":
-			if m.state == stateSoloistPairing {
+			switch m.state {
+			case stateSoloistPairing:
 				soloist.Stop()
 				return m.showSoloistAPIKey(nil), nil
+			case stateWebAPILoggingIn, stateCopyWebAPIAuthURL:
+				return m.showWebAPILogin(nil), nil
 			}
 			return m, tea.Quit
 		case "q":
@@ -142,18 +142,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case stateWebAPILogged:
 				return m.prepareSoloist()
 			case stateWebAPINeedsAuth:
-				m.state = stateWebAPILoggingIn
-				m.msg = webAPIAuthMsg
-				return m, m.webAPIAuth
+				// Without the Client ID input, SPOT_GO_CLIENT_ID sets it.
+				if id := spotify.ClientIDFromEnv(); m.activeModel == nil && id != "" {
+					return m.authorize(id)
+				}
+				return m, nil
+			case stateWebAPIRefused:
+				return m.showWebAPILogin(nil), nil
 
 			default:
 				return m, nil
 			}
 		case "c":
 			if m.state == stateWebAPILoggingIn {
-				clipboard.Write(m.ctx, clipboard.FmtText, []byte(spotify.AuthURL))
-				m.state = stateCopyWebAPIAuthURL
-				m.msg = webAPIURLCopiedToClipboardMsg
+				return m.copyAuthURL(), nil
 			}
 			return m, nil
 		}
@@ -176,9 +178,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	case spotify.ClientResponse:
 		if errors.Is(msg.Err, spotify.ErrNeedsAuth) {
-			m.msg = webAPILoginMsg
-			m.state = stateWebAPINeedsAuth
-			return m, nil
+			return m.showWebAPILogin(nil), nil
 		}
 
 		if msg.Err != nil {
@@ -186,6 +186,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.spotifyClient = msg.Client
 		return m, m.getCurrentUser
+
+	case clientIDSubmitted:
+		return m.submitClientID(string(msg))
+
+	case browserOpened:
+		return m.handleBrowserOpened(msg)
+
+	case authorized:
+		return m.handleAuthorized(msg)
+
+	case accountRefused:
+		return m.showAccountRefused(msg.err), nil
 
 	case *libspotify.PrivateUser:
 		m.spotifyUser = msg
@@ -266,16 +278,20 @@ func (m Model) View() tea.View {
 	), m.Height)
 }
 
+// webAPILogin logs in with the login spot-go saved, unless
+// SPOT_GO_CLIENT_ID names another app than the one of that login.
 func (m Model) webAPILogin() tea.Msg {
+	if id := spotify.ClientIDFromEnv(); id != "" && id != spotify.LoggedInClientID() {
+		return spotify.ClientResponse{Err: spotify.ErrNeedsAuth}
+	}
 	return spotify.Login(m.ctx)
-}
-
-func (m Model) webAPIAuth() tea.Msg {
-	return spotify.Authorize()
 }
 
 func (m Model) getCurrentUser() tea.Msg {
 	u, err := m.spotifyClient.CurrentUser(m.ctx)
+	if refused(err) {
+		return accountRefused{err}
+	}
 	if err != nil {
 		return fatalError{fmt.Errorf("fail to get the current spotify user: %w", err)}
 	}

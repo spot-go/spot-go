@@ -31,7 +31,7 @@ mise exec -- go run .
 
 On the first run spot-go:
 
-1. Asks you to log in to the Spotify Web API in the browser. spot-go uses it to read your playlists, the songs you liked, the podcasts you follow, the artists you follow, the albums you saved, what you played recently and where you stopped in each episode, and to control playback.
+1. Asks for the Client ID of the Spotify app to log in with (see [Spotify app settings](#spotify-app-settings)), and then asks you to log in to the Spotify Web API in the browser. spot-go uses the Web API to read your playlists, the songs you liked, the podcasts you follow, the artists you follow, the albums you saved, what you played recently and where you stopped in each episode, and to control playback.
 2. Downloads Soloist. On macOS it only installs a binary signed by Spotify.
 3. Asks for a Soloist API key. Create one at the [Soloist dashboard](https://developer.spotify.com/dashboard/soloist) and paste it. spot-go saves it only on your computer, in its config folder.
 4. Shows the device name, `spot-go@<hostname>`. Open Spotify on a phone or computer on the same network, open the list of devices and select it. Soloist remembers the login, so you only do this once.
@@ -187,7 +187,31 @@ Set `DEBUG=1` to write a `debug.log` file. `make debug` starts the app under Del
 
 ## Spotify app settings
 
-spot-go uses the client ID in `internal/spotify/auth.go`. The Spotify app behind it must have this exact redirect URI registered in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard):
+spot-go uses the Spotify Web API through a Spotify app, which Spotify knows by its Client ID. Spotify keeps an app in development mode, where only the few accounts on the app's user list can use it, unless the app belongs to an organization with at least 250,000 monthly active users. So spot-go's own app can't take every account. To use spot-go with any account, create your own Spotify app. It's free and takes a few minutes:
+
+1. Open the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) and log in with your Spotify account. The first time, Spotify asks you to accept its Developer Terms of Service.
+2. Click **Create app**.
+3. Fill in a name and a description of your choice, such as `spot-go`. Spotify shows them on the page where you log in. The website can stay empty.
+4. Under **Redirect URIs**, add `http://127.0.0.1:10888/callback`, exactly, and click **Add**. Spotify doesn't take `localhost` in place of `127.0.0.1`.
+5. Where Spotify asks which APIs or SDKs you plan to use, select **Web API**.
+6. Accept the terms and click **Save**.
+7. Copy the **Client ID** from the app's page. spot-go doesn't need the client secret: it logs in with PKCE, which has none.
+
+When spot-go asks you to log in, it asks for the Client ID: paste it and press `enter`. spot-go saves it with the login, in `settings.json` in its config folder (`~/Library/Application Support/spot-go` on macOS, `~/.config/spot-go` on Linux), and logs in with it from then on. Leave the Client ID empty to log in with spot-go's own app.
+
+The `SPOT_GO_CLIENT_ID` environment variable sets the Client ID too, in place of the one you type or saved:
+
+```bash
+SPOT_GO_CLIENT_ID=0123456789abcdef0123456789abcdef spot-go
+```
+
+spot-go asks for the Client ID only when it needs a new login: on the first run, after an update that needs more Spotify permissions, and when Spotify no longer takes the login it saved. To switch to another app later, run spot-go once with `SPOT_GO_CLIENT_ID` set to that app's Client ID: spot-go asks you to log in again, and keeps the new app from then on, with or without the variable.
+
+When Spotify refuses your account after the login, as spot-go's own app does with the accounts not on its user list, spot-go says why and lets you log in again with another Client ID. With your own app, add your account to the app's user list, under **User Management** in its settings, with your name and the email of your Spotify account. If the browser shows `INVALID_CLIENT: Invalid client`, the Client ID is wrong, and if it shows `INVALID_CLIENT: Invalid redirect URI`, the app doesn't have the redirect URI above. Press `esc` in spot-go to type the Client ID again.
+
+Spotify gives apps created since February 2026 less of the Web API than older apps. spot-go only uses what new apps get, but Spotify no longer tells them who publishes a podcast, so Search shows podcasts without their publisher.
+
+spot-go's own app, the one it logs in with when you leave the Client ID empty, has the Client ID in `internal/spotify/auth.go`. Like any app spot-go logs in with, it has this exact redirect URI registered in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard):
 
 ```
 http://127.0.0.1:10888/callback

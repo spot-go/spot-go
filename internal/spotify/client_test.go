@@ -807,7 +807,7 @@ func TestRefreshedTokensAreSaved(t *testing.T) {
 
 func TestSessionClientLeavesTheRefreshTimeoutToTheRefresh(t *testing.T) {
 	refresh := &http.Client{Timeout: time.Second}
-	c := newSessionClient(context.WithValue(context.Background(), oauth2.HTTPClient, refresh), &oauth2.Token{AccessToken: "token", Expiry: time.Now().Add(time.Hour)})
+	c := newSessionClient(context.WithValue(context.Background(), oauth2.HTTPClient, refresh), oauthConfig(DefaultClientID), &oauth2.Token{AccessToken: "token", Expiry: time.Now().Add(time.Hour)})
 	if c.httpClient.Timeout != 0 {
 		t.Fatalf("Web API requests time out after %v, want them to end with their context", c.httpClient.Timeout)
 	}

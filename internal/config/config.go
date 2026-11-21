@@ -18,6 +18,10 @@ type (
 	Auth struct {
 		Token  *oauth2.Token `json:"oauth2Token"`
 		Scopes []string      `json:"scopes"`
+		// ClientID is the Client ID of the Spotify app Token is of. The
+		// logins spot-go saved before it took other apps than its own have
+		// none.
+		ClientID string `json:"clientID,omitempty"`
 	}
 
 	Settings struct {
@@ -74,6 +78,21 @@ func (s *Settings) Save() error {
 	defer saveMu.Unlock()
 
 	return s.save()
+}
+
+// SaveAuth saves t, a new token of the Spotify app clientID with scopes,
+// in place of the login saved before.
+func SaveAuth(t *oauth2.Token, scopes []string, clientID string) error {
+	saveMu.Lock()
+	defer saveMu.Unlock()
+
+	if AppSettings.Auth == nil {
+		AppSettings.Auth = &Auth{}
+	}
+	AppSettings.Auth.Token = t
+	AppSettings.Auth.Scopes = scopes
+	AppSettings.Auth.ClientID = clientID
+	return AppSettings.save()
 }
 
 func SaveToken(t *oauth2.Token) error {
