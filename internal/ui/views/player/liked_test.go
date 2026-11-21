@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spot-go/spot-go/internal/library"
-	"github.com/spot-go/spot-go/internal/media"
+	"github.com/franciscocpg/spot-go/internal/library"
+	"github.com/franciscocpg/spot-go/internal/media"
 )
 
 const testLikedSongs = "spotify:user:chico:collection"

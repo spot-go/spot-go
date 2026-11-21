@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spot-go/spot-go/internal/command"
+	"github.com/franciscocpg/spot-go/internal/command"
 )
 
 func useTempFolder(t *testing.T) string {

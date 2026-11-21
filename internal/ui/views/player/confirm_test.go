@@ -6,7 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/spot-go/spot-go/internal/media"
+	"github.com/franciscocpg/spot-go/internal/media"
 	libspotify "github.com/zmb3/spotify/v2"
 )
 

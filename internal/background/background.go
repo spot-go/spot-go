@@ -18,11 +18,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/spot-go/spot-go/internal/command"
-	"github.com/spot-go/spot-go/internal/config"
-	"github.com/spot-go/spot-go/internal/media"
-	"github.com/spot-go/spot-go/internal/soloist"
-	"github.com/spot-go/spot-go/internal/spotify"
+	"github.com/franciscocpg/spot-go/internal/command"
+	"github.com/franciscocpg/spot-go/internal/config"
+	"github.com/franciscocpg/spot-go/internal/media"
+	"github.com/franciscocpg/spot-go/internal/soloist"
+	"github.com/franciscocpg/spot-go/internal/spotify"
 	libspotify "github.com/zmb3/spotify/v2"
 	"golang.org/x/oauth2"
 )

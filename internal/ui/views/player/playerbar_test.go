@@ -14,9 +14,9 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/spot-go/spot-go/internal/media"
-	"github.com/spot-go/spot-go/internal/spotify"
-	"github.com/spot-go/spot-go/internal/ui/styles"
+	"github.com/franciscocpg/spot-go/internal/media"
+	"github.com/franciscocpg/spot-go/internal/spotify"
+	"github.com/franciscocpg/spot-go/internal/ui/styles"
 )
 
 // playerRows are the two rows of the full player, without the frame around

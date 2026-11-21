@@ -6,8 +6,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/spot-go/spot-go/internal/soloist"
-	"github.com/spot-go/spot-go/internal/ui/components/secretinput"
+	"github.com/franciscocpg/spot-go/internal/soloist"
+	"github.com/franciscocpg/spot-go/internal/ui/components/secretinput"
 	libspotify "github.com/zmb3/spotify/v2"
 )
 

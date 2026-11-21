@@ -11,8 +11,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/spot-go/spot-go/internal/media"
-	"github.com/spot-go/spot-go/internal/spotify"
+	"github.com/franciscocpg/spot-go/internal/media"
+	"github.com/franciscocpg/spot-go/internal/spotify"
 )
 
 const voteCountJSON = `{"type":"episode","name":"How the Vote Count Works","uri":"spotify:episode:vote","duration_ms":3134000,"show":{"name":"Morning Briefing"},"resume_point":{"resume_position_ms":1740000}}`

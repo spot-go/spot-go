@@ -8,8 +8,8 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/franciscocpg/spot-go/internal/path"
 	"github.com/kirsle/configdir"
-	"github.com/spot-go/spot-go/internal/path"
 
 	"golang.org/x/oauth2"
 )

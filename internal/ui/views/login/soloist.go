@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/spot-go/spot-go/internal/program"
-	"github.com/spot-go/spot-go/internal/soloist"
-	"github.com/spot-go/spot-go/internal/ui/components/filedownloader"
-	"github.com/spot-go/spot-go/internal/ui/components/secretinput"
+	"github.com/franciscocpg/spot-go/internal/program"
+	"github.com/franciscocpg/spot-go/internal/soloist"
+	"github.com/franciscocpg/spot-go/internal/ui/components/filedownloader"
+	"github.com/franciscocpg/spot-go/internal/ui/components/secretinput"
 )
 
 type soloistPairingNeeded struct{}

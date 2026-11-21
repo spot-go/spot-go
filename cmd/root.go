@@ -11,15 +11,15 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/franciscocpg/spot-go/internal/background"
+	"github.com/franciscocpg/spot-go/internal/config"
+	"github.com/franciscocpg/spot-go/internal/media"
+	"github.com/franciscocpg/spot-go/internal/program"
+	"github.com/franciscocpg/spot-go/internal/soloist"
+	"github.com/franciscocpg/spot-go/internal/ui/styles"
+	"github.com/franciscocpg/spot-go/internal/ui/views/login"
+	"github.com/franciscocpg/spot-go/internal/ui/views/player"
 	"github.com/spf13/cobra"
-	"github.com/spot-go/spot-go/internal/background"
-	"github.com/spot-go/spot-go/internal/config"
-	"github.com/spot-go/spot-go/internal/media"
-	"github.com/spot-go/spot-go/internal/program"
-	"github.com/spot-go/spot-go/internal/soloist"
-	"github.com/spot-go/spot-go/internal/ui/styles"
-	"github.com/spot-go/spot-go/internal/ui/views/login"
-	"github.com/spot-go/spot-go/internal/ui/views/player"
 )
 
 // rootCmd represents the base command when called without any subcommands

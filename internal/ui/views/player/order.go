@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/list"
-	"github.com/spot-go/spot-go/internal/library"
+	"github.com/franciscocpg/spot-go/internal/library"
 	"golang.org/x/text/collate"
 	"golang.org/x/text/language"
 )

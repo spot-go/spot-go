@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/spot-go/spot-go/internal/command"
-	"github.com/spot-go/spot-go/internal/config"
+	"github.com/franciscocpg/spot-go/internal/command"
+	"github.com/franciscocpg/spot-go/internal/config"
 )
 
 const (
