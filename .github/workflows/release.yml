@@ -19,6 +19,14 @@ on:
 permissions:
   contents: write
 
+# One release at a time: a run's tag job then sees the tags of the releases
+# before it, and an older version can't become the latest release after a newer
+# one. A run without a version builds on its own. GitHub keeps one waiting run
+# per group, so a third release started meanwhile cancels the waiting one.
+concurrency:
+  group: ${{ (inputs.version != '' || github.ref_type == 'tag') && 'release' || github.run_id }}
+  cancel-in-progress: false
+
 jobs:
   # Run by hand with a version: tags the latest commit of main with it.
   tag:
@@ -82,7 +90,7 @@ jobs:
           # changed.
           head=$(git ls-remote origin "refs/heads/$DEFAULT_BRANCH" | cut -f 1)
           if [ "$head" != "$GITHUB_SHA" ]; then
-            echo "::error::$DEFAULT_BRANCH changed since this run started: run the workflow again, to release its latest commit."
+            echo "::error::$DEFAULT_BRANCH changed since this run started: start a new run, from the Actions tab or with gh workflow run, to release its latest commit. Running this run again would stop here again."
             exit 1
           fi
 
