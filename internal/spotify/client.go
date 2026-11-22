@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/zmb3/spotify/v2"
 )
@@ -608,9 +610,40 @@ func decodeError(resp *http.Response) error {
 	}
 	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&e); err != nil || e.E.Message == "" {
 		e.E.Message = fmt.Sprintf("spotify: unexpected HTTP %d: %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+		if text, ok := plainText(body); ok {
+			e.E.Message = text
+		}
 	}
 	e.E.Status = resp.StatusCode
 	return e.E
+}
+
+// plainText returns body when it is a short line of text, as some of
+// Spotify's errors are, such as the 403 of an account an app in development
+// mode doesn't take, and not a page.
+func plainText(body []byte) (string, bool) {
+	text := strings.TrimSpace(string(body))
+	if text == "" || len(text) > 300 || !utf8.ValidString(text) || strings.ContainsAny(text, "<>{}\n\r") {
+		return "", false
+	}
+	for _, r := range text {
+		if !unicode.IsPrint(r) {
+			return "", false
+		}
+	}
+	return text, true
+}
+
+// CurrentUser returns the user logged in. Unlike the one of the library,
+// its errors keep their HTTP status, whatever the body: Spotify answers a
+// 403 in plain text, or with no body, for an account an app in development
+// mode doesn't take.
+func (c Client) CurrentUser(ctx context.Context) (*spotify.PrivateUser, error) {
+	var u spotify.PrivateUser
+	if err := c.getJSON(ctx, c.baseURL+"me", &u); err != nil {
+		return nil, err
+	}
+	return &u, nil
 }
 
 func (c *playbackContext) uriOf(types ...string) (spotify.URI, bool) {
