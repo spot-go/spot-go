@@ -76,8 +76,9 @@ and paste it in your browser.`
 	webAPICopyURLOnlyMsg   = `Press "c" to copy the URL to your clipboard, paste it in your browser and
 continue the login to Spotify there.`
 	webAPIURLCopiedMsg     = "URL copied to clipboard. Paste it in your browser and continue the login."
-	webAPIInvalidClientMsg = `If Spotify says INVALID_CLIENT, the Client ID is wrong, or the app doesn't
-have the redirect URI %s.`
+	webAPIInvalidClientMsg = `If Spotify says "client_id: Invalid", the Client ID is wrong. If it says
+redirect_uri is wrong, the app doesn't have the redirect URI
+%s.`
 	webAPIInvalidIDMsg = `That is not a Client ID.
 A Client ID has 32 characters, from 0 to 9 and a to f.`
 	webAPIInvalidEnvIDMsg = `%s is not a Client ID.

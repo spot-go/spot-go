@@ -139,7 +139,7 @@ func TestEmptyClientIDLogsInWithSpotGosApp(t *testing.T) {
 		t.Fatalf("logs in with %q, want spot-go's own app", m.authorization.ClientID)
 	}
 	v := view(m)
-	for _, want := range []string{"INVALID_CLIENT", spotify.RedirectURI, `"c"`, "esc to change the Client ID"} {
+	for _, want := range []string{`"client_id: Invalid"`, "redirect_uri", spotify.RedirectURI, `"c"`, "esc to change the Client ID"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("the login in the browser does not say %q:\n%s", want, v)
 		}
