@@ -7,10 +7,10 @@ import (
 	"io/fs"
 	"maps"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
+	"github.com/spot-go/spot-go/internal/path"
 	"github.com/zmb3/spotify/v2"
 )
 
@@ -229,8 +229,8 @@ func (h *History) syncSaved(s *Saved, uris []spotify.URI) {
 	}
 }
 
-func NewStore(path string) *Store {
-	return &Store{path: path}
+func NewStore(file string) *Store {
+	return &Store{path: file}
 }
 
 func (s *Store) Load() (History, error) {
@@ -260,30 +260,9 @@ func (s *Store) Save(h History) error {
 	if err != nil {
 		return err
 	}
-	if err := writeFile(s.path, b); err != nil {
+	if err := path.WriteFile(s.path, b); err != nil {
 		return err
 	}
 	s.saved = h.revision
 	return nil
-}
-
-func writeFile(path string, b []byte) error {
-	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-
-	if _, err := f.Write(b); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), path)
 }
