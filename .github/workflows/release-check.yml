@@ -1,0 +1,88 @@
+name: Release check
+
+# Builds the release, without publishing it, when a pull request changes how
+# spot-go is released, or what the checks below look at.
+on:
+  pull_request:
+    paths:
+      - .goreleaser.yaml
+      - .github/workflows/release*.yml
+      - install.sh
+      - go.mod
+      - go.sum
+      - main.go
+      - cmd/version.go
+      - internal/media/**
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    # As the release, on a Mac, for the macOS build's cgo.
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean --snapshot
+
+      - name: Check the macOS build
+        run: |
+          bin=$(find dist -path '*darwin_arm64*' -name spot-go -type f)
+          "$bin" --version
+          # It runs on the oldest macOS Go supports, not only on the runner's.
+          vtool -show-build "$bin"
+          vtool -show-build "$bin" | grep -Eq 'minos 13\.0$'
+          # It is built with cgo, for Now Playing and the media keys.
+          otool -L "$bin" | grep -q MediaPlayer.framework
+          codesign --verify "$bin"
+
+      - name: Install the cask with Homebrew
+        run: |
+          brew tap-new --no-git spot-go/check
+          tap=$(brew --repository spot-go/check)
+          mkdir -p "$tap/Casks"
+          # From the archives the release would publish, in place of the
+          # release's.
+          sed -E "s#\"https://github.com/spot-go/spot-go/releases/download/[^/]+/#\"file://$PWD/dist/#" \
+            dist/homebrew/Casks/spot-go.rb > "$tap/Casks/spot-go.rb"
+          cat "$tap/Casks/spot-go.rb"
+          # As the README says to, by its full name, which trusts the cask.
+          brew install --cask spot-go/check/spot-go
+          spot-go --version
+          bin=$(echo "$(brew --prefix)"/Caskroom/spot-go/*/spot-go)
+          xattr -l "$bin"
+          if xattr -p com.apple.quarantine "$bin" 2>/dev/null; then
+            echo "the cask left the quarantine flag on $bin" >&2
+            exit 1
+          fi
+          # The Linux part of the cask loads too.
+          brew readall --os=all --arch=all spot-go/check
+          brew uninstall --zap --cask spot-go/check/spot-go
+
+      - name: Install with install.sh
+        run: |
+          # From the files the release would publish, in place of the
+          # latest release.
+          sed "s#https://github.com/\$repo/releases/latest/download#file://$PWD/dist#" install.sh > "$RUNNER_TEMP/install.sh"
+          sh "$RUNNER_TEMP/install.sh" --dir "$RUNNER_TEMP/bin"
+          "$RUNNER_TEMP/bin/spot-go" --version
+
+  install-script:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: shellcheck -s sh install.sh

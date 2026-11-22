@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  # Builds the release without publishing it, to try it before pushing a tag.
+  # The archives and packages are in the run's artifacts.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # The macOS build needs cgo and the macOS SDK, so the release runs on a
+    # Mac. The Linux builds need no cgo, so they cross-compile on it too.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The changelog needs the earlier tags.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean ${{ github.event_name == 'workflow_dispatch' && '--snapshot' || '' }}
+        env:
+          # The tag that was pushed, which GoReleaser otherwise picks among the
+          # tags of the commit.
+          GORELEASER_CURRENT_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pushes the cask to spot-go/homebrew-tap and the Nix package
+          # to spot-go/nur-packages.
+          PACKAGES_GITHUB_TOKEN: ${{ secrets.PACKAGES_GITHUB_TOKEN }}
+          # The SSH key of the AUR account that maintains spot-go-bin.
+          AUR_KEY: ${{ secrets.AUR_KEY }}
+
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: spot-go-snapshot
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/*.apk
+            dist/checksums.txt
+            dist/homebrew/
+            dist/aur/
+            dist/nix/
