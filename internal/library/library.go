@@ -229,8 +229,8 @@ func (h *History) syncSaved(s *Saved, uris []spotify.URI) {
 	}
 }
 
-func NewStore(path string) *Store {
-	return &Store{path: path}
+func NewStore(file string) *Store {
+	return &Store{path: file}
 }
 
 func (s *Store) Load() (History, error) {

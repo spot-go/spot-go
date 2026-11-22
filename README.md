@@ -271,7 +271,7 @@ spot-go uses the Spotify Web API through a Spotify app, which Spotify knows by i
 6. Accept the terms and click **Save**.
 7. Copy the **Client ID** from the app's page. spot-go doesn't need the client secret: it logs in with PKCE, which has none.
 
-When spot-go asks you to log in, it asks for the Client ID: paste it and press `enter`. spot-go saves it with the login, in `settings.json` in its config folder (`~/Library/Application Support/spot-go` on macOS, `~/.config/spot-go` on Linux), and logs in with it from then on. Only your user can open the config folder and `settings.json`, since the login is in them. Leave the Client ID empty to log in with spot-go's own app.
+When spot-go asks you to log in, it asks for the Client ID: paste it and press `enter`. spot-go saves it with the login, in `settings.json` in its config folder (`~/Library/Application Support/spot-go` on macOS, `~/.config/spot-go` on Linux), and logs in with it from then on. Leave the Client ID empty to log in with spot-go's own app. Other users of the same computer can't open the config folder or `settings.json`, since the login is in them.
 
 The `SPOT_GO_CLIENT_ID` environment variable sets the Client ID too, in place of the one you type or saved:
 

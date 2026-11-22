@@ -62,11 +62,21 @@ func savedToken(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var s Settings
+	return tokenIn(t, b)
+}
+
+func tokenIn(t *testing.T, b []byte) string {
+	t.Helper()
+
+	var s *Settings
 	if err := json.Unmarshal(b, &s); err != nil {
 		t.Fatalf("settings.json = %s: %v", b, err)
 	}
-	if s.Auth == nil || s.Auth.Token == nil {
+	return accessToken(s)
+}
+
+func accessToken(s *Settings) string {
+	if s == nil || s.Auth == nil || s.Auth.Token == nil {
 		return ""
 	}
 	return s.Auth.Token.AccessToken
@@ -121,11 +131,7 @@ func TestLoadProtectsOldFiles(t *testing.T) {
 			if got := savedToken(t); got != tt.wantToken {
 				t.Fatalf("saved token = %q, want %q", got, tt.wantToken)
 			}
-			var got string
-			if AppSettings.Auth != nil && AppSettings.Auth.Token != nil {
-				got = AppSettings.Auth.Token.AccessToken
-			}
-			if got != tt.wantToken {
+			if got := accessToken(AppSettings); got != tt.wantToken {
 				t.Fatalf("loaded token = %q, want %q", got, tt.wantToken)
 			}
 		})
@@ -157,11 +163,7 @@ func TestSaveTokenWritesNewFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var s Settings
-	if err := json.Unmarshal(b, &s); err != nil {
-		t.Fatalf("settings.json opened before = %s: %v", b, err)
-	}
-	if got := s.Auth.Token.AccessToken; got != "old" {
+	if got := tokenIn(t, b); got != "old" {
 		t.Fatalf("token in the settings.json opened before = %q, want old", got)
 	}
 }

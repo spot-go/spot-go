@@ -14,7 +14,7 @@ func Exists(path string) bool {
 // it in the place of name at once. A program that reads name meanwhile, or a
 // crash, finds the old content or the new one, never part of it, and one
 // that has name open goes on with the old file. When name is a symbolic
-// link, the file it links to gets b.
+// link to a file, that file gets b. A link to no file is replaced.
 func WriteFile(name string, b []byte) error {
 	if target, err := filepath.EvalSymlinks(name); err == nil {
 		name = target
