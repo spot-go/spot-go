@@ -302,7 +302,7 @@ gh workflow run release.yml -f version=1.2.3
 gh run watch
 ```
 
-It tags the latest commit of main with `v1.2.3` and releases it. It stops, without tagging, when the version isn't like `1.2.3` or `1.2.3-rc.1` (a `v` in front is fine), when it's tagged already, when it doesn't come after the latest release, or when the workflow runs from another branch than main.
+It tags the latest commit of main with `v1.2.3` and releases it. It stops, without tagging, when the version isn't like `1.2.3` or `1.2.3-rc.1` (a `v` in front is fine), when it's tagged already, when it doesn't come after the latest release, or when the workflow runs from another branch than main. It stops too when main changed since the run started: run the workflow again then.
 
 Pushing a tag releases too, with the same workflow:
 
@@ -332,7 +332,7 @@ The release needs, once:
 
 After the first release pushed `pkgs/spot-go/default.nix` to nur-packages, add `spot-go = pkgs.callPackage ./pkgs/spot-go { };` to its `default.nix`, and [add it to NUR](https://github.com/nix-community/NUR#how-to-add-your-own-repository). Before that, the file the line points to doesn't exist, so nur-packages wouldn't evaluate.
 
-The GitHub release comes out before Homebrew, the AUR and NUR. If one of them fails, such as with an expired token, fix it and run the failed job again: it uploads the release's files again and goes on to the packages. If the AUR got the version the first time, it fails the second time with nothing to commit, which is harmless. A run with a version can run again too, and releases the tag it made. If it failed before the GitHub release, such as on a build error, the fix is a new commit: release the next version, or delete the tag, from the repository's tags page or with `git push --delete origin v1.2.3`, and release that version again.
+The GitHub release comes out before Homebrew, the AUR and NUR. If one of them fails, such as with an expired token, fix it and run the failed job again: it uploads the release's files again and goes on to the packages. If the AUR got the version the first time, it fails the second time with nothing to commit, which is harmless. A run with a version can run again too, and releases the tag it made. If it failed before the GitHub release, such as on a build error, the version is used up, as Go's module mirror may have it already: delete the tag, from the repository's tags page or with `git push --delete origin v1.2.3`, so the next release's notes start from the latest release, then fix it and release the next version.
 
 ## License
 

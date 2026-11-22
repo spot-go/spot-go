@@ -32,15 +32,21 @@ jobs:
           # For the tags.
           fetch-depth: 0
 
-      - id: tag
+      - name: Tag the version
+        id: tag
         env:
           VERSION: ${{ inputs.version }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           # 1.2.3 or v1.2.3, with an optional pre-release suffix such as -rc.1.
+          # No number starts with 0, such as in rc.01: semver and GoReleaser
+          # refuse it.
           version=$(printf '%s' "$VERSION" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
           tag="v${version#v}"
-          semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          number='(0|[1-9][0-9]*)'
+          identifier="($number|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
+          semver="^v$number\.$number\.$number(-$identifier(\.$identifier)*)?\$"
           if ! [[ $tag =~ $semver ]]; then
             echo "::error::\"$version\" isn't a version such as 1.2.3 or 1.2.3-rc.1."
             exit 1
@@ -66,16 +72,26 @@ jobs:
             exit 1
           fi
 
-          if [ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]; then
-            echo "::error::Releases come from $DEFAULT_BRANCH: run the workflow from $DEFAULT_BRANCH, not $GITHUB_REF_NAME."
+          if [ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "::error::Releases come from $DEFAULT_BRANCH: run the workflow from $DEFAULT_BRANCH, not ${GITHUB_REF#refs/heads/}."
             exit 1
           fi
 
-          # A tag pushed with the workflow's GITHUB_TOKEN runs no workflow, so
-          # this doesn't run the Release workflow a second time: the release
-          # job below releases the tag.
-          git tag "$tag" "$GITHUB_SHA"
-          git push origin "refs/tags/$tag"
+          # The run releases the commit it started on. GitHub also refuses
+          # this workflow's tag on an older commit once main's workflows
+          # changed.
+          head=$(git ls-remote origin "refs/heads/$DEFAULT_BRANCH" | cut -f 1)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "::error::$DEFAULT_BRANCH changed since this run started: run the workflow again, to release its latest commit."
+            exit 1
+          fi
+
+          # Fails when the tag exists, even on this commit, such as when the
+          # workflow runs twice at once with this version. A tag made with the
+          # workflow's GITHUB_TOKEN runs no workflow, so this doesn't run the
+          # Release workflow a second time: the release job below releases
+          # the tag.
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" > /dev/null
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   release:
@@ -90,7 +106,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           # The tag the tag job made, or else the commit that ran the workflow.
-          ref: ${{ needs.tag.outputs.tag }}
+          ref: ${{ needs.tag.outputs.tag && format('refs/tags/{0}', needs.tag.outputs.tag) || '' }}
           # The changelog needs the earlier tags.
           fetch-depth: 0
 
