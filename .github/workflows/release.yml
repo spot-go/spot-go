@@ -1,23 +1,96 @@
 name: Release
 
+run-name: ${{ inputs.version && format('Release {0}', inputs.version) || '' }}
+
 on:
   push:
     tags: ["v*"]
-  # Builds the release without publishing it, to try it before pushing a tag.
-  # The archives and packages are in the run's artifacts.
+  # Run by hand, from the Actions tab or with `gh workflow run`, with a version
+  # it tags the latest commit of main with that version and releases it. Without
+  # a version, it builds the release without publishing it, to try it from any
+  # branch: the archives and packages are in the run's artifacts.
   workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, such as 1.2.3 or 1.2.3-rc.1. Empty builds the release without publishing it.
+        type: string
+        required: false
 
 permissions:
   contents: write
 
 jobs:
+  # Run by hand with a version: tags the latest commit of main with it.
+  tag:
+    if: github.event_name == 'workflow_dispatch' && inputs.version != ''
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # For the tags.
+          fetch-depth: 0
+
+      - id: tag
+        env:
+          VERSION: ${{ inputs.version }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          # 1.2.3 or v1.2.3, with an optional pre-release suffix such as -rc.1.
+          version=$(printf '%s' "$VERSION" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
+          tag="v${version#v}"
+          semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          if ! [[ $tag =~ $semver ]]; then
+            echo "::error::\"$version\" isn't a version such as 1.2.3 or 1.2.3-rc.1."
+            exit 1
+          fi
+
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            # Running this run again, after the release failed, releases the
+            # tag its first attempt made.
+            if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ] && [ "$(git rev-parse "$tag^{commit}")" = "$GITHUB_SHA" ]; then
+              echo "tag=$tag" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::$tag exists already: pick another version."
+            exit 1
+          fi
+
+          # Homebrew, the AUR, NUR and install.sh take the latest release, so an
+          # older version would take them back.
+          latest=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
+          core=${tag%%-*}
+          if [ -n "$latest" ] && [ "$(printf '%s\n' "$latest" "$core" | sort -V | tail -n 1)" = "$latest" ]; then
+            echo "::error::$tag doesn't come after $latest, the latest release."
+            exit 1
+          fi
+
+          if [ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]; then
+            echo "::error::Releases come from $DEFAULT_BRANCH: run the workflow from $DEFAULT_BRANCH, not $GITHUB_REF_NAME."
+            exit 1
+          fi
+
+          # A tag pushed with the workflow's GITHUB_TOKEN runs no workflow, so
+          # this doesn't run the Release workflow a second time: the release
+          # job below releases the tag.
+          git tag "$tag" "$GITHUB_SHA"
+          git push origin "refs/tags/$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
   release:
+    needs: tag
+    # Also when the tag job didn't run: for a pushed tag, and for a run by hand
+    # without a version.
+    if: ${{ !failure() && !cancelled() }}
     # The macOS build needs cgo and the macOS SDK, so the release runs on a
     # Mac. The Linux builds need no cgo, so they cross-compile on it too.
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
         with:
+          # The tag the tag job made, or else the commit that ran the workflow.
+          ref: ${{ needs.tag.outputs.tag }}
           # The changelog needs the earlier tags.
           fetch-depth: 0
 
@@ -29,11 +102,11 @@ jobs:
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean ${{ github.event_name == 'workflow_dispatch' && '--snapshot' || '' }}
+          args: release --clean ${{ github.event_name == 'workflow_dispatch' && inputs.version == '' && '--snapshot' || '' }}
         env:
-          # The tag that was pushed, which GoReleaser otherwise picks among the
-          # tags of the commit.
-          GORELEASER_CURRENT_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          # The tag to release, which GoReleaser otherwise picks among the tags
+          # of the commit.
+          GORELEASER_CURRENT_TAG: ${{ needs.tag.outputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Pushes the cask to spot-go/homebrew-tap and the Nix package
           # to spot-go/nur-packages.
@@ -41,7 +114,7 @@ jobs:
           # The SSH key of the AUR account that maintains spot-go-bin.
           AUR_KEY: ${{ secrets.AUR_KEY }}
 
-      - if: github.event_name == 'workflow_dispatch'
+      - if: github.event_name == 'workflow_dispatch' && inputs.version == ''
         uses: actions/upload-artifact@v7
         with:
           name: spot-go-snapshot

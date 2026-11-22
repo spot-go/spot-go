@@ -295,21 +295,30 @@ Apps in development mode only work for their owner and up to 5 accounts added to
 
 ## Releasing
 
-Push a tag to release:
+Run the Release workflow (`.github/workflows/release.yml`) with the version to release: in the repository's Actions tab, pick Release, then Run workflow, keep `main` as the branch, type the version, such as `1.2.3`, and press Run workflow. Or, with the [GitHub CLI](https://cli.github.com):
+
+```bash
+gh workflow run release.yml -f version=1.2.3
+gh run watch
+```
+
+It tags the latest commit of main with `v1.2.3` and releases it. It stops, without tagging, when the version isn't like `1.2.3` or `1.2.3-rc.1` (a `v` in front is fine), when it's tagged already, when it doesn't come after the latest release, or when the workflow runs from another branch than main.
+
+Pushing a tag releases too, with the same workflow:
 
 ```bash
 git tag v1.2.3
 git push origin v1.2.3
 ```
 
-The tag runs the Release workflow (`.github/workflows/release.yml`), which runs [GoReleaser](https://goreleaser.com) with `.goreleaser.yaml` on a macOS runner: the macOS build needs cgo and the macOS SDK, and the Linux builds need no cgo, so they cross-compile there too. It:
+The Release workflow runs [GoReleaser](https://goreleaser.com) with `.goreleaser.yaml` on a macOS runner: the macOS build needs cgo and the macOS SDK, and the Linux builds need no cgo, so they cross-compile there too. It:
 
 - creates the GitHub release, with an archive for each platform, the `.deb`, `.rpm` and `.apk` packages, and `checksums.txt`
 - pushes the cask to [spot-go/homebrew-tap](https://github.com/spot-go/homebrew-tap)
 - pushes `spot-go-bin` to the AUR
 - pushes the Nix package to [spot-go/nur-packages](https://github.com/spot-go/nur-packages), at `pkgs/spot-go/default.nix`
 
-A tag with a pre-release suffix, such as `v1.2.3-rc.1`, makes a pre-release on GitHub only, without Homebrew, the AUR or NUR. Running the Release workflow by hand, from the Actions tab, builds everything without publishing it, and keeps the archives, the packages, the cask, the `PKGBUILD` and the Nix file in the run's artifacts.
+A version with a pre-release suffix, such as `1.2.3-rc.1`, makes a pre-release on GitHub only, without Homebrew, the AUR or NUR. Running the Release workflow without a version, from any branch, builds everything without publishing it, and keeps the archives, the packages, the cask, the `PKGBUILD` and the Nix file in the run's artifacts.
 
 The release needs, once:
 
@@ -323,7 +332,7 @@ The release needs, once:
 
 After the first release pushed `pkgs/spot-go/default.nix` to nur-packages, add `spot-go = pkgs.callPackage ./pkgs/spot-go { };` to its `default.nix`, and [add it to NUR](https://github.com/nix-community/NUR#how-to-add-your-own-repository). Before that, the file the line points to doesn't exist, so nur-packages wouldn't evaluate.
 
-The GitHub release comes out before Homebrew, the AUR and NUR. If one of them fails, such as with an expired token, fix it and run the failed job again: it uploads the release's files again and goes on to the packages. If the AUR got the version the first time, it fails the second time with nothing to commit, which is harmless.
+The GitHub release comes out before Homebrew, the AUR and NUR. If one of them fails, such as with an expired token, fix it and run the failed job again: it uploads the release's files again and goes on to the packages. If the AUR got the version the first time, it fails the second time with nothing to commit, which is harmless. A run with a version can run again too, and releases the tag it made. If it failed before the GitHub release, such as on a build error, the fix is a new commit: release the next version, or delete the tag, from the repository's tags page or with `git push --delete origin v1.2.3`, and release that version again.
 
 ## License
 
