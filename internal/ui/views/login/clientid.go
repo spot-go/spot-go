@@ -87,8 +87,8 @@ A Client ID has 32 characters, from 0 to 9 and a to f.`
 	webAPIRefusedMsg = `Spotify refused your account with the Spotify app
 %s:
 %s`
-	webAPIRefusedWhyMsg = `Spotify only lets an app in development mode work for the accounts on its
-user list, up to 5, and only while the app's owner has Spotify Premium.`
+	webAPIRefusedWhyMsg = `Spotify only lets an app in development mode work for its owner and the
+accounts on its user list, up to 5, while the owner has Spotify Premium.`
 	// webAPIRefusedDefaultMsg ends with how to log in with another app.
 	webAPIRefusedDefaultMsg = `That is spot-go's own app. To use spot-go with your account, create your
 own app at %s
