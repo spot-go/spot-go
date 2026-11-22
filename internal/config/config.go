@@ -51,12 +51,20 @@ func Load() error {
 		return fmt.Errorf("fail to get hostname: %w", err)
 	}
 
-	err = configdir.MakePath(Path)
-	if err != nil {
+	// Only the user may open the folder, which has the Spotify login. spot-go
+	// made it and settings.json readable to every user of the computer
+	// before, so they are made private here too when they already exist.
+	if err := os.MkdirAll(Path, 0700); err != nil {
 		return fmt.Errorf("fail to create config dir: %w", err)
+	}
+	if err := os.Chmod(Path, 0700); err != nil {
+		return fmt.Errorf("fail to protect config dir: %w", err)
 	}
 
 	if path.Exists(configFile) {
+		if err := os.Chmod(configFile, 0600); err != nil {
+			return fmt.Errorf("fail to protect config file: %w", err)
+		}
 		b, err := os.ReadFile(configFile)
 		if err != nil {
 			return fmt.Errorf("fail to read config file: %w", err)
@@ -109,7 +117,9 @@ func (s *Settings) save() error {
 		return fmt.Errorf("fail to marshal json: %+v", err)
 	}
 
-	err = os.WriteFile(configFile, b, os.ModePerm)
+	// A new file takes the token, so whoever opened settings.json while
+	// others could read it doesn't get the new one.
+	err = path.WriteFile(configFile, b)
 	if err != nil {
 		return fmt.Errorf("fail to write file: %+v", err)
 	}
