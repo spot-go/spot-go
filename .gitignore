@@ -16,3 +16,6 @@
 
 # Debug
 *debug*
+
+# GoReleaser
+dist/

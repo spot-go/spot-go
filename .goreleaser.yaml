@@ -1,0 +1,154 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+#
+# Releases spot-go when a v* tag is pushed, from .github/workflows/release.yml.
+# See the "Releasing" section of the README for the tokens and the repositories
+# it needs.
+version: 2
+
+project_name: spot-go
+
+git:
+  # When v1.2.3 is tagged on the commit of v1.2.3-rc.1, releases v1.2.3: git
+  # sorts v1.2.3-rc.1 after v1.2.3 otherwise.
+  prerelease_suffix: "-"
+
+builds:
+  # macOS needs cgo for Now Playing and the media keys
+  # (internal/media/media_darwin.go), so it builds on a Mac: the release runs
+  # on a macOS runner. Soloist only runs on Apple Silicon Macs.
+  - id: darwin
+    goos: [darwin]
+    goarch: [arm64]
+    env:
+      - CGO_ENABLED=1
+      # The oldest macOS Go supports. Without it, the binary would ask for the
+      # macOS of the runner that built it.
+      - MACOSX_DEPLOYMENT_TARGET=13.0
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{ .Version }}"]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+  # Linux needs no cgo: MPRIS talks to D-Bus in Go. These are the platforms
+  # Soloist has a build for.
+  - id: linux
+    goos: [linux]
+    goarch: [amd64, arm64, arm]
+    goarm: ["7"]
+    env:
+      - CGO_ENABLED=0
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{ .Version }}"]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  # No version in the name, so the latest release has stable links, such as
+  # releases/latest/download/spot-go_linux_amd64.tar.gz, for install.sh.
+  - name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}"
+    formats: [tar.gz]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: github-native
+
+release:
+  # Not from the git remote, so the release and the packages' links go to the
+  # spot-go organization wherever the repository was cloned from.
+  github:
+    owner: spot-go
+    name: spot-go
+  prerelease: auto
+  # Running the Release workflow again, after a package failed to publish,
+  # uploads the files again instead of failing on the ones already there.
+  replace_existing_artifacts: true
+  footer: |
+    ## Install
+
+    ```bash
+    # macOS
+    brew install --cask spot-go/tap/spot-go
+
+    # Arch Linux
+    yay -S spot-go-bin
+
+    # macOS or Linux, to ~/.local/bin
+    curl -fsSL https://raw.githubusercontent.com/spot-go/spot-go/main/install.sh | sh
+    ```
+
+    On Debian, Ubuntu, Fedora and Alpine, install the `.deb`, `.rpm` or `.apk` package below. The [README](https://github.com/spot-go/spot-go#install) has Nix and `go install` too.
+
+homebrew_casks:
+  - name: spot-go
+    repository:
+      owner: spot-go
+      name: homebrew-tap
+      token: "{{ .Env.PACKAGES_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/spot-go/spot-go
+    description: Spotify terminal UI
+    binaries: [spot-go]
+    # Release candidates stay out of the tap.
+    skip_upload: auto
+    zap:
+      trash:
+        - ~/Library/Application Support/spot-go
+        - ~/Library/Caches/spot-go
+    hooks:
+      post:
+        # spot-go isn't signed by an Apple Developer ID, so macOS would block
+        # the binary Homebrew downloaded, as it does for any download.
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/spot-go"]
+          end
+
+nfpms:
+  - package_name: spot-go
+    ids: [linux]
+    homepage: https://github.com/spot-go/spot-go
+    maintainer: Francisco Guimarães <3680556+franciscocpg@users.noreply.github.com>
+    description: A Spotify terminal UI.
+    license: MIT
+    formats: [deb, rpm, apk]
+    bindir: /usr/bin
+    contents:
+      - src: LICENSE
+        dst: /usr/share/licenses/spot-go/LICENSE
+      - src: README.md
+        dst: /usr/share/doc/spot-go/README.md
+
+aurs:
+  - name: spot-go-bin
+    homepage: https://github.com/spot-go/spot-go
+    description: A Spotify terminal UI
+    license: MIT
+    maintainers:
+      - Francisco Guimarães <3680556+franciscocpg at users dot noreply dot github dot com>
+    provides: [spot-go]
+    conflicts: [spot-go]
+    git_url: ssh://aur@aur.archlinux.org/spot-go-bin.git
+    private_key: "{{ .Env.AUR_KEY }}"
+    skip_upload: auto
+    package: |-
+      install -Dm755 ./spot-go "${pkgdir}/usr/bin/spot-go"
+      install -Dm644 ./LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+
+nix:
+  - name: spot-go
+    repository:
+      owner: spot-go
+      name: nur-packages
+      token: "{{ .Env.PACKAGES_GITHUB_TOKEN }}"
+    path: pkgs/spot-go/default.nix
+    homepage: https://github.com/spot-go/spot-go
+    description: A Spotify terminal UI
+    license: mit
+    main_program: spot-go
+    skip_upload: auto
