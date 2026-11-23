@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 #
-# Releases spot-go when a v* tag is pushed, from .github/workflows/release.yml.
+# Releases spot-go from .github/workflows/release.yml, when a v* tag is pushed
+# or the Release workflow runs with a version.
 # See the "Releasing" section of the README for the tokens and the repositories
 # it needs.
 version: 2
