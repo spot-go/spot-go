@@ -93,7 +93,10 @@ func (t track) toggled(msg playbackToggled, now time.Time) track {
 	return track{item: msg.item, info: msg.info(), at: now}
 }
 
-func (t track) line(width int, now time.Time) string {
+// line is the song or episode in at most width columns: its play/pause
+// icon, its title with mark after it, its progress and its time, which go
+// from the end when they don't fit.
+func (t track) line(width int, now time.Time, mark string) string {
 	icon := playIcon
 	if t.info.Playing {
 		icon = pauseIcon
@@ -107,9 +110,10 @@ func (t track) line(width int, now time.Time) string {
 	}
 
 	layouts := [][2][]string{
-		{{trackDecoration, green(icon)}, {bar, clock, trackDecoration}},
-		{{green(icon)}, {bar, clock}},
-		{{green(icon)}, {clock}},
+		{{trackDecoration, green(icon)}, {mark, bar, clock, trackDecoration}},
+		{{green(icon)}, {mark, bar, clock}},
+		{{green(icon)}, {mark, clock}},
+		{{green(icon)}, {mark}},
 	}
 	for _, l := range layouts {
 		if line, ok := fitTitle(width, l[0], title, l[1]); ok {
@@ -206,9 +210,11 @@ func (s playbackStatus) showsTrack() bool {
 	return !s.track.at.IsZero()
 }
 
-func (s playbackStatus) view(width int, now time.Time) string {
+// view is the status in at most width columns, with mark after the title
+// of the song or episode it shows.
+func (s playbackStatus) view(width int, now time.Time, mark string) string {
 	if s.showsTrack() {
-		return s.track.line(width, now)
+		return s.track.line(width, now, mark)
 	}
 	style := playingStyle
 	if s.err {

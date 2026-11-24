@@ -289,13 +289,13 @@ func TestTrackLine(t *testing.T) {
 		{track{info: media.Info{Playing: true}, at: now}, 80, "🎧 ⏸ 🎧"},
 		{track{info: media.Info{Artist: "Morning Briefing"}, at: now}, 80, "🎧 ▶ Morning Briefing 🎧"},
 	} {
-		if got := ansi.Strip(tt.track.line(tt.width, now)); got != tt.want {
+		if got := ansi.Strip(tt.track.line(tt.width, now, "")); got != tt.want {
 			t.Errorf("line(%d) of %+v = %q, want %q", tt.width, tt.track.info, got, tt.want)
 		}
 	}
 
 	for width := range 80 {
-		if got := lipgloss.Width(jasmine.line(width, now)); got > width {
+		if got := lipgloss.Width(jasmine.line(width, now, "")); got > width {
 			t.Fatalf("line(%d) is %d columns wide", width, got)
 		}
 	}
@@ -315,7 +315,7 @@ func TestTrackLineNeverEndsTheTitleOnTheSeparator(t *testing.T) {
 	} {
 		info.Duration = 219 * time.Second
 		for width := range 70 {
-			got := ansi.Strip(track{info: info, at: now}.line(width, now))
+			got := ansi.Strip(track{info: info, at: now}.line(width, now, ""))
 			if badCut.MatchString(got) {
 				t.Errorf("line(%d) of %q = %q cuts the title next to a separator", width, info.Title, got)
 			}

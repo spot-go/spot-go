@@ -84,6 +84,7 @@ var (
 		{"-", "volume down"},
 		{"ctrl+s", "shuffle on/off"},
 		{"ctrl+r", "next repeat mode"},
+		{"l", "like/unlike the song or episode"},
 	}
 
 	generalKeys = []playerHint{

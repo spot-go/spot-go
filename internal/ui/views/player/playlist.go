@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/list"
@@ -61,6 +62,10 @@ type (
 		loading    bool
 		refreshing bool
 		buffer     []spotify.PlaylistItem
+		// stale is true when the songs changed since they loaded, as when
+		// l likes a song: they load again once they show and no load runs
+		// (see refreshStale).
+		stale bool
 	}
 
 	playlistState int
@@ -196,6 +201,7 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if _, loaded := p.songs[selected.id]; !loaded {
 				return p, p.loadSongs(selected.id)
 			}
+			return p, p.refreshStale(selected.id)
 		}
 		return p, nil
 
@@ -256,7 +262,7 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case songsRequested:
 		if selected, ok := p.selectedPlaylist(); ok && selected.id == msg.playlistID {
-			return p, p.loadSongs(msg.playlistID)
+			return p, tea.Batch(p.loadSongs(msg.playlistID), p.refreshStale(msg.playlistID))
 		}
 		return p, nil
 
@@ -314,6 +320,9 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case historySaveFailed:
 		p.playback = playbackStatus{seq: p.playback.seq, text: "Fail to save the playlist history: " + errorText(msg.err), err: true}
 		return p, nil
+
+	case likeChanged:
+		return p, p.likedSongsChanged(msg)
 	}
 
 	var cmd tea.Cmd
@@ -508,7 +517,7 @@ func (p playlistModel) selectedSong() (spotify.PlaylistItem, bool) {
 }
 
 func (p playlistModel) scheduleSongs(playlistID libspotify.ID) tea.Cmd {
-	if _, ok := p.songs[playlistID]; ok {
+	if songs, ok := p.songs[playlistID]; ok && !songs.stale {
 		return nil
 	}
 	return p.after(songsLoadDelay, songsRequested{playlistID})
@@ -536,7 +545,23 @@ func (p playlistModel) refreshSongs(playlistID libspotify.ID) tea.Cmd {
 
 	songs.gen++
 	songs.loading, songs.refreshing, songs.buffer, songs.err = true, true, nil, nil
+	songs.stale = false
 	return p.fetchSongs(playlistID, songs.gen, 0)
+}
+
+// refreshStale loads the songs of a playlist again when they are stale,
+// once they show and no load runs: a load that runs ends first, so the list
+// keeps growing as it loads. The refresh keeps the selected song (see
+// reselect).
+func (p playlistModel) refreshStale(playlistID libspotify.ID) tea.Cmd {
+	songs, ok := p.songs[playlistID]
+	if !ok || !songs.stale || songs.loading || !p.visible {
+		return nil
+	}
+	if selected, ok := p.selectedPlaylist(); !ok || selected.id != playlistID {
+		return nil
+	}
+	return p.refreshSongs(playlistID)
 }
 
 func (p playlistModel) fetchSongs(playlistID libspotify.ID, gen, offset int) tea.Cmd {
@@ -586,7 +611,7 @@ func (p playlistModel) addSongsPage(msg songsPageLoaded) tea.Cmd {
 		return p.fetchSongs(msg.playlistID, msg.gen, msg.page.Next)
 	}
 	songs.state, songs.loading, songs.refreshing = stateSongsLoaded, false, false
-	return nil
+	return p.refreshStale(msg.playlistID)
 }
 
 func (p playlistModel) failSongs(msg songsLoadFailed) {
@@ -743,6 +768,18 @@ func (p playlistModel) startLikedSongs(started playbackStarted, song *spotify.Pl
 		}
 		return started
 	}
+}
+
+// likedSongsChanged loads the songs of Liked Songs again once l liked or
+// unliked a song: at once while they show, or else when they show next,
+// after a load that runs ends.
+func (p playlistModel) likedSongsChanged(msg likeChanged) tea.Cmd {
+	songs, ok := p.songs[likedSongsID]
+	if !ok || !strings.HasPrefix(string(msg.item), songURIPrefix) {
+		return nil
+	}
+	songs.stale = true
+	return p.refreshStale(likedSongsID)
 }
 
 // likedSongsFrom lists the loaded songs of Liked Songs that Spotify can play,

@@ -98,6 +98,7 @@ var (
 		{"</>", "seek"},
 		{"ctrl+s", "shuffle"},
 		{"ctrl+r", "repeat"},
+		{"l", "like"},
 	}
 )
 
@@ -147,8 +148,9 @@ func (m Model) playerView(width int, full bool, now time.Time) string {
 }
 
 // headlineRow is the first row of the full player: the song or episode with
-// its artist or podcast, or what the tab is doing, and on the right a notice
-// or the device Spotify plays on when it isn't spot-go.
+// its artist or podcast and whether it is liked, or what the tab is doing,
+// and on the right a notice or the device Spotify plays on when it isn't
+// spot-go.
 func (m Model) headlineRow(status playbackStatus, width int, now time.Time) string {
 	note := m.playerBar.note(m.ownDevice())
 	if note != "" {
@@ -161,13 +163,21 @@ func (m Model) headlineRow(status playbackStatus, width int, now time.Time) stri
 
 	left := m.statusLine(status, room, now)
 	if status.showsTrack() {
-		left = equalizer(status.track, now) + " " + status.track.headline(room-equalizerWidth-1)
+		title := room - equalizerWidth - 1
+		mark := m.like.mark(status.track.item)
+		if mark != "" && title-lipgloss.Width(mark)-1 >= minTitleWidth {
+			title -= lipgloss.Width(mark) + 1
+		} else {
+			mark = ""
+		}
+		left = equalizer(status.track, now) + " " + spaced(status.track.headline(title), mark)
 	}
 	return spread(left, note, width)
 }
 
 // statusLine is the status of the active tab in at most width columns. When
-// the tab has nothing to show and Spotify plays nothing, it says so.
+// the tab has nothing to show and Spotify plays nothing, it says so. A song
+// or an episode shows whether it is liked after its title.
 func (m Model) statusLine(status playbackStatus, width int, now time.Time) string {
 	if !status.showsTrack() && status.text == "" {
 		if !m.playerBar.idle {
@@ -175,7 +185,7 @@ func (m Model) statusLine(status playbackStatus, width int, now time.Time) strin
 		}
 		return dimStyle.Render(fit(nothingPlaying, width))
 	}
-	return status.view(width, now)
+	return status.view(width, now, m.like.mark(status.track.item))
 }
 
 // progressRow is the second row of the full player: a progress bar with the
