@@ -131,6 +131,7 @@ spot-go also starts Soloist with its local WebSocket API on `127.0.0.1`, on a po
 - `>` (or `.`) and `<` (or `,`) move 10 seconds forward and back in the song or episode, without going past its start, and stopping a second before its end, so Spotify doesn't skip to the next one. A pause stays paused.
 - `+` (or `=`) and `-` raise and lower the Spotify volume by 5% on the device Spotify is playing on, whether that is spot-go or another device. They don't change the volume of the computer. Some devices, such as some TVs and speakers, don't let Spotify change their volume.
 - `ctrl+s` turns shuffle on and off, and `ctrl+r` goes through the repeat modes as in the Spotify app: repeat the playlist, album or podcast, repeat the song or episode, and no repeat. On spot-go's device they go through Soloist, and on other devices through the Spotify Web API.
+- `l` likes the song the player shows, adding it to Liked Songs, or unlikes it when it is liked, as `+` and `✓` do in the Spotify app. An episode goes to Your Episodes instead (see [Liked Songs](#liked-songs)).
 - `ctrl+c` quits. While Spotify plays on spot-go, spot-go first asks whether the music keeps playing (see [Quitting](#quitting)).
 - `ctrl+q` quits right away and stops the music, without asking.
 - `ctrl+k` quits right away and keeps the music playing, without asking (see [Quitting](#quitting)).
@@ -151,24 +152,30 @@ The Playlists tab starts with Liked Songs: the songs you liked, newest first, as
 
 The Web API doesn't document Liked Songs as something to play, and may refuse to play it, or to start it from a song. Then spot-go plays the songs it loaded instead, from the selected one or the first one, up to 100 songs that can play. Spotify then plays them on their own, not from Liked Songs, and stops after the last one unless repeat is on.
 
+The player shows `✓` after the song that plays when it is in Liked Songs, and `+` when it isn't, as the Spotify app does. For an episode, they say whether it is in Your Episodes. `l` likes or unlikes it, from every tab, and the player shows the change at once, before Spotify takes it. If Spotify refuses it, the player shows the mark from before, and why on the right of the first row. Pressing `l` again while Spotify takes a change sets it back once that change ends. Local files can't be liked.
+
+spot-go asks Spotify whether the song is liked when a new one shows, and again every 30 seconds while it plays, so a song you like on your phone gets its `✓` within that time. After `l` changes Liked Songs, the Playlists tab loads its songs again: at once while they show, or else when they show next.
+
+Liking needs a Spotify permission that older versions of spot-go didn't ask for, so after updating spot-go asks you to log in again.
+
 ## Player
 
 The player at the bottom of the window shows what Spotify is playing on any device, on every tab:
 
 ```
-├────────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ ▃▇▅ ⏸ So What — Miles Davis                                                             on Pixel 7 │
-│     ━━━━━╸───────────────────────────────────────────────── 1:01 / 9:22   ⇄  ↻   🔉 ━━━━━━──── 60% │
-└─ space/k play/pause • n/p next/previous • +/- volume • </> seek • ctrl+s shuffle • ctrl+r repeat ──┘
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ▃▇▅ ⏸ So What — Miles Davis ✓                                                                     on Pixel 7 │
+│     ━━━━━━━────────────────────────────────────────────────────────── 1:01 / 9:22   ⇄  ↻   🔉 ━━━━━━──── 60% │
+└─ space/k play/pause • n/p next/previous • +/- volume • </> seek • ctrl+s shuffle • ctrl+r repeat • l like ───┘
 ```
 
-- The first row has the song or episode with its artist or podcast, after ⏸ while it plays and ▶ while it is paused. The equalizer next to it dances while Spotify plays and lies flat while it is paused. When Spotify plays on another device, its name shows on the right.
+- The first row has the song or episode with its artist or podcast, after ⏸ while it plays and ▶ while it is paused, and `✓` after it when it is in Liked Songs, or `+` when it isn't (see [Liked Songs](#liked-songs)). The equalizer next to it dances while Spotify plays and lies flat while it is paused. When Spotify plays on another device, its name shows on the right.
 - The second row has a progress bar with the elapsed and total time. The time counts every second and follows Spotify every 5 seconds. On the right are shuffle (`⇄`) and repeat (`↻`, or `↻¹` while it repeats one song), lit while they are on, and the volume of the device, which follows the volume keys and changes made on other devices.
 - The bottom line lists the keys that control Spotify. The keys that don't fit a narrow window are left out.
 
-A change made with these keys, such as a new repeat mode, or why the volume or the position couldn't change, shows on the right of the first row for 3 seconds. While a tab starts something, the first row says so, and if it fails, why.
+A change made with these keys, such as a new repeat mode, a song added to Liked Songs, or why the volume or the position couldn't change, shows on the right of the first row for 3 seconds. While a tab starts something, the first row says so, and if it fails, why.
 
-In windows shorter than 16 lines, the player shrinks to the bottom line of the frame: the song or episode with a shorter progress bar, shuffle, repeat and the volume. The keys that control Spotify then show, as many as fit, under the list on the right, after the keys of the tab and `? keys`.
+In windows shorter than 16 lines, the player shrinks to the bottom line of the frame: the song or episode with its `✓` or `+`, a shorter progress bar, shuffle, repeat and the volume. The keys that control Spotify then show, as many as fit, under the list on the right, after the keys of the tab and `? keys`.
 
 ## Quitting
 

@@ -23,6 +23,9 @@ const (
 	apiBaseURL      = "https://api.spotify.com/v1/"
 	maxRetries      = 3
 	maxRetryAfter   = 10 * time.Second
+	// maxDrained is how much of the body of an answer spot-go doesn't need
+	// it reads before closing it.
+	maxDrained = 4 << 10
 
 	playableFields     = "type,name,uri,duration_ms,is_playable,artists(name),show(name)"
 	playlistItemFields = "total,items(is_local,item(" + playableFields + "),track(" + playableFields + "))"
@@ -297,6 +300,46 @@ func (c Client) LikedSongsPage(ctx context.Context, offset int) (PlaylistItemsPa
 	return page, nil
 }
 
+// InLibrary reports whether item, a song or an episode, is in your
+// library: in Liked Songs for a song, in Your Episodes for an episode. It
+// needs the user-library-read scope.
+//
+// Spotify replaced GET /me/tracks/contains and /me/episodes/contains with
+// GET /me/library/contains, which takes URIs, for apps in development mode
+// (February 2026).
+func (c Client) InLibrary(ctx context.Context, item spotify.URI) (bool, error) {
+	query := url.Values{"uris": {string(item)}}
+	var saved []bool
+	if err := c.getJSON(ctx, c.baseURL+"me/library/contains?"+query.Encode(), &saved); err != nil {
+		return false, err
+	}
+	if len(saved) != 1 {
+		return false, fmt.Errorf("spotify: %d answers about 1 item in the library", len(saved))
+	}
+	return saved[0], nil
+}
+
+// AddToLibrary adds item, a song or an episode, to your library: to Liked
+// Songs for a song, to Your Episodes for an episode, as + does in the
+// Spotify app. It needs the user-library-modify scope.
+func (c Client) AddToLibrary(ctx context.Context, item spotify.URI) error {
+	return c.changeLibrary(ctx, http.MethodPut, item)
+}
+
+// RemoveFromLibrary removes item, a song or an episode, from your library,
+// as ✓ does in the Spotify app. It needs the user-library-modify scope.
+func (c Client) RemoveFromLibrary(ctx context.Context, item spotify.URI) error {
+	return c.changeLibrary(ctx, http.MethodDelete, item)
+}
+
+// changeLibrary saves item with PUT /me/library, or removes it with DELETE,
+// which replaced PUT and DELETE /me/tracks and /me/episodes for apps in
+// development mode (February 2026).
+func (c Client) changeLibrary(ctx context.Context, method string, item spotify.URI) error {
+	query := url.Values{"uris": {string(item)}}
+	return c.send(ctx, method, c.baseURL+"me/library?"+query.Encode())
+}
+
 func (c Client) RecentlyPlayedPlaylists(ctx context.Context) ([]PlayedContext, error) {
 	return c.recentlyPlayed(ctx, "playlist")
 }
@@ -539,8 +582,22 @@ func (c Client) play(ctx context.Context, deviceID spotify.ID, playbackContext s
 }
 
 func (c Client) getJSON(ctx context.Context, endpoint string, result any) error {
+	return c.request(ctx, http.MethodGet, endpoint, result)
+}
+
+// send sends a request with method to endpoint, with no body, and expects
+// no content back.
+func (c Client) send(ctx context.Context, method, endpoint string) error {
+	return c.request(ctx, method, endpoint, nil)
+}
+
+// request sends a request with method to endpoint, with no body, and
+// decodes the JSON Spotify answers into result. With no result, any success
+// will do, and its body is left unread. While Spotify limits the rate or is
+// busy, it tries again a few times.
+func (c Client) request(ctx context.Context, method, endpoint string, result any) error {
 	for attempt := 0; ; attempt++ {
-		resp, err := c.get(ctx, endpoint)
+		resp, err := c.do(ctx, method, endpoint)
 		if err != nil {
 			return err
 		}
@@ -555,18 +612,23 @@ func (c Client) getJSON(ctx context.Context, endpoint string, result any) error 
 		}
 
 		defer resp.Body.Close()
-		if resp.StatusCode == http.StatusNoContent {
+		switch {
+		case resp.StatusCode == http.StatusNoContent:
 			return nil
-		}
-		if resp.StatusCode != http.StatusOK {
+		case result == nil && resp.StatusCode >= 200 && resp.StatusCode < 300:
+			// What is left of a short body is read, so the connection can
+			// take the next request.
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxDrained))
+			return nil
+		case resp.StatusCode != http.StatusOK:
 			return decodeError(resp)
 		}
 		return json.NewDecoder(resp.Body).Decode(result)
 	}
 }
 
-func (c Client) get(ctx context.Context, endpoint string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+func (c Client) do(ctx context.Context, method, endpoint string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}

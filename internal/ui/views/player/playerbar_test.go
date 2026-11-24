@@ -208,7 +208,7 @@ func TestCompactPlayerOnShortWindows(t *testing.T) {
 			continue
 		}
 		line := lines[height-2]
-		if want := "└─ 🎧 ⏸ So What — Miles Davis " + bar(1) + " 1:00 / 9:22 🎧 ─"; !strings.HasPrefix(line, want) {
+		if want := "└─ 🎧 ⏸ So What — Miles Davis " + unlikedMark + " " + bar(1) + " 1:00 / 9:22 🎧 ─"; !strings.HasPrefix(line, want) {
 			t.Fatalf("120x%d: bottom line = %q, want it to start with %q", height, line, want)
 		}
 		if !strings.HasSuffix(line, " ⇄  ↻  🔉 60% ─┘") {
@@ -535,7 +535,7 @@ func TestPolledVolumeRightAfterAVolumeKeyKeepsTheNewVolume(t *testing.T) {
 func TestPlayerShowsTheKeysOfEveryTab(t *testing.T) {
 	h := newHarness(t, 120, 40)
 	h.send(keys("left", "left")...)
-	want := "└─ space/k play/pause • n/p next/previous • +/- volume • </> seek • ctrl+s shuffle • ctrl+r repeat ─"
+	want := "└─ space/k play/pause • n/p next/previous • +/- volume • </> seek • ctrl+s shuffle • ctrl+r repeat • l like ─"
 
 	for tab := range h.player().tabs {
 		if got := h.player().activeTab; got != tab {

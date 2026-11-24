@@ -89,6 +89,7 @@ var (
 		spotifyauth.ScopeUserLibraryRead,
 		scopeUserReadPlaybackPosition,
 		spotifyauth.ScopeUserFollowRead,
+		spotifyauth.ScopeUserLibraryModify,
 	}
 	// endpoint is Spotify's login. A login with PKCE has no client secret,
 	// so the token requests carry the Client ID in their body.

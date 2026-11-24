@@ -119,6 +119,17 @@ type (
 		// onResume is what a resume starts, as Spotify resumes what played
 		// last when nothing plays.
 		onResume func(*fakeAPI)
+		// saved are the songs and episodes in the library, in Liked Songs
+		// and Your Episodes, by URI. libraryRequests are the requests about
+		// them, as "contains <uris>", "PUT <uris>" or "DELETE <uris>".
+		// containsStatus fails the checks, and libraryStatus the changes.
+		saved           map[string]bool
+		libraryRequests []string
+		containsStatus  int
+		libraryStatus   int
+		// blockLibrary, when set, holds the changes of the library until
+		// it is closed.
+		blockLibrary chan struct{}
 	}
 
 	recentPlay struct {
@@ -479,6 +490,37 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 			return errorResponse(r, http.StatusBadRequest, "missing limit=50 or market=from_token"), nil
 		}
 		return f.page(r, likedSongsKey, f.liked, query), nil
+
+	case path == "me/library/contains" && r.Method == http.MethodGet:
+		uris := r.URL.Query().Get("uris")
+		f.libraryRequests = append(f.libraryRequests, "contains "+uris)
+		if f.containsStatus != 0 {
+			return errorResponse(r, f.containsStatus, "request failed"), nil
+		}
+		var answers []string
+		for _, uri := range strings.Split(uris, ",") {
+			answers = append(answers, strconv.FormatBool(f.saved[uri]))
+		}
+		return response(r, http.StatusOK, "["+strings.Join(answers, ",")+"]"), nil
+
+	case path == "me/library" && (r.Method == http.MethodPut || r.Method == http.MethodDelete):
+		uris := r.URL.Query().Get("uris")
+		f.libraryRequests = append(f.libraryRequests, r.Method+" "+uris)
+		if block := f.blockLibrary; block != nil {
+			f.mu.Unlock()
+			<-block
+			f.mu.Lock()
+		}
+		if f.libraryStatus != 0 {
+			return errorResponse(r, f.libraryStatus, "Insufficient client scope"), nil
+		}
+		if f.saved == nil {
+			f.saved = map[string]bool{}
+		}
+		for _, uri := range strings.Split(uris, ",") {
+			f.saved[uri] = r.Method == http.MethodPut
+		}
+		return response(r, http.StatusOK, ""), nil
 
 	case path == "me/player/queue" && r.Method == http.MethodGet:
 		return f.queueResponse(r), nil

@@ -37,6 +37,7 @@ type (
 		toggle        playbackToggle
 		volume        volumeControl
 		modes         [modeCount]modeControl
+		like          likeControl
 		playerBar     playerBar
 		volumeSaver   *volumeSaver
 		confirmEvery  time.Duration
@@ -193,6 +194,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ticking = false
 	}
 	m, cmd := m.update(msg)
+	m, cmd = m.followLike(cmd)
 	return m.tickProgress(cmd)
 }
 
@@ -269,6 +271,10 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			if !m.activeCapturesInput() {
 				return m.changeMode(repeatMode, 1)
 			}
+		case "l":
+			if !m.activeCapturesInput() {
+				return m.toggleLike()
+			}
 		case "+", "=":
 			if !m.activeCapturesInput() {
 				return m.changeVolume(volumeStep)
@@ -319,6 +325,12 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case modeChanged:
 		return m.modeChanged(msg)
+
+	case likeChecked:
+		return m.likeChecked(msg), nil
+
+	case likeChanged:
+		return m.likeChanged(msg)
 
 	case noticeHidden:
 		return m.noticeHidden(msg), nil

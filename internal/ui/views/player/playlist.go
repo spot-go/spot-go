@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/list"
@@ -314,6 +315,9 @@ func (p playlistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case historySaveFailed:
 		p.playback = playbackStatus{seq: p.playback.seq, text: "Fail to save the playlist history: " + errorText(msg.err), err: true}
 		return p, nil
+
+	case likeChanged:
+		return p, p.likedSongsChanged(msg)
 	}
 
 	var cmd tea.Cmd
@@ -743,6 +747,24 @@ func (p playlistModel) startLikedSongs(started playbackStarted, song *spotify.Pl
 		}
 		return started
 	}
+}
+
+// likedSongsChanged loads the songs of Liked Songs again once l liked or
+// unliked a song: at once while they show, or else when they show next.
+func (p playlistModel) likedSongsChanged(msg likeChanged) tea.Cmd {
+	if !strings.HasPrefix(string(msg.item), songURIPrefix) {
+		return nil
+	}
+	if _, loaded := p.songs[likedSongsID]; !loaded {
+		return nil
+	}
+	if selected, ok := p.selectedPlaylist(); ok && selected.liked && p.visible {
+		return p.refreshSongs(likedSongsID)
+	}
+	// The pages of a load that runs meanwhile are dropped (see
+	// addSongsPage).
+	delete(p.songs, likedSongsID)
+	return nil
 }
 
 // likedSongsFrom lists the loaded songs of Liked Songs that Spotify can play,
