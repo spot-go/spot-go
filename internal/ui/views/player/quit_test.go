@@ -85,7 +85,7 @@ func TestQuitKeysQuitRightAwayWhenSpotGoPlaysNothing(t *testing.T) {
 		}},
 	}
 	for _, tt := range tests {
-		for _, k := range []string{"ctrl+c", "ctrl+q"} {
+		for _, k := range []string{"ctrl+c", "ctrl+q", "ctrl+b"} {
 			t.Run(tt.name+"/"+k, func(t *testing.T) {
 				h := newHarnessWith(t, tt.api(), 120, 40)
 				h.send(pollPlayback{})
@@ -121,6 +121,8 @@ func TestQuitPromptChoices(t *testing.T) {
 		{keys: []string{"ctrl+c"}, quit: true},
 		{keys: []string{"ctrl+q"}, quit: true},
 		{keys: []string{"right", "right", "k"}, quit: true, keep: true},
+		{keys: []string{"ctrl+b"}, quit: true, keep: true},
+		{keys: []string{"right", "ctrl+b"}, quit: true, keep: true},
 	}
 	for _, tt := range tests {
 		t.Run(strings.Join(tt.keys, ","), func(t *testing.T) {
@@ -146,6 +148,77 @@ func TestQuitPromptChoices(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCtrlBQuitsKeepingTheMusicPlaying(t *testing.T) {
+	tests := []struct {
+		name  string
+		setUp func(h *harness)
+	}{
+		{name: "on a tab"},
+		{name: "while typing a search", setUp: func(h *harness) {
+			h.openSearchTab()
+			h.send(key("/"))
+		}},
+		{name: "under the list of keys", setUp: func(h *harness) {
+			h.send(key("?"))
+			h.wantKeyList()
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHarnessWith(t, soWhatOnSpotGo(), 120, 40)
+			h.send(pollPlayback{})
+			if tt.setUp != nil {
+				tt.setUp(h)
+			}
+
+			if !h.press("ctrl+b") {
+				t.Fatal("ctrl+b did not quit")
+			}
+			if !h.player().KeepPlaying() {
+				t.Fatal("KeepPlaying() = false after ctrl+b while Spotify plays on spot-go")
+			}
+			h.wantNoQuitPrompt()
+		})
+	}
+}
+
+func TestCtrlBKeepsPlayingWhatSpotGoKnowsPlays(t *testing.T) {
+	t.Run("right after resuming with no active device", func(t *testing.T) {
+		h := newHarness(t, 120, 40)
+		h.send(pollPlayback{})
+		h.send(key("space"))
+
+		if !h.press("ctrl+b") || !h.player().KeepPlaying() {
+			t.Fatal("ctrl+b did not keep the music playing right after spot-go resumed on its own device")
+		}
+	})
+	t.Run("before the first poll, when spot-go was active", func(t *testing.T) {
+		h := newHarnessWith(t, soWhatOnSpotGo(), 120, 40)
+		h.player().playerDevice.Active = true
+
+		if !h.press("ctrl+b") || !h.player().KeepPlaying() {
+			t.Fatal("ctrl+b did not keep the music playing on spot-go's active device")
+		}
+	})
+	t.Run("before the first poll, when spot-go was not active", func(t *testing.T) {
+		h := newHarnessWith(t, soWhatOnSpotGo(), 120, 40)
+
+		if !h.press("ctrl+b") || h.player().KeepPlaying() {
+			t.Fatal("ctrl+b kept the music playing although spot-go's device was not active as it started")
+		}
+	})
+	t.Run("after a pause", func(t *testing.T) {
+		h := newHarnessWith(t, soWhatOnSpotGo(), 120, 40)
+		h.send(pollPlayback{})
+		h.send(key("space"))
+		h.wantPauses("")
+
+		if !h.press("ctrl+b") || h.player().KeepPlaying() {
+			t.Fatal("ctrl+b kept the music playing after a pause")
+		}
+	})
 }
 
 func TestQuitPromptLightsTheChosenButton(t *testing.T) {

@@ -62,7 +62,7 @@ func TestQuestionMarkShowsTheKeys(t *testing.T) {
 			h.wantKeyList(
 				"Playlists tab", "tab", "move between playlists and songs", "sort the playlists",
 				"Playback", "space/k", "play/pause", "ctrl+s", "shuffle on/off", "ctrl+r", "next repeat mode",
-				"General", "←/→", "switch tabs", "ctrl+c/ctrl+q", "quit",
+				"General", "←/→", "switch tabs", "ctrl+c/ctrl+q", "quit", "ctrl+b", "quit and keep playing",
 				"←/→ other tabs • esc close",
 			)
 			// The list of keys shows over the tab, and the player stays.
@@ -226,7 +226,7 @@ func TestKeyListScrollsWhenItDoesNotFit(t *testing.T) {
 	if len(first) == 0 || !strings.Contains(first[0], "Playlists tab") {
 		t.Fatalf("rows = %q, want the keys of the tab first", first)
 	}
-	h.dontWantView("ctrl+c/ctrl+q")
+	h.dontWantView("ctrl+b")
 
 	h.send(key("down"))
 	if got := h.keyListRows(); got[0] != first[1] {
@@ -239,7 +239,7 @@ func TestKeyListScrollsWhenItDoesNotFit(t *testing.T) {
 
 	h.send(key("end"))
 	last := h.keyListRows()
-	if !strings.Contains(last[len(last)-1], "ctrl+c/ctrl+q") {
+	if !strings.Contains(last[len(last)-1], "ctrl+b") {
 		t.Fatalf("rows after end = %q, want the last key last", last)
 	}
 	h.send(key("down"))
@@ -269,10 +269,10 @@ func TestKeyListScrollsWhenItDoesNotFit(t *testing.T) {
 	// A taller window shows every key, so the list doesn't scroll.
 	h.send(key("end"))
 	h.send(tea.WindowSizeMsg{Width: 80, Height: 45})
-	h.wantKeyList("Playlists tab", "ctrl+c/ctrl+q", "←/→ other tabs • esc close")
+	h.wantKeyList("Playlists tab", "ctrl+b", "←/→ other tabs • esc close")
 	h.dontWantView("↑/↓ scroll")
 	h.send(key("down"))
-	h.wantKeyList("Playlists tab", "ctrl+c/ctrl+q")
+	h.wantKeyList("Playlists tab", "ctrl+b")
 
 	// After a resize, the first ↑ moves at once, from the end it shows.
 	h.send(tea.WindowSizeMsg{Width: 80, Height: 24})
