@@ -92,7 +92,7 @@ var (
 			Foreground(styles.LipglossColorGrey)
 
 	playerHints = []playerHint{
-		{"space", "play/pause"},
+		{"space/k", "play/pause"},
 		{"n/p", "next/previous"},
 		{"+/-", "volume"},
 		{"</>", "seek"},

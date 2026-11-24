@@ -67,7 +67,7 @@ func TestQuestionMarkShowsTheKeys(t *testing.T) {
 			)
 			// The list of keys shows over the tab, and the player stays.
 			h.dontWantView("Back in Black")
-			h.wantBottomLine("space play/pause")
+			h.wantBottomLine("space/k play/pause")
 
 			h.send(key(closer))
 			h.wantNoKeyList()
@@ -352,9 +352,9 @@ func TestTabsShowTheKeyListHint(t *testing.T) {
 
 	// The compact player has no room for the keys, so they follow ?.
 	h.send(tea.WindowSizeMsg{Width: 120, Height: 15})
-	h.wantView("? keys • space play/pause")
+	h.wantView("? keys • space/k play/pause")
 	h.openTab(playlistsTab)
-	h.wantView("r refresh • ? keys • space play/pause")
+	h.wantView("r refresh • ? keys • space/k play/pause")
 }
 
 func TestNarrowTabsKeepTheKeyListHint(t *testing.T) {
