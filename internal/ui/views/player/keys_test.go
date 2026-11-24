@@ -1,6 +1,7 @@
 package player
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -53,6 +54,10 @@ func (h *harness) keyListRows() []string {
 	return nil
 }
 
+// ctrlCQuits matches the row of the list of keys for ctrl+c, at the end of
+// a row, as in the right column.
+var ctrlCQuits = regexp.MustCompile(`(^|\s)ctrl\+c +quit$`)
+
 func TestQuestionMarkShowsTheKeys(t *testing.T) {
 	for _, closer := range []string{"?", "esc"} {
 		t.Run(closer, func(t *testing.T) {
@@ -62,9 +67,13 @@ func TestQuestionMarkShowsTheKeys(t *testing.T) {
 			h.wantKeyList(
 				"Playlists tab", "tab", "move between playlists and songs", "sort the playlists",
 				"Playback", "space/k", "play/pause", "ctrl+s", "shuffle on/off", "ctrl+r", "next repeat mode",
-				"General", "←/→", "switch tabs", "ctrl+c/ctrl+q  quit", "ctrl+k", "quit and keep playing",
+				"General", "←/→", "switch tabs", "ctrl+c", "ctrl+q", "quit and stop playing", "ctrl+k", "quit and keep playing",
 				"←/→ other tabs • esc close",
 			)
+			// "quit" alone is in what ctrl+q and ctrl+k do too.
+			if rows := h.keyListRows(); !slices.ContainsFunc(rows, ctrlCQuits.MatchString) {
+				t.Fatalf("no row says ctrl+c quits: %q", rows)
+			}
 			// The list of keys shows over the tab, and the player stays.
 			h.dontWantView("Back in Black")
 			h.wantBottomLine("space/k play/pause")
