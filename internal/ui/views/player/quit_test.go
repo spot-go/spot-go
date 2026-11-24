@@ -150,7 +150,7 @@ func TestQuitPromptChoices(t *testing.T) {
 	}
 }
 
-func TestCtrlBQuitsKeepingTheMusicPlaying(t *testing.T) {
+func TestCtrlKQuitsKeepingTheMusicPlaying(t *testing.T) {
 	tests := []struct {
 		name  string
 		setUp func(h *harness)
@@ -184,7 +184,7 @@ func TestCtrlBQuitsKeepingTheMusicPlaying(t *testing.T) {
 	}
 }
 
-func TestCtrlBKeepsPlayingWhatSpotGoKnowsPlays(t *testing.T) {
+func TestCtrlKKeepsPlayingWhatSpotGoKnowsPlays(t *testing.T) {
 	t.Run("right after resuming with no active device", func(t *testing.T) {
 		h := newHarness(t, 120, 40)
 		h.send(pollPlayback{})
