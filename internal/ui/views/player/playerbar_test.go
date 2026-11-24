@@ -162,7 +162,7 @@ func TestPlayerIsAtTheBottomOfEveryTab(t *testing.T) {
 		if !strings.HasPrefix(player[0], "├─") || !strings.HasSuffix(player[0], "─┤") ||
 			!strings.Contains(player[1], "⏸ So What — Miles Davis") || !strings.Contains(player[1], "on Pixel 7") ||
 			!strings.Contains(player[2], "1:00 / 9:22") || !strings.HasSuffix(strings.TrimRight(player[2], " │"), "60%") ||
-			!strings.HasPrefix(player[3], "└─ space play/pause") || !strings.HasSuffix(player[3], "─┘") ||
+			!strings.HasPrefix(player[3], "└─ space/k play/pause") || !strings.HasSuffix(player[3], "─┘") ||
 			strings.TrimSpace(player[4]) != "" {
 			t.Fatalf("%s tab: bottom of the window = %q, want the player", h.player().tabs[tab].name, player)
 		}
@@ -435,7 +435,7 @@ func TestPlayerSaysWhenNothingPlays(t *testing.T) {
 
 	h.send(pollPlayback{})
 	h.wantPlayerRow(0, nothingPlaying)
-	h.wantBottomLine("space play/pause")
+	h.wantBottomLine("space/k play/pause")
 
 	h.send(tea.WindowSizeMsg{Width: 120, Height: 12})
 	h.wantBottomLine(nothingPlaying)
@@ -535,7 +535,7 @@ func TestPolledVolumeRightAfterAVolumeKeyKeepsTheNewVolume(t *testing.T) {
 func TestPlayerShowsTheKeysOfEveryTab(t *testing.T) {
 	h := newHarness(t, 120, 40)
 	h.send(keys("left", "left")...)
-	want := "└─ space play/pause • n/p next/previous • +/- volume • </> seek • ctrl+s shuffle • ctrl+r repeat ─"
+	want := "└─ space/k play/pause • n/p next/previous • +/- volume • </> seek • ctrl+s shuffle • ctrl+r repeat ─"
 
 	for tab := range h.player().tabs {
 		if got := h.player().activeTab; got != tab {
@@ -551,7 +551,7 @@ func TestPlayerShowsTheKeysOfEveryTab(t *testing.T) {
 func TestCompactPlayerLeavesTheKeysToThePane(t *testing.T) {
 	h := newHarness(t, 120, 15)
 
-	h.wantView("enter play • r refresh • ? keys • space play/pause • n/p next/previous")
+	h.wantView("enter play • r refresh • ? keys • space/k play/pause • n/p next/previous")
 	if got := h.bottomLine(); strings.Contains(got, "play/pause") {
 		t.Fatalf("bottom line = %q, want no keys in the compact player", got)
 	}
@@ -562,14 +562,14 @@ func TestCompactPlayerLeavesTheKeysToThePane(t *testing.T) {
 	}
 
 	h.send(tea.WindowSizeMsg{Width: 120, Height: 16})
-	h.wantBottomLine("space play/pause")
+	h.wantBottomLine("space/k play/pause")
 	h.dontWantView("? keys • space")
 }
 
 func TestPlayerLeavesOutKeysThatDoNotFit(t *testing.T) {
 	h := newHarness(t, 80, 24)
 
-	h.wantBottomLine("space play/pause • n/p next/previous • +/- volume • </> seek")
+	h.wantBottomLine("space/k play/pause • n/p next/previous • +/- volume • </> seek")
 	if got := h.bottomLine(); strings.Contains(got, "ctrl+") || strings.Contains(got, "…") {
 		t.Fatalf("bottom line = %q, want the keys that fit, without cutting one", got)
 	}

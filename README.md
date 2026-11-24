@@ -154,10 +154,10 @@ The Web API doesn't document Liked Songs as something to play, and may refuse to
 The player at the bottom of the window shows what Spotify is playing on any device, on every tab:
 
 ```
-├──────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ ▃▇▅ ⏸ So What — Miles Davis                                                           on Pixel 7 │
-│     ━━━━━╸─────────────────────────────────────────────── 1:01 / 9:22   ⇄  ↻   🔉 ━━━━━━──── 60% │
-└─ space play/pause • n/p next/previous • +/- volume • </> seek • ctrl+s shuffle • ctrl+r repeat ──┘
+├────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ▃▇▅ ⏸ So What — Miles Davis                                                             on Pixel 7 │
+│     ━━━━━╸───────────────────────────────────────────────── 1:01 / 9:22   ⇄  ↻   🔉 ━━━━━━──── 60% │
+└─ space/k play/pause • n/p next/previous • +/- volume • </> seek • ctrl+s shuffle • ctrl+r repeat ──┘
 ```
 
 - The first row has the song or episode with its artist or podcast, after ⏸ while it plays and ▶ while it is paused. The equalizer next to it dances while Spotify plays and lies flat while it is paused. When Spotify plays on another device, its name shows on the right.
