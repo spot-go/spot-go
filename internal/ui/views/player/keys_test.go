@@ -62,7 +62,7 @@ func TestQuestionMarkShowsTheKeys(t *testing.T) {
 			h.wantKeyList(
 				"Playlists tab", "tab", "move between playlists and songs", "sort the playlists",
 				"Playback", "space/k", "play/pause", "ctrl+s", "shuffle on/off", "ctrl+r", "next repeat mode",
-				"General", "←/→", "switch tabs", "ctrl+c/ctrl+q", "quit", "ctrl+b", "quit and keep playing",
+				"General", "←/→", "switch tabs", "ctrl+c/ctrl+q  quit", "ctrl+b", "quit and keep playing",
 				"←/→ other tabs • esc close",
 			)
 			// The list of keys shows over the tab, and the player stays.
