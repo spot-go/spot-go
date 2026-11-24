@@ -56,11 +56,11 @@ type Redirect struct {
 // ToFile points standard error at the file name, when standard error is a
 // terminal, on macOS. What spot-go writes there goes to the file, and so does
 // what the processes it starts write before they run their command. A crash
-// still shows on the terminal too, but for its first line, such as "fatal
-// error: concurrent map writes", and what a library writes before it aborts,
-// which only go to the file. So the file of the last run stays, as name with
-// .old before its extension. ToFile returns nil when standard error stays as
-// it is.
+// still shows on the terminal too, but for the line a fatal error starts
+// with, such as "fatal error: concurrent map writes", and what a library
+// writes before it aborts, which only go to the file. So the file of the
+// last run stays, as name with .old before its extension. ToFile returns nil
+// when standard error stays as it is.
 func ToFile(name string) *Redirect {
 	if !redirects || !isTerminal(uintptr(unix.Stderr)) {
 		return nil
