@@ -66,6 +66,14 @@ func (m Model) quit() (Model, tea.Cmd) {
 	return m, nil
 }
 
+// quitInBackground quits spot-go right away, with no prompt. While Spotify
+// plays on spot-go, the music keeps playing, as with Keep playing on the
+// quit prompt. Otherwise spot-go quits as when the prompt doesn't show.
+func (m Model) quitInBackground() (Model, tea.Cmd) {
+	m.keepPlaying = m.ownPlaying()
+	return m, tea.Quit
+}
+
 // ownPlaying reports whether Spotify plays on spot-go's own device, as far as
 // spot-go knows: from the last poll, or the last change made in spot-go
 // since. When spot-go knows it plays but not where, as right after it
@@ -97,7 +105,7 @@ func (m Model) quitKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		m.quitPrompt.choice = (m.quitPrompt.choice + quitChoiceCount - 1) % quitChoiceCount
 	case "enter":
 		return m.chooseQuit(m.quitPrompt.choice)
-	case "k":
+	case "k", "ctrl+k":
 		return m.chooseQuit(keepPlayingChoice)
 	case "s", "ctrl+c", "ctrl+q":
 		// Quitting again quits as spot-go always did: the music stops.

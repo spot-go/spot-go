@@ -132,6 +132,7 @@ spot-go also starts Soloist with its local WebSocket API on `127.0.0.1`, on a po
 - `+` (or `=`) and `-` raise and lower the Spotify volume by 5% on the device Spotify is playing on, whether that is spot-go or another device. They don't change the volume of the computer. Some devices, such as some TVs and speakers, don't let Spotify change their volume.
 - `ctrl+s` turns shuffle on and off, and `ctrl+r` goes through the repeat modes as in the Spotify app: repeat the playlist, album or podcast, repeat the song or episode, and no repeat. On spot-go's device they go through Soloist, and on other devices through the Spotify Web API.
 - `ctrl+c` or `ctrl+q` quits. While Spotify plays on spot-go, spot-go first asks whether the music keeps playing (see [Quitting](#quitting)).
+- `ctrl+k` quits right away and keeps the music playing, without asking (see [Quitting](#quitting)).
 
 These keys control Spotify on the device it is playing on, from every tab. Skips, seeks, and volume, shuffle and repeat changes pressed while Spotify is still taking a change add up, and run once it ends. A seek pressed before a skip is dropped, and so are skips and seeks still waiting when a tab starts playing something else. `space` and `k` are ignored while Spotify takes a change.
 
@@ -176,7 +177,9 @@ When you quit while Spotify plays on spot-go's device, spot-go asks whether the 
 - **Stop** (`s`) stops Soloist and quits, as spot-go did before it asked.
 - **Cancel** (`esc`) goes back to spot-go.
 
-`←` and `→` choose too, and `enter` confirms. `ctrl+c` or `ctrl+q` again stops the music and quits. When Spotify plays nothing, is paused, or plays on another device, spot-go quits right away and stops Soloist. spot-go knows what plays from the last time it checked, every 5 seconds, and the keys you pressed since. Right after it starts, before it first checked, it asks if Spotify listed spot-go's device as the active one. Closing the terminal while the player shows also stops the music.
+`←` and `→` choose too, and `enter` confirms. `ctrl+c` or `ctrl+q` again stops the music and quits, and `ctrl+k` keeps it playing. When Spotify plays nothing, is paused, or plays on another device, spot-go quits right away and stops Soloist. spot-go knows what plays from the last time it checked, every 5 seconds, and the keys you pressed since. Right after it starts, before it first checked, it asks if Spotify listed spot-go's device as the active one. Closing the terminal while the player shows also stops the music.
+
+To keep the music playing without the question, quit with `ctrl+k`. It quits right away, as **Keep playing** does, even while you type a search or a filter, where it then doesn't delete the rest of the line. When Spotify plays nothing, is paused, or plays on another device, and before the player shows, `ctrl+k` quits as `ctrl+c` does then.
 
 The next time spot-go starts, it finds the Soloist left playing and goes on with it, without stopping the music, so you can come back to what plays. If you quit before the player shows, or close the terminal then, that Soloist keeps playing as spot-go found it, and the media keys stay on it. The Soloist left playing keeps its build: when the build gets old, spot-go downloads a newer one the next time it starts Soloist. If the Soloist left playing stops working, spot-go starts a new one instead. If spot-go itself crashes or is killed, Soloist can keep playing too, and the next run finds it the same way.
 
@@ -203,7 +206,7 @@ The Web API only returns the first part of the queue, usually 20 songs or episod
 
 ## Search
 
-The Search tab, right of Queue, searches the Spotify catalog. Press `/`, type what you want to listen to and press `enter`. While you type, every key goes to the search, so `space`, `k`, `n`, `p`, `<`, `>`, `+`, `-`, `←` and `→` don't control Spotify or switch tabs, and `?` doesn't list the keys. `esc` leaves the input without searching, back to the results, or to the hint before your first search, so the keys control Spotify and switch tabs again.
+The Search tab, right of Queue, searches the Spotify catalog. Press `/`, type what you want to listen to and press `enter`. While you type, every key but the ones that quit goes to the search, so `space`, `k`, `n`, `p`, `<`, `>`, `+`, `-`, `←` and `→` don't control Spotify or switch tabs, and `?` doesn't list the keys. `esc` leaves the input without searching, back to the results, or to the hint before your first search, so the keys control Spotify and switch tabs again.
 
 The left side lists the kinds of results: all, songs, artists, albums, playlists, podcasts and episodes. Next to each kind is how many Spotify found, and next to All is how many results it mixes. The right side lists the results of the selected kind, in Spotify's order. `tab` moves between the two sides, and `r` searches again. The Web API returns at most 10 results of each kind per request, so spot-go loads more as you move down the list, up to the first 1000.
 

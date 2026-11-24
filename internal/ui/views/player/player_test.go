@@ -978,6 +978,8 @@ func key(k string) tea.Msg {
 		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
 	case "ctrl+q":
 		return tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl}
+	case "ctrl+k":
+		return tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl}
 	case "ctrl+s":
 		return tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
 	case "ctrl+r":
@@ -1347,7 +1349,7 @@ func TestViewDoesNotStartGoroutines(t *testing.T) {
 }
 
 func TestQuitKeys(t *testing.T) {
-	for _, k := range []string{"ctrl+c", "ctrl+q"} {
+	for _, k := range []string{"ctrl+c", "ctrl+q", "ctrl+k"} {
 		t.Run(k, func(t *testing.T) {
 			h := newHarness(t, 120, 40)
 			h.send(key("/"))

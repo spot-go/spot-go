@@ -90,6 +90,7 @@ var (
 		{"←/→", "switch tabs"},
 		{"?", "show/hide these keys"},
 		{"ctrl+c/ctrl+q", "quit"},
+		{"ctrl+k", "quit and keep playing"},
 	}
 
 	keySectionStyle = paneTitleStyle
