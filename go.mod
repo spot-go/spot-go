@@ -9,12 +9,14 @@ require (
 	github.com/allegro/bigcache/v3 v3.2.0
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.9
+	github.com/charmbracelet/x/term v0.2.2
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/kirsle/configdir v0.0.0-20170128060238-e45d2f54772f
 	github.com/spf13/cobra v1.10.2
 	github.com/zmb3/spotify/v2 v2.4.3
 	golang.design/x/clipboard v0.11.0
 	golang.org/x/oauth2 v0.37.0
+	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.43.0
 )
 
@@ -22,7 +24,6 @@ require (
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/charmbracelet/harmonica v0.2.0 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20261023060817-a45b7c86333f // indirect
-	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
@@ -41,5 +42,4 @@ require (
 	golang.org/x/image v0.47.0 // indirect
 	golang.org/x/mobile v0.0.0-20261011034528-197770444867 // indirect
 	golang.org/x/sync v0.24.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
 )

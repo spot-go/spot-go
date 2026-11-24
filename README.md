@@ -263,6 +263,8 @@ spot-go saves the artist and album orders and history in `library.json` too.
 
 Set `DEBUG=1` to write a `debug.log` file. `make debug` starts the app under Delve on port 2345.
 
+On macOS, what goes to standard error while spot-go runs in a terminal goes to `stderr.log` instead, next to `soloist.log`. Each start of spot-go keeps the file of the run before as `stderr.old.log`. Once memory runs critically low, macOS loads its malloc stack logging library into the programs that run, and from then on each command spot-go starts, such as `ps`, Soloist's `ctl`, or spot-go in the background as you quit, writes `spot-go(PID) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.` to it as it starts. On the terminal, these lines would garble the screen spot-go draws, and the ones of the commands it starts as it quits, once its screen closed, would stay there. As spot-go quits, it shows what else went to the file once its screen closed, and all of it when it fails, such as when it recovers from a panic, but these lines. A crash still shows on the terminal, but for its first line, such as `fatal error: concurrent map writes`, and what a macOS library writes before it aborts, which are only in the file.
+
 ## Spotify app settings
 
 spot-go uses the Spotify Web API through a Spotify app, which Spotify knows by its Client ID. Spotify keeps an app in development mode, where only its owner and the few accounts on its user list can use it, unless the app belongs to an organization with at least 250,000 monthly active users. So spot-go's own app can't take every account. To use spot-go with any account, create your own Spotify app. It's free and takes a few minutes:

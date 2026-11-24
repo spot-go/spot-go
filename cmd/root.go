@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/spot-go/spot-go/internal/media"
 	"github.com/spot-go/spot-go/internal/program"
 	"github.com/spot-go/spot-go/internal/soloist"
+	"github.com/spot-go/spot-go/internal/stderr"
 	"github.com/spot-go/spot-go/internal/ui/styles"
 	"github.com/spot-go/spot-go/internal/ui/views/login"
 	"github.com/spot-go/spot-go/internal/ui/views/player"
@@ -29,11 +31,21 @@ var rootCmd = &cobra.Command{
 	Run:   run,
 }
 
+// stderrLog has what goes to standard error while spot-go runs, on macOS.
+var stderrLog = filepath.Join(soloist.Folder, "stderr.log")
+
 func run(cmd *cobra.Command, args []string) {
 	if !soloist.Supported() {
 		fmt.Printf("fatal: Soloist has no build for %s/%s\n", runtime.GOOS, runtime.GOARCH)
 		os.Exit(1)
 	}
+
+	// Before spot-go starts any command, until it quit and started the ones
+	// it runs as it quits: on macOS, they could write to the terminal. The
+	// file is in the Soloist folder, and loadSettings fails when it can't
+	// make it.
+	_ = soloist.CreateFolder()
+	redirect := stderr.ToFile(stderrLog)
 
 	// Before spot-go reads the Spotify token, which the spot-go an earlier
 	// run left in the background could refresh meanwhile.
@@ -59,11 +71,19 @@ func run(cmd *cobra.Command, args []string) {
 	media.Listen(func(c media.Command) { p.Send(c) })
 	stopHangup := quitOnHangup(p)
 	final, err := p.Run()
-	quitSoloist(keepPlaying(final), followed)
+	redirect.Mark()
+	quitErr := quitSoloist(keepPlaying(final), followed)
 	// Until Soloist stopped, a hang-up only quits spot-go, which already
 	// quit, and doesn't end spot-go before it stopped Soloist.
 	stopHangup()
-	if err != nil && !errors.Is(err, tea.ErrInterrupted) {
+	failed := err != nil && !errors.Is(err, tea.ErrInterrupted)
+	// When spot-go failed, all it wrote shows, such as the panic it
+	// recovered from as its screen closed.
+	redirect.Restore(failed)
+	if quitErr != nil {
+		fmt.Fprintln(os.Stderr, "spot-go: the media keys won't reach the music left playing:", quitErr)
+	}
+	if failed {
 		log.Fatal(err)
 	}
 }
@@ -74,7 +94,8 @@ func run(cmd *cobra.Command, args []string) {
 // followed, the one spot-go in the background followed as this run started,
 // when this run quit before it took it over. The Soloist another run of
 // spot-go plays on, which no spot-go in the background followed, gets none.
-func quitSoloist(keep bool, followed int) {
+// The error is why spot-go couldn't start in the background.
+func quitSoloist(keep bool, followed int) error {
 	// Before Detach or Stop, while this run may still know the device.
 	device := soloist.DeviceID()
 	detached := 0
@@ -86,11 +107,9 @@ func quitSoloist(keep bool, followed int) {
 
 	left, ok := soloist.LeftRunning()
 	if !ok || left != detached && left != followed {
-		return
+		return nil
 	}
-	if err := background.Start(left, device); err != nil {
-		fmt.Fprintln(os.Stderr, "spot-go: the media keys won't reach the music left playing:", err)
-	}
+	return background.Start(left, device)
 }
 
 type keeper interface {
