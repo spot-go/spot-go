@@ -299,14 +299,16 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			// What plays didn't change, so the tabs keep showing it.
 			return m.notify("Fail to seek: "+errorText(msg.err), true)
 		}
+		var confirm tea.Cmd
 		if msg.err == nil && msg.plays == *m.plays {
 			m.knowsPlayback = true
 			m = m.publishToggled(msg)
 			m.playerBar.idle = false
+			confirm = m.confirmResume(msg)
 		}
 		broadcast := m.broadcast(msg)
 		m, skip := m.nextSkip()
-		return m, tea.Batch(broadcast, skip)
+		return m, tea.Batch(broadcast, skip, confirm)
 
 	case volumeChanged:
 		return m.volumeChanged(msg)

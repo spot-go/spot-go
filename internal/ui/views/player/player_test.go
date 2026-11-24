@@ -116,6 +116,9 @@ type (
 		// as it can answer to an offset into Liked Songs.
 		refuseLikedSongs  bool
 		refuseLikedOffset bool
+		// onResume is what a resume starts, as Spotify resumes what played
+		// last when nothing plays.
+		onResume func(*fakeAPI)
 	}
 
 	recentPlay struct {
@@ -497,6 +500,8 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 		if len(body) > 0 {
 			f.started = f.onPlay
+		} else if f.onResume != nil {
+			f.started = f.onResume
 		}
 		f.paused = false
 		return response(r, http.StatusNoContent, ""), nil

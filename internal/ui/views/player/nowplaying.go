@@ -92,6 +92,29 @@ func (m Model) playbackStarted(msg tea.Msg, uri, item libspotify.URI, info media
 }
 
 func (m Model) confirmStart(before nowPlaying, uri, item libspotify.URI, from time.Duration) tea.Cmd {
+	return m.confirm(func(playing spotify.NowPlaying, since time.Duration) bool {
+		return startedPlaying(playing, uri, item, from+since) && !before.stillPlaying(playing, time.Now())
+	})
+}
+
+// confirmResume waits for Spotify to report what a resume plays when spot-go
+// didn't know it, as when nothing played: Spotify then resumes what played
+// last, and the player shows it once Spotify reports it, rather than at the
+// next poll, seconds later.
+func (m Model) confirmResume(msg playbackToggled) tea.Cmd {
+	if !msg.resumed || msg.item != "" || msg.name != "" {
+		return nil
+	}
+	return m.confirm(func(playing spotify.NowPlaying, _ time.Duration) bool {
+		return playing.Item != ""
+	})
+}
+
+// confirm reads what Spotify plays every confirmEvery, startPolls times at
+// most, until shows says it plays what the last command started. Spotify can
+// take a moment to report it. A command or a play spot-go started since then
+// drops the confirmation (see playbackConfirmed).
+func (m Model) confirm(shows func(playing spotify.NowPlaying, since time.Duration) bool) tea.Cmd {
 	ctx, client, every, polls := m.ctx, m.spotifyClient, m.confirmEvery, m.startPolls
 	confirmed := playbackConfirmed{plays: *m.plays, commandAt: m.nowPlaying.commandAt}
 
@@ -108,7 +131,7 @@ func (m Model) confirmStart(before nowPlaying, uri, item libspotify.URI, from ti
 			if err != nil {
 				return nil
 			}
-			if startedPlaying(playing, uri, item, from+time.Since(start)) && !before.stillPlaying(playing, time.Now()) {
+			if shows(playing, time.Since(start)) {
 				confirmed.playing = playing
 				return confirmed
 			}
