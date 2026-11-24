@@ -131,7 +131,8 @@ spot-go also starts Soloist with its local WebSocket API on `127.0.0.1`, on a po
 - `>` (or `.`) and `<` (or `,`) move 10 seconds forward and back in the song or episode, without going past its start, and stopping a second before its end, so Spotify doesn't skip to the next one. A pause stays paused.
 - `+` (or `=`) and `-` raise and lower the Spotify volume by 5% on the device Spotify is playing on, whether that is spot-go or another device. They don't change the volume of the computer. Some devices, such as some TVs and speakers, don't let Spotify change their volume.
 - `ctrl+s` turns shuffle on and off, and `ctrl+r` goes through the repeat modes as in the Spotify app: repeat the playlist, album or podcast, repeat the song or episode, and no repeat. On spot-go's device they go through Soloist, and on other devices through the Spotify Web API.
-- `ctrl+c` or `ctrl+q` quits. While Spotify plays on spot-go, spot-go first asks whether the music keeps playing (see [Quitting](#quitting)).
+- `ctrl+c` quits. While Spotify plays on spot-go, spot-go first asks whether the music keeps playing (see [Quitting](#quitting)).
+- `ctrl+q` quits right away and stops the music, without asking.
 - `ctrl+k` quits right away and keeps the music playing, without asking (see [Quitting](#quitting)).
 
 These keys control Spotify on the device it is playing on, from every tab. Skips, seeks, and volume, shuffle and repeat changes pressed while Spotify is still taking a change add up, and run once it ends. A seek pressed before a skip is dropped, and so are skips and seeks still waiting when a tab starts playing something else. `space` and `k` are ignored while Spotify takes a change.
@@ -171,15 +172,15 @@ In windows shorter than 16 lines, the player shrinks to the bottom line of the f
 
 ## Quitting
 
-When you quit while Spotify plays on spot-go's device, spot-go asks whether the music keeps playing after you quit:
+When you quit with `ctrl+c` while Spotify plays on spot-go's device, spot-go asks whether the music keeps playing after you quit:
 
 - **Keep playing** (`k`) quits and leaves Soloist playing in the background. The media keys and the Now Playing controls of the system keep working (see [Media keys after quitting](#media-keys-after-quitting)), and the Spotify app on your phone or computer controls it too, where it is still the `spot-go@<hostname>` device.
 - **Stop** (`s`) stops Soloist and quits, as spot-go did before it asked.
 - **Cancel** (`esc`) goes back to spot-go.
 
-`←` and `→` choose too, and `enter` confirms. `ctrl+c` or `ctrl+q` again stops the music and quits, and `ctrl+k` keeps it playing. When Spotify plays nothing, is paused, or plays on another device, spot-go quits right away and stops Soloist. spot-go knows what plays from the last time it checked, every 5 seconds, and the keys you pressed since. Right after it starts, before it first checked, it asks if Spotify listed spot-go's device as the active one. Closing the terminal while the player shows also stops the music.
+`←` and `→` choose too, and `enter` confirms. `ctrl+c` again, or `ctrl+q`, stops the music and quits, and `ctrl+k` keeps it playing. When Spotify plays nothing, is paused, or plays on another device, spot-go quits right away and stops Soloist. spot-go knows what plays from the last time it checked, every 5 seconds, and the keys you pressed since. Right after it starts, before it first checked, it asks if Spotify listed spot-go's device as the active one. Closing the terminal while the player shows also stops the music.
 
-To keep the music playing without the question, quit with `ctrl+k`. It quits right away, as **Keep playing** does, even while you type a search or a filter, where it then doesn't delete the rest of the line. When Spotify plays nothing, is paused, or plays on another device, and before the player shows, `ctrl+k` quits as `ctrl+c` does then.
+To quit without the question, use `ctrl+q` or `ctrl+k`. `ctrl+q` quits right away and stops the music, as **Stop** does. `ctrl+k` quits right away and keeps the music playing, as **Keep playing** does. When Spotify plays nothing, is paused, or plays on another device, and before the player shows, `ctrl+k` quits as `ctrl+c` does then. Both work even while you type a search or a filter, where `ctrl+k` then doesn't delete the rest of the line.
 
 The next time spot-go starts, it finds the Soloist left playing and goes on with it, without stopping the music, so you can come back to what plays. If you quit before the player shows, or close the terminal then, that Soloist keeps playing as spot-go found it, and the media keys stay on it. The Soloist left playing keeps its build: when the build gets old, spot-go downloads a newer one the next time it starts Soloist. If the Soloist left playing stops working, spot-go starts a new one instead. If spot-go itself crashes or is killed, Soloist can keep playing too, and the next run finds it the same way.
 

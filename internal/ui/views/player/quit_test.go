@@ -55,18 +55,53 @@ func (h *harness) wantNoQuitPrompt() {
 	h.dontWantView(quitQuestion)
 }
 
-func TestQuitKeysAskWhilePlayingOnSpotGo(t *testing.T) {
-	for _, k := range []string{"ctrl+c", "ctrl+q"} {
-		t.Run(k, func(t *testing.T) {
-			h := newHarnessWith(t, soWhatOnSpotGo(), 120, 40)
-			h.send(pollPlayback{})
+func TestCtrlCAsksWhilePlayingOnSpotGo(t *testing.T) {
+	h := newHarnessWith(t, soWhatOnSpotGo(), 120, 40)
+	h.send(pollPlayback{})
 
-			if h.press(k) {
-				t.Fatal("spot-go quit without asking whether the music keeps playing")
+	if h.press("ctrl+c") {
+		t.Fatal("spot-go quit without asking whether the music keeps playing")
+	}
+	h.wantQuitPrompt()
+	// The player still shows what plays.
+	h.wantPlayerRow(0, "So What")
+}
+
+func TestCtrlQQuitsStoppingTheMusic(t *testing.T) {
+	tests := []struct {
+		name  string
+		setUp func(h *harness)
+	}{
+		{name: "on a tab", setUp: func(h *harness) { h.send(pollPlayback{}) }},
+		{name: "while typing a search", setUp: func(h *harness) {
+			h.send(pollPlayback{})
+			h.openSearchTab()
+			h.send(key("/"))
+		}},
+		{name: "under the list of keys", setUp: func(h *harness) {
+			h.send(pollPlayback{})
+			h.send(key("?"))
+			h.wantKeyList()
+		}},
+		{name: "before the first poll, when spot-go was active", setUp: func(h *harness) {
+			h.player().playerDevice.Active = true
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHarnessWith(t, soWhatOnSpotGo(), 120, 40)
+			tt.setUp(h)
+			if !h.player().ownPlaying() {
+				t.Fatal("spot-go doesn't know it plays: the test doesn't check that ctrl+q doesn't ask")
 			}
-			h.wantQuitPrompt()
-			// The player still shows what plays.
-			h.wantPlayerRow(0, "So What")
+
+			if !h.press("ctrl+q") {
+				t.Fatal("ctrl+q did not quit while Spotify plays on spot-go")
+			}
+			if h.player().KeepPlaying() {
+				t.Fatal("KeepPlaying() = true after ctrl+q")
+			}
+			h.wantNoQuitPrompt()
 		})
 	}
 }

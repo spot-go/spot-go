@@ -66,6 +66,13 @@ func (m Model) quit() (Model, tea.Cmd) {
 	return m, nil
 }
 
+// quitStopping quits spot-go right away, with no prompt, and the music
+// stops, as with Stop on the quit prompt.
+func (m Model) quitStopping() (Model, tea.Cmd) {
+	m.keepPlaying = false
+	return m, tea.Quit
+}
+
 // quitInBackground quits spot-go right away, with no prompt. While Spotify
 // plays on spot-go, the music keeps playing, as with Keep playing on the
 // quit prompt. Otherwise spot-go quits as when the prompt doesn't show.
@@ -108,7 +115,7 @@ func (m Model) quitKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	case "k", "ctrl+k":
 		return m.chooseQuit(keepPlayingChoice)
 	case "s", "ctrl+c", "ctrl+q":
-		// Quitting again quits as spot-go always did: the music stops.
+		// ctrl+c again quits as ctrl+q does: the music stops.
 		return m.chooseQuit(stopChoice)
 	case "esc":
 		return m.chooseQuit(cancelChoice)

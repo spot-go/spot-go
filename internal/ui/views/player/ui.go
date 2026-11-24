@@ -227,8 +227,10 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		}
 		switch msg.String() {
-		case "ctrl+q", "ctrl+c":
+		case "ctrl+c":
 			return m.quit()
+		case "ctrl+q":
+			return m.quitStopping()
 		case "ctrl+k":
 			return m.quitInBackground()
 		case "left":

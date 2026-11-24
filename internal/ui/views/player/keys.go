@@ -89,7 +89,8 @@ var (
 	generalKeys = []playerHint{
 		{"←/→", "switch tabs"},
 		{"?", "show/hide these keys"},
-		{"ctrl+c/ctrl+q", "quit"},
+		{"ctrl+c", "quit"},
+		{"ctrl+q", "quit and stop playing"},
 		{"ctrl+k", "quit and keep playing"},
 	}
 
