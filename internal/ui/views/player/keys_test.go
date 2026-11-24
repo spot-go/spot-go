@@ -54,9 +54,11 @@ func (h *harness) keyListRows() []string {
 	return nil
 }
 
-// ctrlCQuits matches the row of the list of keys for ctrl+c, at the end of
-// a row, as in the right column.
-var ctrlCQuits = regexp.MustCompile(`(^|\s)ctrl\+c +quit$`)
+// keyRow matches the row of the list of keys for key, with what it does,
+// desc, at the end of a row, as in the right column.
+func keyRow(key, desc string) *regexp.Regexp {
+	return regexp.MustCompile(`(^|\s)` + regexp.QuoteMeta(key) + ` +` + regexp.QuoteMeta(desc) + `$`)
+}
 
 func TestQuestionMarkShowsTheKeys(t *testing.T) {
 	for _, closer := range []string{"?", "esc"} {
@@ -70,9 +72,13 @@ func TestQuestionMarkShowsTheKeys(t *testing.T) {
 				"General", "←/→", "switch tabs", "ctrl+c", "ctrl+q", "quit and stop playing", "ctrl+k", "quit and keep playing",
 				"←/→ other tabs • esc close",
 			)
-			// "quit" alone is in what ctrl+q and ctrl+k do too.
-			if rows := h.keyListRows(); !slices.ContainsFunc(rows, ctrlCQuits.MatchString) {
-				t.Fatalf("no row says ctrl+c quits: %q", rows)
+			// Each quit key says what it does with the music on its own
+			// row: "quit" alone is in what ctrl+q and ctrl+k do too.
+			rows := h.keyListRows()
+			for _, k := range [][2]string{{"ctrl+c", "quit"}, {"ctrl+q", "quit and stop playing"}, {"ctrl+k", "quit and keep playing"}} {
+				if !slices.ContainsFunc(rows, keyRow(k[0], k[1]).MatchString) {
+					t.Fatalf("no row says %s does %q: %q", k[0], k[1], rows)
+				}
 			}
 			// The list of keys shows over the tab, and the player stays.
 			h.dontWantView("Back in Black")
