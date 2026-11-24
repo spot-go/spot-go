@@ -127,9 +127,6 @@ type (
 		libraryRequests []string
 		containsStatus  int
 		libraryStatus   int
-		// blockLibrary, when set, holds the changes of the library until
-		// it is closed.
-		blockLibrary chan struct{}
 	}
 
 	recentPlay struct {
@@ -506,11 +503,6 @@ func (f *fakeAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	case path == "me/library" && (r.Method == http.MethodPut || r.Method == http.MethodDelete):
 		uris := r.URL.Query().Get("uris")
 		f.libraryRequests = append(f.libraryRequests, r.Method+" "+uris)
-		if block := f.blockLibrary; block != nil {
-			f.mu.Unlock()
-			<-block
-			f.mu.Lock()
-		}
 		if f.libraryStatus != 0 {
 			return errorResponse(r, f.libraryStatus, "Insufficient client scope"), nil
 		}

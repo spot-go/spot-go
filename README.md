@@ -154,7 +154,7 @@ The Web API doesn't document Liked Songs as something to play, and may refuse to
 
 The player shows `✓` after the song that plays when it is in Liked Songs, and `+` when it isn't, as the Spotify app does. For an episode, they say whether it is in Your Episodes. `l` likes or unlikes it, from every tab, and the player shows the change at once, before Spotify takes it. If Spotify refuses it, the player shows the mark from before, and why on the right of the first row. Pressing `l` again while Spotify takes a change sets it back once that change ends. Local files can't be liked.
 
-spot-go asks Spotify whether the song is liked when a new one shows, and again every 30 seconds while it plays, so a song you like on your phone gets its `✓` within that time. After `l` changes Liked Songs, the Playlists tab loads its songs again: at once while they show, or else when they show next.
+spot-go asks Spotify whether the song is liked when a new one shows, and again every 30 seconds while it plays, so a song you like on your phone gets its `✓` within that time. After `l` changes Liked Songs, the Playlists tab loads its songs again, keeping the selected song: at once while they show, or else when they show next.
 
 Liking needs a Spotify permission that older versions of spot-go didn't ask for, so after updating spot-go asks you to log in again.
 

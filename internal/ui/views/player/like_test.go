@@ -1,6 +1,7 @@
 package player
 
 import (
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -9,6 +10,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/spot-go/spot-go/internal/spotify"
+	libspotify "github.com/zmb3/spotify/v2"
 )
 
 const soWhat = "spotify:track:so-what"
@@ -269,10 +272,151 @@ func TestLikeFollowsTheSongThatPlays(t *testing.T) {
 
 	h.api.set(func(f *fakeAPI) { f.playingItem, f.playingName = "spotify:track:blue-in-green", "Blue in Green" })
 	h.settle()
-	h.send(pollPlayback{})
+	// The poll shows the new song, and the check about it waits.
+	var poll, check tea.Cmd
+	h.model, poll = h.model.Update(pollPlayback{})
+	for _, msg := range h.exec(poll) {
+		var cmd tea.Cmd
+		h.model, cmd = h.model.Update(msg)
+		check = tea.Batch(check, cmd)
+	}
+	h.wantPlayerRow(0, "Blue in Green — Miles Davis")
+	h.dontWantPlayerRow(0, likedMark, unlikedMark)
+
+	h.run(check)
 
 	h.wantPlayerRow(0, "Blue in Green — Miles Davis "+likedMark)
 	h.wantLibrary("contains "+soWhat, "contains spotify:track:blue-in-green")
+}
+
+func TestCheckRunningWhenLIsPressedDoesNotUndoTheLike(t *testing.T) {
+	h := newHarnessWith(t, likedSoWhat(false), 120, 40)
+	h.send(pollPlayback{})
+
+	// The recheck asks Spotify, which answers before the like lands.
+	m := h.player()
+	m.like.checkedAt = time.Now().Add(-likeRecheckEvery)
+	h.model = m
+	var recheck tea.Cmd
+	h.model, recheck = h.model.Update(progressTicked{})
+	answers := h.exec(recheck)
+
+	var change tea.Cmd
+	h.model, change = h.model.Update(key("l"))
+	h.send(answers...)
+	h.wantPlayerRow(0, "Miles Davis "+likedMark)
+
+	h.run(change)
+
+	h.wantLibrary("contains "+soWhat, "contains "+soWhat, "PUT "+soWhat)
+	h.wantPlayerRow(0, "Miles Davis "+likedMark)
+	if !h.api.isSaved(soWhat) {
+		t.Fatal("So What is not in Liked Songs")
+	}
+}
+
+func TestNoCheckWhileALikeRuns(t *testing.T) {
+	h := newHarnessWith(t, likedSoWhat(false), 120, 40)
+	h.send(pollPlayback{})
+
+	var change tea.Cmd
+	h.model, change = h.model.Update(key("l"))
+	m := h.player()
+	m.like.checkedAt = time.Now().Add(-likeRecheckEvery)
+	h.model = m
+	h.send(progressTicked{})
+
+	h.wantLibrary("contains " + soWhat)
+	h.run(change)
+	h.wantLibrary("contains "+soWhat, "PUT "+soWhat)
+}
+
+func TestLikeDuringACheckKeepsTheChecksGoing(t *testing.T) {
+	h := newHarnessWith(t, likedSoWhat(false), 120, 40)
+	h.send(pollPlayback{})
+
+	// l while a recheck runs: its answer is dropped, and later rechecks
+	// still run.
+	m := h.player()
+	m.like.checkedAt = time.Now().Add(-likeRecheckEvery)
+	h.model = m
+	h.model, _ = h.model.Update(progressTicked{})
+	var change tea.Cmd
+	h.model, change = h.model.Update(key("l"))
+	h.run(change)
+	h.wantPlayerRow(0, "Miles Davis "+likedMark)
+
+	// So What is unliked on another device.
+	h.api.set(func(f *fakeAPI) { f.saved[soWhat] = false })
+	m = h.player()
+	m.like.checkedAt = time.Now().Add(-likeRecheckEvery)
+	h.model = m
+	h.send(progressTicked{})
+	h.wantPlayerRow(0, "Miles Davis "+unlikedMark)
+}
+
+func TestLikeKeepsItsChangeAcrossATabWithoutASong(t *testing.T) {
+	h := newHarnessWith(t, likedSoWhat(false), 120, 40)
+	h.holdTimers = true
+	h.send(pollPlayback{})
+	// The Podcasts tab says why its last play failed, so it shows no song.
+	m := h.player()
+	podcasts := m.tabs[podcastsTab].content.(podcastModel)
+	podcasts.playback = playbackStatus{text: "Fail to play: request failed", err: true}
+	m.tabs[podcastsTab].content = podcasts
+	h.model = m
+
+	var change tea.Cmd
+	h.model, change = h.model.Update(key("l"))
+	h.send(key("right"))
+	h.dontWantPlayerRow(0, likedMark, unlikedMark)
+	h.send(key("l"))
+	h.wantPlayerRow(0, "Fail to like: nothing is playing")
+	h.send(key("left"))
+	h.wantPlayerRow(0, "Miles Davis "+likedMark)
+
+	h.run(change)
+
+	h.wantLibrary("contains "+soWhat, "PUT "+soWhat)
+	h.wantPlayerRow(0, "Miles Davis "+likedMark)
+}
+
+func TestLikeThatEndsAfterAnotherSongShowedIsKept(t *testing.T) {
+	api := likedSoWhat(false)
+	api.saved["spotify:track:blue-in-green"] = false
+	h := newHarnessWith(t, api, 120, 40)
+	h.holdTimers = true
+	h.send(pollPlayback{})
+
+	var change tea.Cmd
+	h.model, change = h.model.Update(key("l"))
+	// Another song shows, then So What again, which is checked while the
+	// like still runs, and Spotify says it isn't liked yet.
+	for _, item := range []string{"spotify:track:blue-in-green", soWhat} {
+		h.api.set(func(f *fakeAPI) { f.playingItem = item })
+		h.settle()
+		h.send(pollPlayback{})
+	}
+	h.wantPlayerRow(0, "So What — Miles Davis "+unlikedMark)
+
+	h.run(change)
+
+	h.wantPlayerRow(0, "So What — Miles Davis "+likedMark, "Added to Liked Songs")
+}
+
+func TestLikeRightAfterAPlayStartsSaysSpotifyHasNotSaidWhatPlays(t *testing.T) {
+	h := newHarness(t, 120, 40)
+	h.holdTimers = true
+
+	var play tea.Cmd
+	h.model, play = h.model.Update(key("enter"))
+	h.send(key("l"))
+	h.wantPlayerRow(0, "Fail to like: Spotify hasn't said what plays yet")
+
+	h.run(play)
+	h.send(key("l"))
+	h.wantPlayerRow(0, "Fail to like: Spotify hasn't said what plays yet")
+	h.wantLibrary()
 }
 
 func TestLikeAnswerAboutAnotherSongIsDropped(t *testing.T) {
@@ -293,10 +437,11 @@ func TestLikeIsCheckedAgainWhileItPlays(t *testing.T) {
 	// The song is liked on another device.
 	h.api.set(func(f *fakeAPI) { f.saved[soWhat] = true })
 	m := h.player()
-	m.like.checkedAt = time.Now().Add(-likeRecheckEvery + time.Minute)
+	m.like.checkedAt = time.Now().Add(-likeRecheckEvery + time.Second)
 	h.model = m
 	h.send(progressTicked{})
 	h.wantPlayerRow(0, "Miles Davis "+unlikedMark)
+	h.wantLibrary("contains " + soWhat)
 
 	m = h.player()
 	m.like.checkedAt = time.Now().Add(-likeRecheckEvery)
@@ -344,6 +489,7 @@ func TestLikeReloadsLikedSongsWhenTheyShowNext(t *testing.T) {
 	api.device, api.playingArtist = "phone", "Miles Davis"
 	h := newHarnessWith(t, api, 120, 40)
 	h.send(pollPlayback{})
+	h.send(keys("tab", "down")...)
 	h.openTab(queueTab)
 
 	h.send(key("l"))
@@ -354,6 +500,68 @@ func TestLikeReloadsLikedSongsWhenTheyShowNext(t *testing.T) {
 	h.openTab(playlistsTab)
 	if got := h.api.requestsFor(likedSongsKey); len(got) != 2 {
 		t.Fatalf("Liked Songs requests = %q, want the songs loaded again", got)
+	}
+	if song, _ := h.playlists().selectedSong(); song.Name != "Aquarela" {
+		t.Fatalf("selected song = %q, want Aquarela, selected before the like", song.Name)
+	}
+}
+
+func TestLikeReloadsLikedSongsWhenSelectedNext(t *testing.T) {
+	api := withLikedSongs()
+	api.playsElsewhere("spotify:playlist:p1", "", soWhat, "So What")
+	api.device, api.playingArtist = "phone", "Miles Davis"
+	h := newHarnessWith(t, api, 120, 40)
+	h.send(pollPlayback{})
+	h.send(key("down"))
+
+	h.send(key("l"))
+	if got := h.api.requestsFor(likedSongsKey); len(got) != 1 {
+		t.Fatalf("Liked Songs requests = %q, want no load while another playlist is selected", got)
+	}
+
+	h.send(key("up"))
+	if got := h.api.requestsFor(likedSongsKey); len(got) != 2 {
+		t.Fatalf("Liked Songs requests = %q, want the songs loaded again", got)
+	}
+	h.send(key("down"), key("up"))
+	if got := h.api.requestsFor(likedSongsKey); len(got) != 2 {
+		t.Fatalf("Liked Songs requests = %q, want no more loads once they are fresh", got)
+	}
+}
+
+func TestLikeWhileLikedSongsLoadLetsTheLoadEnd(t *testing.T) {
+	api := withLikedSongs()
+	api.liked = manyLikedJSON(120)
+	api.playsElsewhere("spotify:playlist:p1", "", soWhat, "So What")
+	api.device, api.playingArtist = "phone", "Miles Davis"
+	release := make(chan struct{})
+	defer close(release)
+	api.block["liked@50"] = release
+	h := newHarnessWith(t, api, 120, 40)
+	h.send(pollPlayback{})
+
+	h.send(key("l"))
+
+	if got := h.api.requestsFor(likedSongsKey); !slices.Equal(got, []string{"liked@0", "liked@50"}) {
+		t.Fatalf("Liked Songs requests = %q, want the load to go on", got)
+	}
+	if names := h.songNames(); len(names) != 50 {
+		t.Fatalf("songs = %d, want the 50 loaded", len(names))
+	}
+
+	// The rest of the load lands, and then the songs load again.
+	songs := h.playlists().songs[likedSongsID]
+	var rest []spotify.PlaylistItem
+	for i := 50; i < 120; i++ {
+		rest = append(rest, spotify.PlaylistItem{Position: i, Name: fmt.Sprintf("Liked %d", i+1), URI: libspotify.URI(trackURI(fmt.Sprintf("Liked %d", i+1))), Playable: true})
+	}
+	h.send(songsPageLoaded{likedSongsID, songs.gen, spotify.PlaylistItemsPage{Items: rest, Next: 120, Total: 120, Last: true}})
+
+	if got := h.api.requestsFor(likedSongsKey); !slices.Equal(got, []string{"liked@0", "liked@50", "liked@0", "liked@50", "liked@100"}) {
+		t.Fatalf("Liked Songs requests = %q, want the songs loaded again after the load", got)
+	}
+	if names := h.songNames(); len(names) != 120 || names[0] != "Liked 1" || names[119] != "Liked 120" {
+		t.Fatalf("songs = %d, want the 120 in order", len(names))
 	}
 }
 

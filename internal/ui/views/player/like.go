@@ -70,7 +70,8 @@ const (
 var (
 	likedStyle = playingStyle.Bold(true)
 
-	errLocalFile = errors.New("local files can't be liked")
+	errLocalFile   = errors.New("local files can't be liked")
+	errNotKnownYet = errors.New("Spotify hasn't said what plays yet")
 )
 
 // likeable is item when spot-go can like it: a song or an episode on Spotify.
@@ -104,18 +105,19 @@ func (m Model) shownItem() libspotify.URI {
 
 // followLike keeps the like state on the song or episode the player shows:
 // a new one is checked at once, and the one that plays again every
-// likeRecheckEvery.
+// likeRecheckEvery. While the player shows nothing spot-go can like, as
+// on a tab that says why a play failed, the state stays on the last one,
+// with any change that runs, so coming back to it needs no new check.
 func (m Model) followLike(cmd tea.Cmd) (Model, tea.Cmd) {
 	item := likeable(m.shownItem())
-	if item != m.like.item {
+	switch {
+	case item == "":
+		return m, cmd
+	case item != m.like.item:
 		m.like = likeControl{item: item, seq: m.like.seq + 1}
-		if item == "" {
-			return m, cmd
-		}
 		return m.checkLike(cmd)
-	}
-	if item == "" || m.like.busy || m.like.checking ||
-		!m.activeStatus().track.info.Playing || time.Since(m.like.checkedAt) < likeRecheckEvery {
+	case m.like.busy || m.like.checking ||
+		!m.activeStatus().track.info.Playing || time.Since(m.like.checkedAt) < likeRecheckEvery:
 		return m, cmd
 	}
 	return m.checkLike(cmd)
@@ -156,12 +158,7 @@ func (m Model) likeChecked(msg likeChecked) Model {
 // changes it again if it differs. When spot-go doesn't know whether it is
 // liked, it reads it first.
 func (m Model) toggleLike() (Model, tea.Cmd) {
-	if m.like.item == "" {
-		shown := m.shownItem()
-		err := errNothingPlaying
-		if strings.HasPrefix(string(shown), localURIPrefix) {
-			err = errLocalFile
-		}
+	if err := m.unlikeable(); err != nil {
 		return m.notify("Fail to like: "+err.Error(), true)
 	}
 	if m.like.busy {
@@ -176,6 +173,24 @@ func (m Model) toggleLike() (Model, tea.Cmd) {
 	}
 	liked := !m.like.liked
 	return m.changeLike(&liked)
+}
+
+// unlikeable says why the player shows nothing l can like, or is nil when
+// it shows a song or an episode. followLike keeps m.like on it.
+func (m Model) unlikeable() error {
+	status := m.activeStatus()
+	shown := m.shownItem()
+	switch {
+	case likeable(shown) != "" && shown == m.like.item:
+		return nil
+	case strings.HasPrefix(string(shown), localURIPrefix):
+		return errLocalFile
+	case status.starting || status.showsTrack():
+		// A tab that starts a playlist, an album or an artist shows it
+		// before Spotify says which song plays.
+		return errNotKnownYet
+	}
+	return errNothingPlaying
 }
 
 // changeLike likes or unlikes the song or episode the player shows, as
@@ -227,7 +242,8 @@ func (m Model) likeChanged(msg likeChanged) (Model, tea.Cmd) {
 	}
 
 	var again tea.Cmd
-	if current {
+	switch {
+	case current:
 		m.like.busy, m.like.checkedAt = false, time.Now()
 		if m.like.known && m.like.liked != msg.liked {
 			// l was pressed while the change ran.
@@ -236,6 +252,13 @@ func (m Model) likeChanged(msg likeChanged) (Model, tea.Cmd) {
 		} else {
 			m.like.known, m.like.liked = true, msg.liked
 		}
+	case msg.item == m.like.item && !m.like.busy:
+		// The player showed another song meanwhile, and came back to this
+		// one: what Spotify answers now is newer than a check that started
+		// before the change ended, which is dropped.
+		m.like.seq++
+		m.like.known, m.like.liked = true, msg.liked
+		m.like.checking, m.like.checkedAt = false, time.Now()
 	}
 	m, notice := m.notify(msg.text(), false)
 	return m, tea.Batch(notice, again, m.broadcast(msg))
