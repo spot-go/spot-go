@@ -398,6 +398,23 @@ func TestPauseNeedsNoConfirmation(t *testing.T) {
 	h.wantPlayerReads(1)
 }
 
+func TestPlayStartedDuringAResumeKeepsItsStatus(t *testing.T) {
+	api := newFakeAPI()
+	api.onResume = backInBlackResumes
+	h := newHarnessWith(t, api, 120, 40)
+	h.confirmStarts()
+	published := h.recordNowPlaying()
+
+	model, resume := h.model.Update(key("space"))
+	h.model = model
+	h.send(keys("down", "enter")...)
+	h.run(resume)
+
+	wantInfo(t, published, media.Info{Title: "Jazz", Playing: true})
+	h.wantPlayerRow(0, "⏸ Jazz")
+	h.dontWantPlayerRow(0, "Back in Black")
+}
+
 func TestPauseRightAfterAResumeDropsItsConfirmation(t *testing.T) {
 	api := newFakeAPI()
 	h := newHarnessWith(t, api, 120, 40)
