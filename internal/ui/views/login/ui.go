@@ -123,9 +123,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.capturesInput() {
 				return m, tea.Quit
 			}
-		case "ctrl+c", "ctrl+b":
+		case "ctrl+c", "ctrl+k":
 			// Before the player shows, spot-go never asks whether the music
-			// keeps playing, so ctrl+b, which keeps it playing in the
+			// keeps playing, so ctrl+k, which keeps it playing in the
 			// player, quits as ctrl+c does: see KeepPlaying.
 			return m, tea.Quit
 		}

@@ -63,7 +63,7 @@ func TestSoloistAPIKeyPromptTakesQ(t *testing.T) {
 		t.Fatal("the API key is shown in clear text")
 	}
 
-	for _, k := range []rune{'c', 'b'} {
+	for _, k := range []rune{'c', 'k'} {
 		_, cmd = update(t, m, tea.KeyPressMsg{Code: k, Mod: tea.ModCtrl})
 		if !isQuit(cmd) {
 			t.Fatalf("ctrl+%c did not quit while typing the API key", k)

@@ -229,7 +229,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+q", "ctrl+c":
 			return m.quit()
-		case "ctrl+b":
+		case "ctrl+k":
 			return m.quitInBackground()
 		case "left":
 			if !m.activeCapturesInput() {

@@ -105,7 +105,7 @@ func (m Model) quitKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		m.quitPrompt.choice = (m.quitPrompt.choice + quitChoiceCount - 1) % quitChoiceCount
 	case "enter":
 		return m.chooseQuit(m.quitPrompt.choice)
-	case "k", "ctrl+b":
+	case "k", "ctrl+k":
 		return m.chooseQuit(keepPlayingChoice)
 	case "s", "ctrl+c", "ctrl+q":
 		// Quitting again quits as spot-go always did: the music stops.
