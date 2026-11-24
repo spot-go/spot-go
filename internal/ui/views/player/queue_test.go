@@ -419,3 +419,20 @@ func TestQueueFitsSmallWindows(t *testing.T) {
 		}
 	}
 }
+
+func TestQueueShowsWhatAResumeWithNothingPlayingPlays(t *testing.T) {
+	api := queueAPI()
+	api.playing, api.queue = "", nil
+	api.onResume = func(f *fakeAPI) {
+		f.playing = "spotify:album:a0"
+		f.queue = []string{albumTrackJSON("Something", "The Beatles", 182000, true)}
+	}
+	h := newQueueHarness(t, api)
+	h.confirmStarts()
+	h.wantView(queueNothingPlaying)
+
+	h.send(key("space"))
+
+	h.wantView("Now playing", "Come Together", "⏸ Come Together — The Beatles")
+	h.wantQueue("Something")
+}

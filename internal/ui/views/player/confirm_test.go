@@ -299,3 +299,145 @@ func TestPlayIgnoresTheSongThatJustStartedWithoutNowPlaying(t *testing.T) {
 	h.wantView("⏸ Back in Black")
 	h.wantPlayerReads(3)
 }
+
+// backInBlackResumes is a resume while nothing plays: Spotify resumes what
+// played last, Back in Black, on spot-go.
+func backInBlackResumes(f *fakeAPI) {
+	backInBlackPlays(f)
+	f.device, f.deviceName, f.volume = testDeviceID, "spot-go@laptop", 70
+}
+
+func TestResumeWithNothingPlayingShowsWhatSpotifyResumes(t *testing.T) {
+	api := newFakeAPI()
+	api.onResume = backInBlackResumes
+	h := newHarnessWith(t, api, 120, 40)
+	h.confirmStarts()
+	published := h.recordNowPlaying()
+
+	h.send(key("space"))
+
+	h.wantResume(0, testDeviceID)
+	wantInfo(t, published, backInBlack)
+	h.wantView("⏸ Back in Black")
+	h.wantPlayerRow(1, "70%")
+	h.wantPlayerReads(2)
+}
+
+func TestResumeWaitsForSpotifyToShowWhatItResumes(t *testing.T) {
+	api := newFakeAPI()
+	api.onResume, api.playLag = backInBlackResumes, 2
+	h := newHarnessWith(t, api, 120, 40)
+	h.confirmStarts()
+	published := h.recordNowPlaying()
+
+	h.send(media.Play)
+
+	wantInfo(t, published, backInBlack)
+	h.wantView("⏸ Back in Black")
+	h.wantPlayerReads(4)
+}
+
+func TestResumeStopsWaitingWhenSpotifyShowsNothing(t *testing.T) {
+	h := newHarness(t, 120, 40)
+	h.confirmStarts()
+	published := h.recordNowPlaying()
+
+	h.send(key("space"))
+
+	wantInfo(t, published, media.Info{Playing: true})
+	h.wantView("⏸")
+	h.wantPlayerReads(1 + confirmPolls)
+}
+
+func TestResumeStopsWaitingWhenSpotifyFails(t *testing.T) {
+	api := newFakeAPI()
+	api.onResume = func(f *fakeAPI) { f.playerStatus = http.StatusInternalServerError }
+	h := newHarnessWith(t, api, 120, 40)
+	h.confirmStarts()
+
+	h.send(key("space"))
+
+	h.wantView("⏸")
+	h.dontWantView("Fail")
+	h.wantPlayerReads(2)
+}
+
+func TestResumeOfAKnownSongNeedsNoConfirmation(t *testing.T) {
+	api := playingOnPhone()
+	api.paused = true
+	h := newHarnessWith(t, api, 120, 40)
+	h.confirmStarts()
+
+	h.send(key("k"))
+
+	h.wantResume(0, "")
+	h.wantView("⏸ So What")
+	h.wantPlayerReads(1)
+}
+
+func TestPlayKeyWhileSpotifyPlaysNeedsNoConfirmation(t *testing.T) {
+	api := newFakeAPI()
+	// Spotify plays something it doesn't name, such as an ad.
+	api.playsElsewhere("spotify:playlist:p1", "", "", "")
+	h := newHarnessWith(t, api, 120, 40)
+	h.confirmStarts()
+
+	h.send(media.Play)
+
+	h.wantPlays(0)
+	h.wantPlayerReads(1)
+}
+
+func TestPauseNeedsNoConfirmation(t *testing.T) {
+	h := newHarnessWith(t, playingOnPhone(), 120, 40)
+	h.confirmStarts()
+
+	h.send(key("space"))
+
+	h.wantPauses("")
+	h.wantPlayerReads(1)
+}
+
+func TestPauseRightAfterAResumeDropsItsConfirmation(t *testing.T) {
+	api := newFakeAPI()
+	h := newHarnessWith(t, api, 120, 40)
+	published := h.recordNowPlaying()
+	h.send(key("space"))
+
+	api.set(backInBlackResumes)
+	m := h.player()
+	m.startPolls = confirmPolls
+	confirmed := h.exec(m.confirmResume(m.toggle.known))
+	if len(confirmed) != 1 {
+		t.Fatalf("confirmation = %v, want one message", confirmed)
+	}
+	h.send(key("space"))
+	h.send(confirmed...)
+
+	h.wantPauses("")
+	if got := lastInfo(t, published); got.Playing || got.Title != "" {
+		t.Fatalf("now playing = %+v, want nothing playing", got)
+	}
+	h.wantPlayerRow(0, "▶")
+	h.dontWantPlayerRow(0, "Back in Black")
+}
+
+func TestPlayRightAfterAResumeDropsItsConfirmation(t *testing.T) {
+	api := newFakeAPI()
+	h := newHarnessWith(t, api, 120, 40)
+	published := h.recordNowPlaying()
+	h.send(key("space"))
+
+	api.set(backInBlackResumes)
+	m := h.player()
+	m.startPolls = confirmPolls
+	confirmed := h.exec(m.confirmResume(m.toggle.known))
+	if len(confirmed) != 1 {
+		t.Fatalf("confirmation = %v, want one message", confirmed)
+	}
+	h.send(keys("down", "enter")...)
+	h.send(confirmed...)
+
+	wantInfo(t, published, media.Info{Title: "Jazz", Playing: true})
+	h.wantView("⏸ Jazz")
+}

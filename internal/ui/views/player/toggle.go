@@ -42,7 +42,9 @@ type (
 		// stale is true for a skip Spotify didn't report in time, so item and
 		// progress may still be those of the song before it.
 		stale bool
-		err   error
+		// resumed is true when the change asked Spotify to resume.
+		resumed bool
+		err     error
 	}
 
 	playbackChange int
@@ -129,6 +131,7 @@ func (m Model) changePlayback(change playbackChange) (Model, tea.Cmd) {
 			if toggled.device == "" {
 				target, toggled.device = fallback, fallback
 			}
+			toggled.resumed = true
 			toggled.err = client.ResumePlayback(ctx, target)
 		}
 		return toggled
