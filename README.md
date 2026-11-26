@@ -49,7 +49,7 @@ The packages aren't signed, so Alpine needs `--allow-untrusted`.
 
 ### Nix
 
-spot-go is in [NUR](https://github.com/nix-community/NUR), the Nix User Repository, at `nur.repos.spot-go.spot-go`. To run it without NUR:
+spot-go's Nix package is in [spot-go/nur-packages](https://github.com/spot-go/nur-packages). To run it:
 
 ```bash
 nix run github:spot-go/nur-packages#spot-go
@@ -331,7 +331,7 @@ The Release workflow runs [GoReleaser](https://goreleaser.com) with `.goreleaser
 - pushes `spot-go-bin` to the AUR
 - pushes the Nix package to [spot-go/nur-packages](https://github.com/spot-go/nur-packages), at `pkgs/spot-go/default.nix`
 
-A version with a pre-release suffix, such as `1.2.3-rc.1`, makes a pre-release on GitHub only, without Homebrew, the AUR or NUR. Running the Release workflow without a version, from any branch, builds everything without publishing it, and keeps the archives, the packages, the cask, the `PKGBUILD` and the Nix file in the run's artifacts.
+A version with a pre-release suffix, such as `1.2.3-rc.1`, makes a pre-release on GitHub only, without Homebrew, the AUR or nur-packages. Running the Release workflow without a version, from any branch, builds everything without publishing it, and keeps the archives, the packages, the cask, the `PKGBUILD` and the Nix file in the run's artifacts.
 
 The release needs, once:
 
@@ -345,7 +345,7 @@ The release needs, once:
 
 After the first release pushed `pkgs/spot-go/default.nix` to nur-packages, add `spot-go = pkgs.callPackage ./pkgs/spot-go { };` to its `default.nix`, and [add it to NUR](https://github.com/nix-community/NUR#how-to-add-your-own-repository). Before that, the file the line points to doesn't exist, so nur-packages wouldn't evaluate.
 
-The GitHub release comes out before Homebrew, the AUR and NUR. If one of them fails, such as with an expired token, fix it and run the failed job again: it uploads the release's files again and goes on to the packages. If the AUR got the version the first time, it fails the second time with nothing to commit, which is harmless. A run with a version runs again the same way, and releases the tag it made. That's also the way when it failed before the GitHub release for a reason that needs no new commit, such as a network error. When the fix needs a new commit, such as for a build error, the version is used up, as Go's module mirror may have it already: delete the tag, from the repository's tags page or with `git push --delete origin v1.2.3`, so the next release's notes start from the latest release, then release the next version.
+The GitHub release comes out before Homebrew, the AUR and nur-packages. If one of them fails, such as with an expired token, fix it and run the failed job again: it uploads the release's files again and goes on to the packages. If the AUR got the version the first time, it fails the second time with nothing to commit, which is harmless. A run with a version runs again the same way, and releases the tag it made. That's also the way when it failed before the GitHub release for a reason that needs no new commit, such as a network error. When the fix needs a new commit, such as for a build error, the version is used up, as Go's module mirror may have it already: delete the tag, from the repository's tags page or with `git push --delete origin v1.2.3`, so the next release's notes start from the latest release, then release the next version.
 
 ## License
 
